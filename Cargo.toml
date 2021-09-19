@@ -1,0 +1,8 @@
+[package]
+name = "mba"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rug = "1"
+rand = "0.8"
