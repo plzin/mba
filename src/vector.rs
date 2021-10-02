@@ -210,10 +210,16 @@ impl std::ops::Mul<&Integer> for &Vector {
 impl std::ops::Rem<&Integer> for Vector {
     type Output = Vector;
     fn rem(mut self, rhs: &Integer) -> Self::Output {
+        let half = (rhs >> 1 as u32).complete();
+        let neg_half = (-&half).complete();
         for e in self.iter_mut() {
             *e %= rhs;
-            if *e < 0 {
+
+            // This is debatable, but it makes things look better in this case.
+            if *e <= neg_half {
                 *e += rhs;
+            } else if *e > half {
+                *e -= rhs;
             }
         }
         self

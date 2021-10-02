@@ -46,8 +46,6 @@ fn hermite_normal_form(a: &mut Matrix) -> Matrix {
     // The transformation matrix.
     let mut u = Matrix::identity(a.rows);
 
-    // let mut it = 0;
-
     let mut i = 0;
     let mut j = 0;
     while i < a.rows && j < a.cols {
