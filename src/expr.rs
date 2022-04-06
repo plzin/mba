@@ -9,7 +9,7 @@ pub(crate) fn int_from_it(
     it: &mut std::iter::Peekable<std::str::Chars>
 ) -> Option<Integer> {
     let c = it.next()?;
-    let mut num: Integer = c.to_digit(10).unwrap().into();
+    let mut num: Integer = c.to_digit(10)?.into();
 
     let mut lookahead = it.peek();
     while let Some(c) = lookahead {
@@ -44,6 +44,188 @@ pub enum Expr {
 }
 
 impl Expr {
+    /// Returns the zero constant.
+    pub const fn zero() -> Self {
+        Self::Const(Integer::new())
+    }
+
+    /// Returns all variables in the expression.
+    /// This can include duplicates.
+    pub fn vars(&self, v: &mut Vec<char>) {
+        use Expr::*;
+        match self {
+            Const(_) => (),
+            Var(n) => v.push(*n),
+            Add(l, r) | Sub(l, r) | Mul(l, r) | Div(l, r)
+                | And(l, r) | Or(l, r) | Xor(l, r) => { l.vars(v); r.vars(v); },
+            Neg(e) | Not(e) => e.vars(v),
+        }
+    }
+
+    /// Substitutes an expression for a variable.
+    /// If the Rc's in this expression are shared with
+    /// other expressions then this will also substitute in those.
+    pub fn substitute(mut self, var: char, e: &mut Rc<Expr>) -> Self {
+        self.substitute_mut(var, e);
+        self
+    }
+
+    /// Substitutes an expression for a variable.
+    /// If the Rc's in this expression are shared with
+    /// other expressions then this will also substitute in those.
+    pub fn substitute_mut(&mut self, var: char, e: &mut Rc<Expr>) {
+        let mut visited = Vec::new();
+
+        use Expr::*;
+        match self {
+            Const(_) => (),
+            Var(v) => if *v == var { *self = (**e).clone() },
+            Add(l, r) | Sub(l, r) | Mul(l, r) | Div(l, r)
+                | And(l, r) | Or(l, r) | Xor(l, r) => {
+                    Self::substitute_impl(l, var, e, &mut visited);
+                    Self::substitute_impl(r, var, e, &mut visited);
+            },
+            Neg(i) | Not(i)
+                => Self::substitute_impl(i, var, e, &mut visited),
+        }
+    }
+
+    fn substitute_impl(
+        this: &mut Rc<Expr>, var: char,
+        e: &mut Rc<Expr>, visited: &mut Vec<*const Expr>
+    ) {
+        let ptr = Rc::as_ptr(this);
+        if visited.contains(&ptr) {
+            return;
+        }
+
+        visited.push(ptr);
+
+        use Expr::*;
+        // SAFETY: This is okay because we make sure with extra logic
+        // that this is never encountered twice.
+        match unsafe { &mut *(ptr as *mut _) } {
+            Const(_) => (),
+            Var(v) => if *v == var { *this = e.clone() },
+            Add(l, r) | Sub(l, r) | Mul(l, r) | Div(l, r)
+                | And(l, r) | Or(l, r) | Xor(l, r) => {
+                    Self::substitute_impl(l, var, e, visited);
+                    Self::substitute_impl(r, var, e, visited);
+            },
+            Neg(i) | Not(i) => Self::substitute_impl(i, var, e, visited),
+        }
+    }
+
+    /// Prints the expression while avoiding to reprint
+    /// common subexpressions by assigning them to variables.
+    /// This only works if the Rc's used in the expression
+    /// are not shared with other Exprs.
+    pub fn print_simple(&self) {
+        // Stores a mapping of (sub)expressions to variables.
+        let mut vars = Vec::new();
+
+        let l = self.print_simple_impl(&mut vars);
+
+        for (_, var, init) in vars.iter().rev() {
+            println!("{} = {}", var, init);
+        }
+
+        println!("{}", l);
+    }
+
+    fn print_simple_rc(
+        e: &Rc<Expr>,
+        vars: &mut Vec<(*const Expr, char, String)>
+    ) -> String {
+        // If there is only one reference then just print it.
+        if Rc::strong_count(e) == 1 {
+            return e.print_simple_impl(vars);
+        }
+
+        // We don't want to assign a variable to a variable
+        // so there is this shortcut here.
+        if let Expr::Var(v) = &**e {
+            return format!("{}", *v);
+        }
+
+        let ptr = Rc::as_ptr(e);
+
+        // If the expression already has a variable then just print the variable.
+        let var = vars.iter().find(|t| t.0 == ptr);
+        if let Some(v) = var {
+            v.1.to_string()
+        } else {
+            let v = match vars.last() {
+                None => 'a',
+                // TODO: If there are too many variables this is bad.
+                Some(t) => (t.1 as u8 + 1) as char,
+            };
+
+            // Push everything.
+            vars.push((ptr, v, String::new()));
+
+            let idx = vars.len() - 1;
+
+            // Get the initializer for the variable.
+            vars[idx].2 = e.print_simple_impl(vars);
+
+            // Return just the variable name.
+            v.to_string()
+        }
+    }
+
+    // Yes, this PERFORMANCE CRITICAL code could be more efficient...
+    fn print_simple_impl(
+        &self, vars: &mut Vec<(*const Expr, char, String)>
+    ) -> String {
+        let bin_op = |
+            op: char, l: &Rc<Expr>, r: &Rc<Expr>,
+            vars: &mut Vec<(*const Expr, char, String)>
+        | {
+            let pred = self.precedence();
+
+            let l = if pred > l.precedence() && Rc::strong_count(l) == 1 {
+                format!("({})", Expr::print_simple_rc(l, vars))
+            } else {
+                format!("{}", Expr::print_simple_rc(l, vars))
+            };
+
+            let r = if pred > r.precedence() && Rc::strong_count(r) == 1 {
+                format!("({})", Expr::print_simple_rc(r, vars))
+            } else {
+                format!("{}", Expr::print_simple_rc(r, vars))
+            };
+
+            format!("{} {} {}", l, op, r)
+        };
+
+        let un_op = |
+            op: char, i: &Rc<Expr>,
+            vars: &mut Vec<(*const Expr, char, String)>
+        | {
+            if self.precedence() > i.precedence() && Rc::strong_count(i) == 1 {
+                format!("{}({})", op, Expr::print_simple_rc(i, vars))
+            } else {
+                format!("{}{}", op, Expr::print_simple_rc(i, vars))
+            }
+        };
+
+        use Expr::*;
+        match self {
+            Const(i) => format!("{}", i),
+            Var(n) => format!("{}", n),
+            Add(l, r) => bin_op('+', l, r, vars),
+            Sub(l, r) => bin_op('-', l, r, vars),
+            Mul(l, r) => bin_op('*', l, r, vars),
+            Div(l, r) => bin_op('/', l, r, vars),
+            Neg(i) => un_op('-', i, vars),
+            And(l, r) => bin_op('&', l, r, vars),
+            Or(l, r) => bin_op('|', l, r, vars),
+            Xor(l, r) => bin_op('^', l, r, vars),
+            Not(i) => un_op('~', i, vars),
+        }
+    }
+
     pub fn from_string<T: ToString>(s: T) -> Option<Expr> {
         let mut s = s.to_string();
         s.retain(|c| !c.is_whitespace());
@@ -54,14 +236,16 @@ impl Expr {
 
     /// Returns the precedence of a binary operator.
     /// All operators are taken to be left associative.
-    fn precedence(c: char) -> usize {
-        match c {
-            '|' => 1,
-            '^' => 2,
-            '&' => 3,
-            '+' | '-' => 4,
-            '*' | '/' => 5,
-            _ => 0
+    fn precedence(&self) -> usize {
+        use Expr::*;
+        match self {
+            Or(_, _) => 1,
+            Xor(_, _) => 2,
+            And(_, _) => 3,
+            Add(_, _) | Sub(_, _) => 4,
+            Mul(_, _) | Div(_, _) => 5,
+            Neg(_) | Not(_) => 15,
+            Const(_) | Var(_) => 16,
         }
     }
 
@@ -107,7 +291,16 @@ impl Expr {
                 Some(c) => *c,
             };
 
-            let op_pre = Self::precedence(c);
+            let op_pre = match c {
+                '|' => 1,
+                '^' => 2,
+                '&' => 3,
+                '+' | '-' => 4,
+                '*' | '/' => 5,
+                ')' => return Some(e),
+                _ => return None,
+            };
+
             if op_pre <= pre {
                 return Some(e);
             }
@@ -126,7 +319,7 @@ impl Expr {
                 '&' => And(lhs, rhs),
                 '|' => Or(lhs, rhs),
                 '^' => Xor(lhs, rhs),
-                _ => return None,
+                _ => unreachable!(),
             };
         }
     }

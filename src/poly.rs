@@ -4,6 +4,8 @@ use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign};
 
 use rug::{Integer, Complete};
 
+use crate::expr::Expr;
+
 /// Represents a polynomial with integer coefficients.
 ///
 /// coeffs[0] + coeffs[1]x + coeffs[2]x^2 + ...
@@ -134,6 +136,27 @@ impl Poly {
         for c in &mut self.coeffs {
             *c <<= m;
         }
+    }
+
+    /// Returns an expression that uses
+    /// Horner's method to evaluate the polynomial in x.
+    pub fn to_expr(&self) -> Expr {
+        let mut it = self.coeffs.iter().rev();
+        let mut e = match it.next() {
+            None => Expr::zero(),
+            Some(c) => Expr::Const(c.clone()),
+        };
+
+        use std::rc::Rc;
+
+        let x = Rc::new(Expr::Var('x'));
+
+        for c in it {
+            e = Expr::Mul(x.clone(), e.into());
+            e = Expr::Add(Rc::new(Expr::Const(c.clone())), Rc::new(e));
+        }
+
+        e
     }
 }
 

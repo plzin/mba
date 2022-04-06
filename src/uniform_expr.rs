@@ -1,18 +1,28 @@
 #![allow(dead_code)]
 
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, Neg};
 
 use rug::Integer;
 
-use crate::int_from_it;
+use crate::{Expr, int_from_it};
 
 /// LUExpr is short for "Linear combination of Uniform Expressions"
 /// These are the expressions for which rewrite rules can be efficiently
 /// generated.
 #[derive(Clone, Debug)]
-pub struct LUExpr(pub Vec<(Integer, UniformExpr)>);
+pub struct LUExpr(pub Vec<(Integer, UExpr)>);
 
 impl LUExpr {
+    /// Creates an expression that equals a constant.
+    pub fn constant(c: Integer) -> Self {
+        Self(vec![(-c, UExpr::Ones)])
+    }
+
+    /// Creates an expression that equals a variable.
+    pub fn var(name: char) -> Self {
+        Self(vec![(1.into(), UExpr::Var(name))])
+    }
+
     /// Returns all variables in the expression.
     /// This will include duplicates.
     pub fn vars(&self, v: &mut Vec<char>) {
@@ -41,19 +51,32 @@ impl LUExpr {
         // This stores the current linear combination.
         let mut v = Vec::new();
 
+        let mut neg = false;
+
         // Loop over the string/the summands.
         loop {
             // Are there still characters left?
             // If not then we're done.
-            let c = match it.peek() {
+            let mut c = match it.peek() {
                 None => return Some(Self(v)),
                 Some(c) => *c,
             };
 
+            if c == '-' {
+                neg = true;
+                it.next();
+                c = *it.peek()?;
+            }
+
             // If this is a digit then we expect num*UExpr.
             if c.is_ascii_digit() {
                 // Parse the number.
-                let num = int_from_it(&mut it)?;
+                let mut num = int_from_it(&mut it)?;
+
+                // If the number is negative then negate it.
+                if neg {
+                    num = num.neg();
+                }
 
                 // Is it the expected '*'?
                 let lookahead = it.peek();
@@ -61,30 +84,66 @@ impl LUExpr {
                     Some('*') => {
                         it.next();
 
-                        // Parse the UniformExpr.
-                        let e = UniformExpr::parse(&mut it, 0)?;
+                        // Parse the UExpr.
+                        let e = UExpr::parse(&mut it, 0)?;
 
                         // Push it.
                         v.push((num, e));
                     },
 
-                    // If this is a different character then we push num*1.
-                    _ => v.push((num, UniformExpr::One)),
+                    // If this is a different character then we push -num*(-1).
+                    _ => v.push((-num, UExpr::Ones)),
                 }
             } else {
-                // We don't have a factor so just parse the UniformExpr.
-                let e = UniformExpr::parse(&mut it, 0)?;
+                // We don't have a factor so just parse the UExpr.
+                let e = UExpr::parse(&mut it, 0)?;
 
-                // Push 1*e.
-                v.push((1.into(), e));
+                let sign = match neg {
+                    false => 1,
+                    true => -1,
+                };
+
+                // Push sign*e.
+                v.push((sign.into(), e));
             }
 
             // If the next character is not a plus then we are done.
             match it.peek() {
                 Some('+') => it.next(), // Skip the +.
+                Some('-') => { neg = true; it.next() },
                 _ => return Some(Self(v)),
             };
         }
+    }
+
+    /// Converts an LUExpr to an Expr.
+    pub fn to_expr(&self) -> Expr {
+        let mut it = self.0.iter();
+        let s = match it.next() {
+            None => return Expr::Const(Integer::new()),
+            Some(s) => s,
+        };
+
+        let from_summand = |(i, e): &(Integer, UExpr)| {
+            if let UExpr::Ones = e {
+                Expr::Const(-i.clone())
+            } else {
+                Expr::Mul(Expr::Const(i.clone()).into(), e.to_expr().into())
+            }
+        };
+
+        let mut cur = from_summand(s);
+        for s in it {
+            cur = Expr::Add(cur.into(), from_summand(s).into());
+        }
+
+        cur
+    }
+}
+
+impl From<UExpr> for LUExpr {
+    fn from(e: UExpr) -> Self {
+        Self(vec![(1.into(), e)])
     }
 }
 
@@ -116,9 +175,11 @@ impl std::fmt::Display for LUExpr {
 }
 
 /// Represents an expression that is uniform on all bits.
+/// Note that the variant 'Ones' does not equal 1, but a 1 in every bit,
+/// which is -1 in two's complement.
 #[derive(Clone, Debug)]
-pub enum UniformExpr {
-    One,
+pub enum UExpr {
+    Ones,
     Var(char),
     And(Box<Self>, Box<Self>),
     Or(Box<Self>, Box<Self>),
@@ -126,13 +187,33 @@ pub enum UniformExpr {
     Not(Box<Self>),
 }
 
-impl UniformExpr {
+impl UExpr {
+    pub fn var(c: char) -> Self {
+        Self::Var(c)
+    }
+
+    pub fn and(l: Self, r: Self) -> Self {
+        Self::And(l.into(), r.into())
+    }
+
+    pub fn or(l: Self, r: Self) -> Self {
+        Self::Or(l.into(), r.into())
+    }
+
+    pub fn xor(l: Self, r: Self) -> Self {
+        Self::Xor(l.into(), r.into())
+    }
+
+    pub fn not(e: Self) -> Self {
+        Self::Not(e.into())
+    }
+
     /// Returns all variables in the expression.
     /// This will include duplicates.
     pub fn vars(&self, v: &mut Vec<char>) {
-        use UniformExpr::*;
+        use UExpr::*;
         match self {
-            One      => {},
+            Ones            => {},
             Var(c)          => v.push(*c),
             And(e1, e2)     => { e1.vars(v); e2.vars(v) },
             Or(e1, e2)      => { e1.vars(v); e2.vars(v) },
@@ -143,14 +224,27 @@ impl UniformExpr {
 
     /// Evaluate an expression with a valuation for the occuring variables.
     pub fn eval(&self, v: &Valuation) -> Integer {
-        use UniformExpr::*;
+        use UExpr::*;
         match self {
-            One             => 1.into(),
+            Ones            => (-1).into(),
             Var(c)          => v[*c].clone(),
-            And(e1, e2)     => (e1.eval(v) & e2.eval(v)) & 1,
-            Or(e1, e2)      => (e1.eval(v) | e2.eval(v)) & 1,
-            Xor(e1, e2)     => (e1.eval(v) ^ e2.eval(v)) & 1,
-            Not(e)          => (!e.eval(v)) & 1,
+            And(e1, e2)     => (e1.eval(v) & e2.eval(v)), //& 1,
+            Or(e1, e2)      => (e1.eval(v) | e2.eval(v)), //& 1,
+            Xor(e1, e2)     => (e1.eval(v) ^ e2.eval(v)), //& 1,
+            Not(e)          => (!e.eval(v)), //& 1,
+        }
+    }
+
+    /// Rename a variable.
+    pub fn rename_var(&mut self, old: char, new: char) {
+        use UExpr::*;
+        match self {
+            Ones        => (),
+            Var(v)      => if *v == old { *v = new },
+            And(l, r)   => { l.rename_var(old, new); r.rename_var(old, new) },
+            Or(l, r)    => { l.rename_var(old, new); r.rename_var(old, new) },
+            Xor(l, r)   => { l.rename_var(old, new); r.rename_var(old, new) },
+            Not(e)      => e.rename_var(old, new),
         }
     }
 
@@ -170,15 +264,6 @@ impl UniformExpr {
         }
     }
 
-    fn precedence(op: char) -> usize {
-        match op {
-            '|' => 1,
-            '^' => 2,
-            '&' => 3,
-            _ => 0,
-        }
-    }
-
     /// Parse a string to an expression.
     pub(crate) fn from_string<T: ToString>(s: T) -> Option<Self> {
         let mut s = s.to_string();
@@ -192,7 +277,7 @@ impl UniformExpr {
         it: &mut std::iter::Peekable<std::str::Chars>,
         pre: usize
     ) -> Option<Self> {
-        use UniformExpr::*;
+        use UExpr::*;
 
         let c = *it.peek()?;
 
@@ -211,7 +296,8 @@ impl UniformExpr {
             it.next();
             Var(c)
         } else if c == '1' {
-            One
+            it.next();
+            Ones
         } else {
             return None;
         };
@@ -222,7 +308,13 @@ impl UniformExpr {
                 Some(c) => *c,
             };
 
-            let op_pre = Self::precedence(c);
+            let op_pre = match c {
+                '|' => 1,
+                '^' => 2,
+                '&' => 3,
+                _ => return Some(e),
+            };
+
             if op_pre <= pre {
                 return Some(e);
             }
@@ -241,13 +333,26 @@ impl UniformExpr {
             };
         }
     }
+
+    /// Converts a UExpr to an Expr.
+    pub fn to_expr(&self) -> Expr {
+        use UExpr::*;
+        match self {
+            Ones        => Expr::Const((-1).into()),
+            Var(c)      => Expr::Var(*c),
+            And(l, r)   => Expr::And(l.to_expr().into(), r.to_expr().into()),
+            Or(l, r)    => Expr::Or(l.to_expr().into(), r.to_expr().into()),
+            Xor(l, r)   => Expr::Xor(l.to_expr().into(), r.to_expr().into()),
+            Not(e)      => Expr::Not(e.to_expr().into()),
+        }
+    }
 }
 
-impl std::fmt::Display for UniformExpr {
+impl std::fmt::Display for UExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use UniformExpr::*;
+        use UExpr::*;
         match self {
-            One => write!(f, "1"),
+            Ones => write!(f, "1"),
             Var(c) => write!(f, "{}", c),
             And(e1, e2)   => Self::write_safe(e1, e2, '&', f),
             Or(e1, e2)    => Self::write_safe(e1, e2, '|', f),

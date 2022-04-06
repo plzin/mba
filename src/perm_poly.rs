@@ -126,10 +126,14 @@ fn compute_inverse(f: &Poly, qr: &QuotientRing) -> Poly {
     // Initialize q with the initial guess: p(x) = x.
     let mut q = Poly::from_vec(vec![0, 1]);
 
-    let mut it = 0usize;
+    let mut it = 0;
 
     // Do the newton method.
     loop {
+        // Not proven to always work so make sure
+        // to stop after a certain number of iterations.
+        assert!(it <= qr.n * 2, "Failed to compute the inverse \
+                in a reasonable number of iterations.");
         //println!("compute_inverse: it={}: {}", it, q);
         // Compute the composition.
         let mut comp = compose(&p, &q, qr)
@@ -137,7 +141,7 @@ fn compute_inverse(f: &Poly, qr: &QuotientRing) -> Poly {
 
         // Do we already have p(q(x)) = x?
         if &comp.coeffs == &[0, 1] {
-            println!("compute_inverse: Found the inverse after {} iterations.", it);
+            //println!("compute_inverse: Found the inverse after {} iterations.", it);
             return q;
         }
 
@@ -242,9 +246,9 @@ impl QuotientRing {
     pub fn init(n: u32) -> Self {
         assert!(n > 0, "Not a valid ring.");
         let zi = zero_ideal(n);
-        for (i, g) in zi.iter().enumerate() {
-            println!("{}: {}", i, g);
-        }
+        // for (i, g) in zi.iter().enumerate() {
+        //     println!("{}: {}", i, g);
+        // }
 
         Self { n, zi }
     }
