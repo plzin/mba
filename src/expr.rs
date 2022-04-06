@@ -95,11 +95,13 @@ impl Expr {
         e: &mut Rc<Expr>, visited: &mut Vec<*const Expr>
     ) {
         let ptr = Rc::as_ptr(this);
-        if visited.contains(&ptr) {
-            return;
-        }
+        let recurse = if visited.contains(&ptr) {
+            false
+        } else {
+            visited.push(ptr);
+            true
+        };
 
-        visited.push(ptr);
 
         use Expr::*;
         // SAFETY: This is okay because we make sure with extra logic
@@ -108,11 +110,13 @@ impl Expr {
             Const(_) => (),
             Var(v) => if *v == var { *this = e.clone() },
             Add(l, r) | Sub(l, r) | Mul(l, r) | Div(l, r)
-                | And(l, r) | Or(l, r) | Xor(l, r) => {
+                | And(l, r) | Or(l, r) | Xor(l, r) => if recurse {
                     Self::substitute_impl(l, var, e, visited);
                     Self::substitute_impl(r, var, e, visited);
             },
-            Neg(i) | Not(i) => Self::substitute_impl(i, var, e, visited),
+            Neg(i) | Not(i) => if recurse {
+                Self::substitute_impl(i, var, e, visited)
+            },
         }
     }
 
@@ -306,7 +310,7 @@ impl Expr {
             }
 
             // If the current operators precedence is higher than
-            // the one whos subexpression we are currently parsing
+            // the one whose subexpression we are currently parsing
             // then we need to finish this operator first.
             it.next();
             let rhs = Rc::new(Self::parse(it, op_pre)?);

@@ -237,9 +237,8 @@ impl ExampleObfuscation {
         }
 
         if self.rng.gen::<f32>() < 0.3 {
-            let (p, q) = perm_poly::perm_pair(&self.qr,
-                Uniform::from(1..3).sample(&mut self.rng));
-
+            let degree = Uniform::from(2..4).sample(&mut self.rng);
+            let (p, q) = perm_poly::perm_pair(&self.qr, degree);
             let p = p.to_expr().substitute('x', e);
             *e = Rc::new(q.to_expr().substitute('x', &mut Rc::new(p)));
         }
@@ -283,7 +282,7 @@ impl ExampleObfuscation {
 // }
 
 fn main() {
-    let e = Expr::from_string("2*x+y+2").unwrap();
+    let e = Expr::from_string("x+y").unwrap();
     let e = ExampleObfuscation::obfuscate(e, 32);
     //println!("{:?}", e);
     e.print_simple();
