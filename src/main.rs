@@ -273,100 +273,16 @@ impl ExampleObfuscation {
     }
 }
 
-// fn main() {
-//     let r = perm_poly::QuotientRing::init(8);
-//     let (p, q) = perm_poly::perm_pair(&r, 3);
-//     println!("p(x) = {}", p);
-//     println!("q(x) = {}", q);
-//     //perm_poly::check_inverse_64();
-// }
+//fn main() {
+//    let r = perm_poly::QuotientRing::init(8);
+//    let (p, q) = perm_poly::perm_pair(&r, 3);
+//    println!("p(x) = {}", p);
+//    println!("q(x) = {}", q);
+//    //perm_poly::check_inverse_64();
+//}
 
 fn main() {
     let e = Expr::from_string("x+y").unwrap();
     let e = ExampleObfuscation::obfuscate(e, 32);
-    //println!("{:?}", e);
     e.print_simple();
-    // let sub = std::rc::Rc::new(Expr::from_string("x+y").unwrap());
-    // let mut e = Expr::Mul(sub.clone(), sub);
-    // println!("{:?}", e);
-    // e.print_simple();
-
-    // e.substitute('x', Expr::from_string("x+~z|y").unwrap());
-    // e.print_simple();
-
-    //let e = Expr::from_string("~x&y+z");
-    //println!("{:?}", e);
-    // let e = LUExpr::from_string("~x&y|z+123");
-    // println!("{:?}", e);
-
-    // let n = 32;
-
-    // let expr = LUExpr::from_string("2*x+y+2").unwrap();
-    // // let expr = LUExpr::from_string("128").unwrap();
-
-    // let ops = [
-    //     UExpr::from_string("x&y").unwrap(),
-    //     UExpr::from_string("x^y").unwrap(),
-    //     UExpr::from_string("~(x^y^z)").unwrap(),
-    //     UExpr::from_string("~x").unwrap(),
-    //     UExpr::from_string("~y").unwrap(),
-    //     UExpr::from_string("y").unwrap(),
-    //     UExpr::from_string("z").unwrap(),
-    //     UExpr::from_string("y&z").unwrap(),
-    //     UExpr::from_string("x|z").unwrap(),
-    //     UExpr::from_string("~x&z").unwrap(),
-    //     UExpr::from_string("y|(~z)").unwrap(),
-    // ];
-
-    // let e = rewrite(&expr, &ops, &Integer::new().set_bit(n, true));
-    // if let Some(e) = e {
-    //     println!("{}", e);
-    // } else {
-    //     println!(
-    //         "Rewriting the expression with the \
-    //         given operations isn't possible.");
-    // }
-
-
-    // let a = Matrix::from_array([
-    //     [0, 0, 1, 1, 1, 0],
-    //     [1, 0, 0, 0, 1, 0],
-    //     [1, 0, 0, 1, 0, 1],
-    //     [0, 1, 1, 0, 0, 1],
-    // ]);
-
-    // let b = Vector::from_array(
-    //     [0, 1, 1, 2]
-    // );
-
-    // println!("A: {:?}", a);
-
-    // println!("b: {:?}", b);
-
-    // let l = diophantine::solve_modular(&a, &b, &n);
-
-    // if l.is_empty() {
-    //     println!("System does not have a solution");
-    //     return;
-    // }
-
-    // println!("x: {:?}", l);
-
-    // for _ in 0..10 {
-    //     let mut s = l.offset.clone();
-
-    //     for b in &l.basis {
-    //         let f = Integer::from(random::<u8>());
-    //         s += b * &f;
-    //     }
-
-    //     s %= &n;
-
-    //     println!("s = {:?}", s);
-
-    //     let r = (&a * &s) % &n;
-    //     println!("r = {:?}", r);
-
-    //     assert!(r == b, "Invalid solution found");
-    // }
 }

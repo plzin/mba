@@ -1,9 +1,23 @@
 #![allow(dead_code)]
 
-use rug::{Integer, Complete, rand::RandState};
-use rand::distributions::{Distribution, Uniform};
+use rug::{Integer, Complete, rand::{ThreadRandState, ThreadRandGen}};
+use rand::{distributions::{Distribution, Uniform}, prelude::ThreadRng, RngCore};
 
 use crate::poly::Poly;
+
+struct Generator(ThreadRng);
+impl Generator {
+    pub fn new(rng: ThreadRng) -> Self {
+        Self(rng)
+    }
+}
+
+impl ThreadRandGen for Generator {
+    fn gen(&mut self) -> u32 {
+        self.0.next_u32()
+    }
+}
+
 
 /// Returns a pair of permutation polynomials mod 2^n.
 /// The functions are inverses of each other.
@@ -63,7 +77,8 @@ pub fn perm_pair(qr: &QuotientRing, degree: usize) -> (Poly, Poly) {
 
 /// Returns a random permutation polynomial.
 fn random_perm_poly(qr: &QuotientRing, degree: usize) -> Poly {
-    let mut rng = RandState::new();
+    let mut gen = Generator::new(rand::thread_rng());
+    let mut rng = ThreadRandState::new_custom(&mut gen);
     let mut p: Vec<_> =  (0..=degree)
         .map(|_| Integer::from(Integer::random_bits(qr.n, &mut rng)))
         .collect();
@@ -246,9 +261,9 @@ impl QuotientRing {
     pub fn init(n: u32) -> Self {
         assert!(n > 0, "Not a valid ring.");
         let zi = zero_ideal(n);
-        // for (i, g) in zi.iter().enumerate() {
-        //     println!("{}: {}", i, g);
-        // }
+        //for (i, g) in zi.iter().enumerate() {
+        //    println!("{}: {}", i, g);
+        //}
 
         Self { n, zi }
     }
