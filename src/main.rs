@@ -81,7 +81,7 @@ fn rewrite(expr: &LUExpr, ops: &[UExpr], n: &Integer) -> Option<LUExpr> {
     // Put it in a LUExpr.
     let v = solution.iter()
         .zip(ops.iter())
-        .map(|(m, e)| (m.clone(), e.clone()))
+        .map(|(m, e)| (m.clone() % n, e.clone()))
         .collect();
 
     Some(LUExpr(v))
@@ -248,7 +248,7 @@ impl ExampleObfuscation {
         // Get the variables in the expression.
         let mut vars = Vec::new();
         e.vars(&mut vars);
-        vars.sort();
+        vars.sort_unstable();
         vars.dedup();
 
         let ops = vec![

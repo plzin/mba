@@ -251,12 +251,13 @@ pub struct QuotientRing {
     /// The coefficients are mod 2^n.
     n: u32,
 
-    /// The "zero ideal".
+    /// The generators of the "zero ideal".
+    /// The zero ideal contains all polynomials p s.t. p(x) = 0 for all x.
     zi: Vec<Poly>,
 }
 
 impl QuotientRing {
-    /// Initializes the quotiont ring.
+    /// Initializes the quotient ring.
     /// This ring polynomials from Z/2^nZ[x] mod some simplifications.
     pub fn init(n: u32) -> Self {
         assert!(n > 0, "Not a valid ring.");
@@ -279,7 +280,7 @@ impl Poly {
     /// Simplifies a polynomial by adding a polynomial in the zero ideal
     /// to reduce the degree of the polynomial.
     fn simplify(&mut self, qr: &QuotientRing) {
-        // We reduce all polynomials with dergree larger or equal to that of
+        // We reduce all polynomials with degree larger or equal to that of
         // zi.last with zi.last, because it has a leading coefficient of 1,
         // so each coefficient of higher degree
         // can be eliminated in a single step.
@@ -320,7 +321,8 @@ impl Poly {
     /// Reduces the degree of a polynomial if possible.
     /// This function should be used during computations
     /// where the degree could otherwise explode.
-    /// It is a simplified version of the simp_poly algorithm.
+    /// It is a simplified version of the simplify algorithm,
+    /// that only uses the generator of the highest degree.
     fn reduce(&mut self, qr: &QuotientRing) {
         if self.len() == 0 {
             return;
