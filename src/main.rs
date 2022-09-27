@@ -92,16 +92,13 @@ fn rewrite(expr: &LUExpr, ops: &[UExpr], n: &Integer) -> Option<LUExpr> {
 /// The members of this struct are used
 /// to cache things for the recursive algorithm.
 struct ExampleObfuscation {
-    /// The integer n, everything is mod 2^n.
-    n: u32,
-
     /// 2^n.
     pow: Integer,
 
     /// The operations used for rewriting things.
     ops: Vec<UExpr>,
 
-    /// The variables occuring in the expression.
+    /// The variables occurring in the expression.
     vars: Vec<char>,
 
     /// The quotient ring of permutation polynomials.
@@ -269,19 +266,24 @@ impl ExampleObfuscation {
         let qr = perm_poly::QuotientRing::init(n);
         let rng = rand::thread_rng();
 
-        Self { n, pow, ops, vars, qr, rng }
+        Self { pow, ops, vars, qr, rng }
     }
 }
 
+// This generates an 8-bit permutation polynomial of degree 3 and its inverse.
 //fn main() {
 //    let r = perm_poly::QuotientRing::init(8);
 //    let (p, q) = perm_poly::perm_pair(&r, 3);
 //    println!("p(x) = {}", p);
 //    println!("q(x) = {}", q);
-//    //perm_poly::check_inverse_64();
 //}
 
 fn main() {
+    // The example will obfuscate x+y where x and y are 32-bit integers.
+    // It will include a 32-bit integer z whose value doesn't matter.
+    // The variables in the string should be lower case letters.
+    // Note that the example obfuscation is quite limited and only meant as
+    // a starting point and an example of how to combine the primitives.
     let e = Expr::from_string("x+y").unwrap();
     let e = ExampleObfuscation::obfuscate(e, 32);
     e.print_simple();

@@ -31,7 +31,7 @@ impl LUExpr {
         }
     }
 
-    /// Evaluate an expression with a valuation for the occuring variables.
+    /// Evaluate an expression with a valuation for the occurring variables.
     pub fn eval(&self, v: &Valuation) -> Integer {
         self.0.iter()
             .map(|(i, e)| i * e.eval(v))
@@ -39,7 +39,7 @@ impl LUExpr {
     }
 
     /// Parse a string to an expression.
-    /// Note that this function is extremly limited
+    /// Note that this function is extremely limited
     /// and expects very specific syntax.
     /// It is used for convenience when testing things and
     /// not really meant to be used by something outside this crate.
@@ -222,16 +222,16 @@ impl UExpr {
         }
     }
 
-    /// Evaluate an expression with a valuation for the occuring variables.
+    /// Evaluate an expression with a valuation for the occurring variables.
     pub fn eval(&self, v: &Valuation) -> Integer {
         use UExpr::*;
         match self {
             Ones            => (-1).into(),
             Var(c)          => v[*c].clone(),
-            And(e1, e2)     => (e1.eval(v) & e2.eval(v)), //& 1,
-            Or(e1, e2)      => (e1.eval(v) | e2.eval(v)), //& 1,
-            Xor(e1, e2)     => (e1.eval(v) ^ e2.eval(v)), //& 1,
-            Not(e)          => (!e.eval(v)), //& 1,
+            And(e1, e2)     => e1.eval(v) & e2.eval(v),
+            Or(e1, e2)      => e1.eval(v) | e2.eval(v),
+            Xor(e1, e2)     => e1.eval(v) ^ e2.eval(v),
+            Not(e)          => !e.eval(v),
         }
     }
 
@@ -320,7 +320,7 @@ impl UExpr {
             }
 
             // If the current operators precedence is higher than
-            // the one whos subexpression we are currently parsing
+            // the one whose subexpressions we are currently parsing
             // then we need to finish this operator first.
             it.next();
             let rhs = Box::new(Self::parse(it, op_pre)?);

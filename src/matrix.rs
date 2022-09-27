@@ -23,7 +23,7 @@ impl Matrix {
         }
     }
 
-    /// Returns an unitialized mxn matrix.
+    /// Returns an uninitialized mxn matrix.
     pub(self) fn uninit(m: usize, n: usize) -> Self {
         if m == 0 || n == 0 {
             return Self::empty();
@@ -143,7 +143,7 @@ impl Matrix {
     }
 
 
-    /// Returns an immutable refence to an element.
+    /// Returns an immutable reference to an element.
     pub fn entry(&self, r: usize, c: usize) -> &Integer {
         assert!(r < self.rows && c < self.cols, "Matrix index out of range");
 
@@ -170,10 +170,16 @@ impl Matrix {
 
     /// Swap two rows.
     pub fn swap_rows(&mut self, i: usize, j: usize) {
-        for c in 0..self.cols {
-            unsafe {
-                core::ptr::swap(self.entry_ptr(i, c), self.entry_ptr(j, c));
-            }
+        if i == j {
+            return;
+        }
+
+        unsafe {
+            core::ptr::swap_nonoverlapping(
+                self.entry_ptr(i, 0),
+                self.entry_ptr(j, 0),
+                self.cols
+            )
         }
     }
 
@@ -213,7 +219,7 @@ impl std::ops::Mul for &Matrix {
     type Output = Matrix;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        assert!(self.cols == rhs.rows, "Can't multiply matricies because of incompatible dimensions");
+        assert!(self.cols == rhs.rows, "Can't multiply matrices because of incompatible dimensions");
 
         let mut m = Matrix::zero(self.rows, rhs.cols);
 

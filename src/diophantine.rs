@@ -6,12 +6,12 @@ use crate::vector::Vector;
 
 /// Describes the lattice of solutions.
 #[derive(Debug)]
-pub struct OffsetLattice {
+pub struct AffineLattice {
     pub offset: Vector,
     pub basis: Vec<Vector>,
 }
 
-impl OffsetLattice {
+impl AffineLattice {
     /// Creates an empty lattice.
     pub fn empty() -> Self {
         Self {
@@ -87,24 +87,27 @@ fn hermite_normal_form(a: &mut Matrix) -> Matrix {
         // If there is any non-zero element then we need to continue in the same column.
         if a.column(j).skip(i + 1).any(|e| *e != 0) {
             continue;
-        } else {
-            // Flip sign if necessary.
-            if a[(i, j)] < 0 {
-                a.flip_sign(i);
-                u.flip_sign(i);
-            }
+        }
 
-            if a[(i, j)] != 0 {
-                for k in 0..i {
-                    let m = -(&a[(k, j)] / &a[(i, j)]).complete();
-                    if m != 0 {
-                        a.row_multiply_add(i, k, &m);
-                        u.row_multiply_add(i, k, &m);
-                    }
+        // Flip sign if necessary.
+        if a[(i, j)] < 0 {
+            a.flip_sign(i);
+            u.flip_sign(i);
+        }
+
+        // Reduce the elements above the pivot
+        // (in the column of the pivot and rows above the pivot).
+        if a[(i, j)] != 0 {
+            for k in 0..i {
+                let m = -(&a[(k, j)] / &a[(i, j)]).complete();
+                if m != 0 {
+                    a.row_multiply_add(i, k, &m);
+                    u.row_multiply_add(i, k, &m);
                 }
             }
         }
 
+        // Continue with the bottom right part of the matrix that remains.
         j += 1;
         i += 1;
     }
@@ -113,7 +116,7 @@ fn hermite_normal_form(a: &mut Matrix) -> Matrix {
 }
 
 /// Solves a system of linear diophantine equations.
-pub fn solve(a: &Matrix, b: &Vector) -> OffsetLattice {
+pub fn solve(a: &Matrix, b: &Vector) -> AffineLattice {
     assert!(a.rows == b.dim,
         "Vector must have an entry for each row in the matrix.");
 
@@ -163,17 +166,17 @@ pub fn solve(a: &Matrix, b: &Vector) -> OffsetLattice {
         // println!("offset: {:?}", offset);
         // println!("basis: {:?}", basis);
 
-        OffsetLattice {
+        AffineLattice {
             offset,
             basis,
         }
     } else {
-        OffsetLattice::empty()
+        AffineLattice::empty()
     }
 }
 
 /// Solves a linear system of equations Ax=b mod n.
-pub fn solve_modular(a: &Matrix, b: &Vector, n: &Integer) -> OffsetLattice {
+pub fn solve_modular(a: &Matrix, b: &Vector, n: &Integer) -> AffineLattice {
     //
     // Concatenate an n times the identity matrix to the right of A.
     //
@@ -208,7 +211,7 @@ pub fn solve_modular(a: &Matrix, b: &Vector, n: &Integer) -> OffsetLattice {
         .filter(|e| e.iter().any(|e| *e != 0))
         .collect();
 
-    OffsetLattice {
+    AffineLattice {
         offset,
         basis,
     }
