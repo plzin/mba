@@ -99,7 +99,17 @@ fn hermite_normal_form(a: &mut Matrix) -> Matrix {
         // (in the column of the pivot and rows above the pivot).
         if a[(i, j)] != 0 {
             for k in 0..i {
-                let m = -(&a[(k, j)] / &a[(i, j)]).complete();
+                let entry = &a[(k, j)];
+                // The Hermite normal form requires the entries above the pivot to be positive,
+                // so if the entry is negative we add 1 to the result of the euclidean division.
+                // E.g. -3/2 = -1 => m = 2 so we add -3+2*2 = 1.
+                // This isn't really needed for mixed-boolean arithmetic.
+                let m = match entry.cmp0() {
+                    std::cmp::Ordering::Equal => continue,
+                    std::cmp::Ordering::Greater => -(entry / &a[(i, j)]).complete(),
+                    std::cmp::Ordering::Less => -(entry / &a[(i, j)]).complete() + 1,
+                };
+
                 if m != 0 {
                     a.row_multiply_add(i, k, &m);
                     u.row_multiply_add(i, k, &m);
@@ -135,8 +145,6 @@ pub fn solve(a: &Matrix, b: &Vector) -> AffineLattice {
 
     m[(a.cols, a.rows)] = Integer::from(1);
 
-    // println!("m: {:?}", m);
-
     // Transform it into hermite normal form.
     let u = hermite_normal_form(&mut m);
 
@@ -146,32 +154,28 @@ pub fn solve(a: &Matrix, b: &Vector) -> AffineLattice {
         .position(|i| m.row(i).iter().all(|e| *e == 0))
         .unwrap_or_else(|| std::cmp::min(m.rows, m.cols));
 
-    // println!("hnf(m): {:?}", m);
-    // println!("u: {:?}", u);
-    // println!("rank: {}", rank);
-
     // Make sure the hermite normal form has the correct form,
     // because only then does it have a solution.
-    if m[(rank-1, m.cols - 1)] == 1
-        && m.column(m.cols - 1).take(rank - 1).all(|e| *e == 0) {
+    let r = rank - 1;
+    let has_solution = m[(r, m.cols - 1)] == 1
+        && m.column(m.cols - 1).take(r).all(|e| *e == 0)
+        && m.row(r).iter().take(m.cols - 1).all(|e| *e == 0);
 
-        let mut offset = Vector::from_slice(&u.row(rank - 1)[..u.rows-1]);
-        for i in 0..offset.dim {
-            offset[i] *= -1;
-        }
+    if !has_solution {
+        return AffineLattice::empty();
+    }
 
-        let basis: Vec<_> = (rank..u.rows).map(|i|
-            Vector::from_slice(&u.row(i)[..u.rows - 1])).collect();
+    let mut offset = Vector::from_slice(&u.row(rank - 1)[..u.rows-1]);
+    for i in 0..offset.dim {
+        offset[i] *= -1;
+    }
 
-        // println!("offset: {:?}", offset);
-        // println!("basis: {:?}", basis);
+    let basis: Vec<_> = (rank..u.rows).map(|i|
+        Vector::from_slice(&u.row(i)[..u.rows - 1])).collect();
 
-        AffineLattice {
-            offset,
-            basis,
-        }
-    } else {
-        AffineLattice::empty()
+    AffineLattice {
+        offset,
+        basis,
     }
 }
 
