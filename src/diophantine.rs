@@ -91,8 +91,8 @@ fn hermite_normal_form(a: &mut Matrix) -> Matrix {
 
         // Flip sign if necessary.
         if a[(i, j)] < 0 {
-            a.flip_sign(i);
-            u.flip_sign(i);
+            a.flip_sign_row(i);
+            u.flip_sign_row(i);
         }
 
         // Reduce the elements above the pivot

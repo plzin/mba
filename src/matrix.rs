@@ -119,6 +119,7 @@ impl Matrix {
 
     /// Returns a slice of a row.
     pub fn row(&self, r: usize) -> &[Integer] {
+        debug_assert!(r < self.rows);
         unsafe {
             core::slice::from_raw_parts(
                 self.entries.add(r * self.cols),
@@ -129,6 +130,7 @@ impl Matrix {
 
     /// Returns a mutable slice of a row.
     pub fn row_mut(&mut self, r: usize) -> &mut [Integer] {
+        debug_assert!(r < self.rows);
         unsafe {
             core::slice::from_raw_parts_mut(
                 self.entries.add(r * self.cols),
@@ -137,15 +139,19 @@ impl Matrix {
         }
     }
 
-    /// Returns a column by value.
+    /// Returns an iterator over the column.
     pub fn column(&self, c: usize) -> Column<'_> {
         Column::from_matrix(self, c)
     }
 
+    /// Returns an iterator over the column.
+    pub fn column_mut(&mut self, c: usize) -> ColumnMut<'_> {
+        ColumnMut::from_matrix(self, c)
+    }
 
     /// Returns an immutable reference to an element.
     pub fn entry(&self, r: usize, c: usize) -> &Integer {
-        assert!(r < self.rows && c < self.cols, "Matrix index out of range");
+        debug_assert!(r < self.rows && c < self.cols, "Matrix index out of range");
 
         unsafe {
             &*self.entries.add(r * self.cols + c)
@@ -154,7 +160,7 @@ impl Matrix {
 
     /// Returns a mutable reference to an element.
     pub fn entry_mut(&mut self, r: usize, c: usize) -> &mut Integer {
-        assert!(r < self.rows && c < self.cols, "Matrix index out of range");
+        debug_assert!(r < self.rows && c < self.cols, "Matrix index out of range");
 
         unsafe {
             &mut *self.entries.add(r * self.cols + c)
@@ -163,6 +169,7 @@ impl Matrix {
 
     /// Returns a pointer to an entry.
     pub fn entry_ptr(&mut self, r: usize, c: usize) -> *mut Integer {
+        debug_assert!(r < self.rows && c < self.cols, "Matrix index out of range");
         unsafe {
             self.entries.add(r * self.cols + c)
         }
@@ -183,18 +190,50 @@ impl Matrix {
         }
     }
 
+    /// Swap to columns.
+    pub fn swap_columns(&mut self, i: usize, j: usize) {
+        if i == j {
+            return;
+        }
+
+        for k in 0..self.cols {
+            unsafe {
+                core::ptr::swap_nonoverlapping(
+                    self.entry_ptr(i, k), self.entry_ptr(j, k), 1
+                );
+            }
+        }
+    }
+
     /// Flip the sign of a row.
-    pub fn flip_sign(&mut self, row: usize) {
+    pub fn flip_sign_row(&mut self, row: usize) {
         for e in self.row_mut(row) {
             *e *= -1;
         }
     }
 
-    /// Multiply a scaled row to another row. N = c * M.
+    /// Flip the sign of a column.
+    pub fn flip_sign_column(&mut self, col: usize) {
+        for e in self.column_mut(col) {
+            *e *= -1;
+        }
+    }
+
+    /// Add a scaled row to another row. N = c * M.
     pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
+        debug_assert!(n < self.rows && m < self.rows);
         for i in 0..self.cols {
             let c = (&self[(n, i)] * c).complete();
             self[(m, i)] += c;
+        }
+    }
+
+    /// Add a scaled row to another row. N = c * M.
+    pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
+        debug_assert!(n < self.cols && m < self.cols);
+        for i in 0..self.rows {
+            let c = (&self[(i, n)] * c).complete();
+            self[(i, m)] += c;
         }
     }
 }
@@ -300,6 +339,7 @@ pub struct Column<'a> {
 
 impl<'a> Column<'a> {
     pub fn from_matrix(a: &'a Matrix, col: usize) -> Self {
+        debug_assert!(col < a.cols);
         Self {
             ptr: unsafe { a.entries.add(col) },
             off: a.cols,
@@ -317,6 +357,40 @@ impl<'a> Iterator for Column<'a> {
         } else {
             unsafe {
                 let v = &*self.ptr;
+                self.ptr = self.ptr.add(self.off);
+                Some(v)
+            }
+        }
+    }
+}
+
+pub struct ColumnMut<'a> {
+    ptr: *mut Integer,
+    off: usize,
+    last: *mut Integer,
+    lifetime: PhantomData<&'a mut Integer>,
+}
+
+impl<'a> ColumnMut<'a> {
+    pub fn from_matrix(a: &'a mut Matrix, col: usize) -> Self {
+        debug_assert!(col < a.cols);
+        Self {
+            ptr: unsafe { a.entries.add(col) },
+            off: a.cols,
+            last: unsafe { a.entries.add(col + (a.rows - 1) * a.cols) },
+            lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'a> Iterator for ColumnMut<'a> {
+    type Item = &'a mut Integer;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.ptr > self.last {
+            None
+        } else {
+            unsafe {
+                let v = &mut *self.ptr;
                 self.ptr = self.ptr.add(self.off);
                 Some(v)
             }
