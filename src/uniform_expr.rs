@@ -177,7 +177,7 @@ impl std::fmt::Display for LUExpr {
 /// Represents an expression that is uniform on all bits.
 /// Note that the variant 'Ones' does not equal 1, but a 1 in every bit,
 /// which is -1 in two's complement.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum UExpr {
     Ones,
     Var(char),

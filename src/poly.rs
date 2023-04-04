@@ -60,6 +60,11 @@ impl Poly {
         self.coeffs.len()
     }
 
+    /// Checks whether a truncated polynomial is zero.
+    pub fn is_zero(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Checks whether a truncated polynomial is the identity polynomial.
     pub fn is_id(&self) -> bool {
         debug_assert!(self.coeffs.last().map_or(true, |i| *i != 0),
@@ -83,6 +88,25 @@ impl Poly {
         v
     }
 
+    /// Evaluate the polynomial mod 2^n.
+    pub fn eval_bits(&self, a: &Integer, n: u32) -> Integer {
+        // Iterate over the coefficients in reverse order.
+        let mut iter = self.coeffs.iter().rev();
+
+        // The last coefficient is the initial value.
+        let mut v = iter.next()
+            .map_or_else(|| Integer::new(), |c| c.clone().keep_bits(n));
+        for c in iter {
+            // Multiply the current value by a and add the next coefficient.
+            v *= a;
+            v.keep_bits_mut(n);
+            v += c;
+            v.keep_bits_mut(n);
+        }
+
+        v
+    }
+
     /// Truncates leading zero coefficients.
     pub fn truncate(&mut self) {
         for i in (0..self.len()).rev() {
@@ -92,6 +116,12 @@ impl Poly {
                 break;
             }
         }
+    }
+
+    /// Returns the truncated polynomial.
+    pub fn truncated(mut self) -> Self {
+        self.truncate();
+        self
     }
 
     /// Multiplies the polynomial by a linear factor (x-a).
@@ -153,7 +183,9 @@ impl Poly {
 
         for c in it {
             e = Expr::Mul(x.clone(), e.into());
-            e = Expr::Add(Rc::new(Expr::Const(c.clone())), Rc::new(e));
+            if c != &Integer::ZERO {
+                e = Expr::Add(Rc::new(Expr::Const(c.clone())), Rc::new(e));
+            }
         }
 
         e
@@ -306,5 +338,22 @@ impl MulAssign<&Poly> for Poly {
     fn mul_assign(&mut self, rhs: &Poly) {
         let r = &*self * rhs;
         *self = r;
+    }
+}
+
+impl Mul<&Integer> for &Poly {
+    type Output = Poly;
+    fn mul(self, rhs: &Integer) -> Self::Output {
+        let mut r = self.clone();
+        r *= rhs;
+        return r;
+    }
+}
+
+impl MulAssign<&Integer> for Poly {
+    fn mul_assign(&mut self, rhs: &Integer) {
+        for c in &mut self.coeffs {
+            *c *= rhs;
+        }
     }
 }

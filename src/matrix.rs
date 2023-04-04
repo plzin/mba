@@ -190,7 +190,7 @@ impl Matrix {
         }
     }
 
-    /// Swap to columns.
+    /// Swap two columns.
     pub fn swap_columns(&mut self, i: usize, j: usize) {
         if i == j {
             return;
@@ -228,7 +228,7 @@ impl Matrix {
         }
     }
 
-    /// Add a scaled row to another row. N = c * M.
+    /// Add a scaled column to another column. N = c * M.
     pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
         debug_assert!(n < self.cols && m < self.cols);
         for i in 0..self.rows {
@@ -251,7 +251,6 @@ impl std::ops::IndexMut<(usize, usize)> for Matrix {
     fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
         self.entry_mut(index.0, index.1)
     }
-
 }
 
 impl std::ops::Mul for &Matrix {

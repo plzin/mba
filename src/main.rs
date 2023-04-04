@@ -1,4 +1,6 @@
-use rug::Integer;
+#![allow(unused)]
+
+use rug::{Integer, Complete};
 use rand::{
     Rng, distributions::Uniform,
     prelude::Distribution, rngs::ThreadRng
@@ -22,8 +24,9 @@ mod diophantine;
 mod poly;
 mod perm_poly;
 
-/// Rewrite a linear combination of uniform expression using a set of uniform expressions modulo n.
-fn rewrite(expr: &LUExpr, ops: &[UExpr], n: &Integer) -> Option<LUExpr> {
+/// Rewrite a linear combination of uniform expression using a set of uniform expressions modulo `n`.
+/// `n` has to be a power of two.
+fn rewrite(expr: &LUExpr, ops: &[LUExpr], n: &Integer) -> Option<LUExpr> {
     // Find all variables we have access to.
     // This includes variables in the expression as well as potentially the ops.
 
@@ -53,7 +56,7 @@ fn rewrite(expr: &LUExpr, ops: &[UExpr], n: &Integer) -> Option<LUExpr> {
 
         // Initialize the valuation.
         for (j, c) in v.iter().enumerate() {
-            val[*c] = ((i >> j) & 1).into();
+            val[*c] = -Integer::from((i >> j) & 1);
         }
 
         // println!("{:?}", val);
@@ -79,13 +82,161 @@ fn rewrite(expr: &LUExpr, ops: &[UExpr], n: &Integer) -> Option<LUExpr> {
     let solution = l.sample_point() % n;
 
     // Put it in a LUExpr.
-    let v = solution.iter()
-        .zip(ops.iter())
-        .map(|(m, e)| (m.clone() % n, e.clone()))
-        .collect();
+    let mut v = Vec::new();
+    for (c, o) in solution.iter().zip(ops.iter()) {
+        for (d, e) in &o.0 {
+            // Is the UExpr already in the linear combination?
+            match v.iter_mut().find(|(_, f)| f == e) {
+                Some((f, _)) => *f += c * d,
+                None => v.push(((c * d).complete(), e.clone())),
+            }
+        }
+    }
 
     Some(LUExpr(v))
 }
+
+// This generates an 8-bit permutation polynomial of degree 3 and its inverse.
+//fn main() {
+//    let r = perm_poly::QuotientRing::init(8);
+//    let (p, q) = perm_poly::perm_pair(&r, 3);
+//    println!("p(x) = {}", p);
+//    println!("q(x) = {}", q);
+//}
+
+// Rewrite an expression using linear MBA.
+//fn main() {
+//    let expr = LUExpr::from_string("x+y").unwrap();
+//    let ops = &[
+//        LUExpr::from_string("x&y").unwrap(),
+//        LUExpr::from_string("x^y").unwrap(),
+//    ];
+//
+//    match rewrite(&expr, ops, &256.into()) {
+//        None => println!("Can't rewrite."),
+//        Some(e) => println!("{}", e),
+//    }
+//}
+
+// Rewrite a constant using non-linear MBA.
+fn main() {
+    // Initialize stuff.
+    let bits = 8;
+    let n = Integer::from(1) << bits;
+    let zi = perm_poly::ZeroIdeal::init(bits);
+
+    // This is the constant that will be obfuscated.
+    let input = Integer::from(42);
+
+    // Obfuscate a different constant and apply a
+    // polynomial at the end to get the real one.
+    //let p = poly::Poly::from_vec(vec![0, 1, 2]);
+    //let q = perm_poly::compute_inverse(&p, &zi);
+    //let input = q.eval_bits(&input, bits);
+
+    // The expression to obfuscate.
+    let expr = LUExpr::constant(input);
+
+    // The operations for rewriting.
+    let ops = &[
+        LUExpr::from_string("x^y").unwrap(),
+        LUExpr::from_string("x&y").unwrap(),
+        LUExpr::from_string("~(x|y)").unwrap(),
+        LUExpr::from_string("~x").unwrap(),
+        LUExpr::from_string("~y").unwrap(),
+        LUExpr::from_string("z").unwrap(),
+        LUExpr::from_string("y&z").unwrap(),
+        LUExpr::from_string("x|z").unwrap(),
+        LUExpr::from_string("~x&z").unwrap(),
+        LUExpr::from_string("y|~z").unwrap(),
+    ];
+
+    // Rewrite the constant.
+    let obf = rewrite(&expr, ops, &n).unwrap();
+
+    // Contains the linear combination of the multiplication.
+    let mut v: Vec<(Integer, UExpr, UExpr)> = Vec::new();
+
+    // Obfuscate each coefficient.
+    for (c, e) in &obf.0 {
+
+        // Rewrite the coefficient.
+        let coeff = LUExpr::constant(c.clone());
+        let mut ops = ops.to_vec();
+        ops.retain(|f| &f.0[0].1 != e);
+        let coeff = rewrite(&coeff, &ops, &n).unwrap();
+
+        // Add all coefficients of the obfuscated coefficient
+        // to the linear combination.
+        for (d, f) in coeff.0 {
+            let e = e.clone();
+            let (fst, snd) = if e <= f { (e, f) } else { (f, e) };
+
+            match v.iter_mut().find(|(_, a, b)| &fst == a && &snd == b) {
+                Some((c, _, _)) => *c += d,
+                None => v.push((d, fst, snd)),
+            }
+        }
+    }
+
+    for (c, _, _) in &mut v {
+        c.keep_bits_mut(bits);
+    }
+
+    // Convert a summand to an expression.
+    let term_to_expr = |c: &Integer, e: &UExpr, f: &UExpr| {
+        Expr::Mul(
+            Rc::new(Expr::Const(c.clone())),
+            Rc::new(Expr::Mul(Rc::new(e.to_expr()), Rc::new(f.to_expr())))
+        )
+    };
+
+    // Convert the linear combination to an `Expr`.
+    let mut iter = v.iter().filter(|(c, _, _)| c != &Integer::ZERO);
+    let mut expr = match iter.next() {
+        Some((c, e, f)) => term_to_expr(c, e, f),
+        None => Expr::Const(Integer::new()),
+    };
+
+    for (c, e, f) in iter {
+        let a = term_to_expr(c, e, f);
+        expr = Expr::Add(Rc::new(expr), Rc::new(a));
+    }
+
+    //let mut re = Rc::new(expr);
+    //expr = p.to_expr().substitute('x', &mut re);
+
+    expr.print_simple();
+}
+
+// Solve a system of linear congruences.
+//fn main() {
+//    let solution = diophantine::solve_modular(
+//        &Matrix::from_array([[3, 5], [4, 2]]),
+//        &Vector::from_slice(&[2.into(), 0.into()]),
+//        &256.into()
+//    );
+//
+//    if (solution.is_empty()) {
+//        println!("No solution");
+//    } else {
+//        println!("Off: {:?}\nBasis:", solution.offset);
+//        for b in &solution.basis {
+//            println!("{:?}", b);
+//        }
+//    }
+//}
+
+//fn main() {
+//    // The example will obfuscate x+y where x and y are 32-bit integers.
+//    // It will include a 32-bit integer z whose value doesn't matter.
+//    // The variables in the string should be lower case letters.
+//    // Note that the example obfuscation is quite limited and only meant as
+//    // a starting point and an example of how to combine the primitives.
+//    let e = Expr::from_string("x+y").unwrap();
+//    let e = ExampleObfuscation::obfuscate(e, 32);
+//    e.print_simple();
+//}
 
 /// Provides an algorithm for obfuscating "any" kind of expression
 /// using the two primitives of rewriting and permutation polynomials.
@@ -96,13 +247,13 @@ struct ExampleObfuscation {
     pow: Integer,
 
     /// The operations used for rewriting things.
-    ops: Vec<UExpr>,
+    ops: Vec<LUExpr>,
 
     /// The variables occurring in the expression.
     vars: Vec<char>,
 
     /// The quotient ring of permutation polynomials.
-    qr: perm_poly::QuotientRing,
+    qr: perm_poly::ZeroIdeal,
 
     /// Random number generator.
     rng: ThreadRng,
@@ -249,42 +400,23 @@ impl ExampleObfuscation {
         vars.dedup();
 
         let ops = vec![
-            UExpr::from_string("X&Y").unwrap(),
-            UExpr::from_string("X^Y").unwrap(),
-            UExpr::from_string("~(X^Y^Z)").unwrap(),
-            UExpr::from_string("~X").unwrap(),
-            UExpr::from_string("~Y").unwrap(),
-            UExpr::from_string("Y").unwrap(),
-            UExpr::from_string("Z").unwrap(),
-            UExpr::from_string("Y&Z").unwrap(),
-            UExpr::from_string("X|Z").unwrap(),
-            UExpr::from_string("~X&Z").unwrap(),
-            UExpr::from_string("Y|~Z").unwrap(),
+            LUExpr::from_string("X&Y").unwrap(),
+            LUExpr::from_string("X^Y").unwrap(),
+            LUExpr::from_string("~(X^Y^Z)").unwrap(),
+            LUExpr::from_string("~X").unwrap(),
+            LUExpr::from_string("~Y").unwrap(),
+            LUExpr::from_string("Y").unwrap(),
+            LUExpr::from_string("Z").unwrap(),
+            LUExpr::from_string("Y&Z").unwrap(),
+            LUExpr::from_string("X|Z").unwrap(),
+            LUExpr::from_string("~X&Z").unwrap(),
+            LUExpr::from_string("Y|~Z").unwrap(),
         ];
 
         let pow = Integer::from(1) << n;
-        let qr = perm_poly::QuotientRing::init(n);
+        let qr = perm_poly::ZeroIdeal::init(n);
         let rng = rand::thread_rng();
 
         Self { pow, ops, vars, qr, rng }
     }
-}
-
-// This generates an 8-bit permutation polynomial of degree 3 and its inverse.
-//fn main() {
-//    let r = perm_poly::QuotientRing::init(8);
-//    let (p, q) = perm_poly::perm_pair(&r, 3);
-//    println!("p(x) = {}", p);
-//    println!("q(x) = {}", q);
-//}
-
-fn main() {
-    // The example will obfuscate x+y where x and y are 32-bit integers.
-    // It will include a 32-bit integer z whose value doesn't matter.
-    // The variables in the string should be lower case letters.
-    // Note that the example obfuscation is quite limited and only meant as
-    // a starting point and an example of how to combine the primitives.
-    let e = Expr::from_string("x+y").unwrap();
-    let e = ExampleObfuscation::obfuscate(e, 32);
-    e.print_simple();
 }

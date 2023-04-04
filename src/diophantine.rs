@@ -158,7 +158,6 @@ pub fn solve(a: &Matrix, b: &Vector) -> AffineLattice {
     // because only then does it have a solution.
     let r = rank - 1;
     let has_solution = m[(r, m.cols - 1)] == 1
-        && m.column(m.cols - 1).take(r).all(|e| *e == 0)
         && m.row(r).iter().take(m.cols - 1).all(|e| *e == 0);
 
     if !has_solution {
