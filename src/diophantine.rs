@@ -57,14 +57,11 @@ fn hermite_normal_form(a: &mut Matrix) -> Matrix {
             .min_by_key(|e| e.1.clone().abs())
             .map(|e| e.0);
 
-        let pivot = match pivot {
-           None => {
-               // If we didn't find a pivot then the column is 0.
-               // Continue with the next one.
-               j += 1;
-               continue;
-           },
-           Some(p) => p,
+        let Some(pivot) = pivot else {
+            // If we didn't find a pivot then the column is 0.
+            // Continue with the next one.
+            j += 1;
+            continue;
         };
 
         // Move the pivot to the beginning.

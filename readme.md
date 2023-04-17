@@ -26,4 +26,4 @@ If you want to try this for yourself, check out my implementation that compiles 
 
 \[3\] [Binary Permutation Polynomial Inversion and Application to Obfuscation Techniques](https://dl.acm.org/doi/10.1145/2995306.2995310)
 
-\[4\] [Soving AX = B using the Hermite normal form](https://citeseerx.ist.psu.edu/viewdoc/versions?doi=10.1.1.357.7741)
+\[4\] [Soving AX = B using the Hermite normal form](http://www.numbertheory.org/PDFS/ax=b.pdf)
