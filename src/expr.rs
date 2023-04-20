@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::rc::Rc;
+use std::{rc::Rc, collections::BTreeSet};
 
 use rug::Integer;
 
@@ -31,7 +31,7 @@ pub(crate) fn int_from_it(
 #[derive(Clone, Debug)]
 pub enum Expr {
     Const(Integer),
-    Var(char),
+    Var(String),
     Add(Rc<Expr>, Rc<Expr>),
     Sub(Rc<Expr>, Rc<Expr>),
     Mul(Rc<Expr>, Rc<Expr>),
@@ -51,21 +51,30 @@ impl Expr {
 
     /// Returns all variables in the expression.
     /// This can include duplicates.
-    pub fn vars(&self, v: &mut Vec<char>) {
-        use Expr::*;
+    pub fn vars(&self) -> Vec<String> {
+        let mut v = BTreeSet::new();
+        self.vars_impl(&mut v);
+        v.into_iter().collect()
+    }
+
+    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<String>) {
         match self {
-            Const(_) => (),
-            Var(n) => v.push(*n),
-            Add(l, r) | Sub(l, r) | Mul(l, r) | Div(l, r)
-                | And(l, r) | Or(l, r) | Xor(l, r) => { l.vars(v); r.vars(v); },
-            Neg(e) | Not(e) => e.vars(v),
+            Expr::Const(_) => {},
+            Expr::Var(name) => drop(v.insert(name.clone())),
+            Expr::Neg(e) | Expr::Not(e) => e.vars_impl(v),
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r)
+            | Expr::Div(l, r) | Expr::And(l, r) | Expr::Or(l, r)
+            | Expr::Xor(l, r) => {
+                l.vars_impl(v);
+                r.vars_impl(v);
+            }
         }
     }
 
     /// Substitutes an expression for a variable.
     /// If the Rc's in this expression are shared with
     /// other expressions then this will also substitute in those.
-    pub fn substitute(mut self, var: char, e: &mut Rc<Expr>) -> Self {
+    pub fn substitute(mut self, var: &str, e: &mut Rc<Expr>) -> Self {
         self.substitute_mut(var, e);
         self
     }
@@ -73,13 +82,13 @@ impl Expr {
     /// Substitutes an expression for a variable.
     /// If the Rc's in this expression are shared with
     /// other expressions then this will also substitute in those.
-    pub fn substitute_mut(&mut self, var: char, e: &mut Rc<Expr>) {
+    pub fn substitute_mut(&mut self, var: &str, e: &mut Rc<Expr>) {
         let mut visited = Vec::new();
 
         use Expr::*;
         match self {
             Const(_) => (),
-            Var(v) => if *v == var { *self = (**e).clone() },
+            Var(v) => if v == var { *self = (**e).clone() },
             Add(l, r) | Sub(l, r) | Mul(l, r) | Div(l, r)
                 | And(l, r) | Or(l, r) | Xor(l, r) => {
                     Self::substitute_impl(l, var, e, &mut visited);
@@ -91,7 +100,7 @@ impl Expr {
     }
 
     fn substitute_impl(
-        this: &mut Rc<Expr>, var: char,
+        this: &mut Rc<Expr>, var: &str,
         e: &mut Rc<Expr>, visited: &mut Vec<*const Expr>
     ) {
         let ptr = Rc::as_ptr(this);
@@ -281,7 +290,21 @@ impl Expr {
             Neg(Rc::new(e))
         } else if c.is_alphabetic() {
             it.next();
-            Var(c)
+            let mut var = String::from(c);
+            loop {
+                let Some(c) = it.peek() else {
+                    break
+                };
+
+                if !c.is_alphanumeric() {
+                    break
+                }
+
+                var.push(*c);
+                it.next();
+            }
+
+            Var(var)
         } else if c.is_ascii_digit() {
             let num = int_from_it(it)?;
             Const(num)

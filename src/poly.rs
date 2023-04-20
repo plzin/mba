@@ -179,7 +179,7 @@ impl Poly {
 
         use std::rc::Rc;
 
-        let x = Rc::new(Expr::Var('x'));
+        let x = Rc::new(Expr::Var("x".to_owned()));
 
         for c in it {
             e = Expr::Mul(x.clone(), e.into());

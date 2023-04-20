@@ -30,19 +30,16 @@ fn rewrite(expr: &LUExpr, ops: &[LUExpr], n: &Integer) -> Option<LUExpr> {
     // Find all variables we have access to.
     // This includes variables in the expression as well as potentially the ops.
 
-    let mut v = Vec::new();
-    expr.vars(&mut v);
+    let mut v = std::collections::BTreeSet::new();
+    expr.vars_impl(&mut v);
 
-    ops.iter().for_each(|e| e.vars(&mut v));
-
-    // Remove duplicates and sort.
-    v.sort();
-    v.dedup();
+    ops.iter().for_each(|e| e.vars_impl(&mut v));
+    let v: Vec<_> = v.into_iter().collect();
 
     assert!(v.len() <= 63, "More than 63 variables are currently not supported \
             (You wouldn't be able to run this anyways).");
 
-    let mut val = Valuation::zero(&v);
+    let mut val = Valuation::zero(v.clone());
 
     let rows = (1 as usize) << v.len();
     let cols = ops.len();
@@ -56,7 +53,7 @@ fn rewrite(expr: &LUExpr, ops: &[LUExpr], n: &Integer) -> Option<LUExpr> {
 
         // Initialize the valuation.
         for (j, c) in v.iter().enumerate() {
-            val[*c] = -Integer::from((i >> j) & 1);
+            val[c] = -Integer::from((i >> j) & 1);
         }
 
         // println!("{:?}", val);
@@ -204,7 +201,7 @@ fn main() {
     }
 
     //let mut re = Rc::new(expr);
-    //expr = p.to_expr().substitute('x', &mut re);
+    //expr = p.to_expr().substitute("x", &mut re);
 
     expr.print_simple();
 }
@@ -250,7 +247,7 @@ struct ExampleObfuscation {
     ops: Vec<LUExpr>,
 
     /// The variables occurring in the expression.
-    vars: Vec<char>,
+    vars: Vec<String>,
 
     /// The quotient ring of permutation polynomials.
     qr: perm_poly::ZeroIdeal,
@@ -269,13 +266,16 @@ impl ExampleObfuscation {
 
         o.obfuscate_impl(&mut e);
 
-        let mut x = Rc::new(Expr::Var(*o.vars.get(0).unwrap_or(&'x')));
-        let mut y = Rc::new(Expr::Var(*o.vars.get(1).unwrap_or(&'y')));
-        let mut z = Rc::new(Expr::Var(*o.vars.get(2).unwrap_or(&'z')));
+        let mut x = Rc::new(Expr::Var(
+            o.vars.get(0).map_or_else(|| "x".to_owned(), |v| v.clone())));
+        let mut y = Rc::new(Expr::Var(
+            o.vars.get(0).map_or_else(|| "y".to_owned(), |v| v.clone())));
+        let mut z = Rc::new(Expr::Var(
+            o.vars.get(0).map_or_else(|| "z".to_owned(), |v| v.clone())));
 
-        e.as_ref().clone().substitute('X', &mut x)
-            .substitute('Y', &mut y)
-            .substitute('Z', &mut z)
+        e.as_ref().clone().substitute("X", &mut x)
+            .substitute("Y", &mut y)
+            .substitute("Z", &mut z)
     }
 
     fn obfuscate_impl(&mut self, e: &mut Rc<Expr>) {
@@ -288,11 +288,10 @@ impl ExampleObfuscation {
                     }
                 },
                 Expr::Var(v) => {
-                    let v = *v;
-                    let u = LUExpr::var('X');
+                    let u = LUExpr::var("X".to_owned());
                     if let Some(f) = rewrite(&u, &self.ops, &self.pow) {
                         *e = f.to_expr()
-                            .substitute('X', &mut Rc::new(Expr::Var(v)))
+                            .substitute("X", &mut Rc::new(Expr::Var(v.clone())))
                             .into();
                     }
                 },
@@ -302,8 +301,8 @@ impl ExampleObfuscation {
                     let u = LUExpr::from_string("X+Y").unwrap();
                     if let Some(f) = rewrite(&u, &self.ops, &self.pow) {
                         *e = f.to_expr()
-                            .substitute('X', l)
-                            .substitute('Y', r)
+                            .substitute("X", l)
+                            .substitute("Y", r)
                             .into();
                     }
                 },
@@ -313,8 +312,8 @@ impl ExampleObfuscation {
                     let u = LUExpr::from_string("X-Y").unwrap();
                     if let Some(f) = rewrite(&u, &self.ops, &self.pow) {
                         *e = f.to_expr()
-                            .substitute('X', l)
-                            .substitute('Y', r)
+                            .substitute("X", l)
+                            .substitute("Y", r)
                             .into();
                     }
                 },
@@ -324,7 +323,7 @@ impl ExampleObfuscation {
                     let f = Expr::from_string("(X&Y)*(X|Y)+(X&~Y)*(~X&Y)")
                         .unwrap();
 
-                    *e = f.substitute('X', l).substitute('Y', r).into();
+                    *e = f.substitute("X", l).substitute("Y", r).into();
                 },
                 Expr::Div(l, r) => {
                     self.obfuscate_impl(l);
@@ -335,7 +334,7 @@ impl ExampleObfuscation {
                     let u = LUExpr::from_string("-X").unwrap();
                     if let Some(f) = rewrite(&u, &self.ops, &self.pow) {
                         *e = f.to_expr()
-                            .substitute('X', i)
+                            .substitute("X", i)
                             .into();
                     }
                 },
@@ -345,8 +344,8 @@ impl ExampleObfuscation {
                     let u = LUExpr::from_string("X&Y").unwrap();
                     if let Some(f) = rewrite(&u, &self.ops, &self.pow) {
                         *e = f.to_expr()
-                            .substitute('X', l)
-                            .substitute('Y', r)
+                            .substitute("X", l)
+                            .substitute("Y", r)
                             .into();
                     }
                 },
@@ -356,8 +355,8 @@ impl ExampleObfuscation {
                     let u = LUExpr::from_string("X|Y").unwrap();
                     if let Some(f) = rewrite(&u, &self.ops, &self.pow) {
                         *e = f.to_expr()
-                            .substitute('X', l)
-                            .substitute('Y', r)
+                            .substitute("X", l)
+                            .substitute("Y", r)
                             .into();
                     }
                 },
@@ -367,8 +366,8 @@ impl ExampleObfuscation {
                     let u = LUExpr::from_string("X^Y").unwrap();
                     if let Some(f) = rewrite(&u, &self.ops, &self.pow) {
                         *e = f.to_expr()
-                            .substitute('X', l)
-                            .substitute('Y', r)
+                            .substitute("X", l)
+                            .substitute("Y", r)
                             .into();
                     }
                 },
@@ -377,7 +376,7 @@ impl ExampleObfuscation {
                     let u = LUExpr::from_string("~X").unwrap();
                     if let Some(f) = rewrite(&u, &self.ops, &self.pow) {
                         *e = f.to_expr()
-                            .substitute('X', i)
+                            .substitute("X", i)
                             .into();
                     }
                 },
@@ -387,17 +386,14 @@ impl ExampleObfuscation {
         if self.rng.gen::<f32>() < 0.3 {
             let degree = Uniform::from(2..4).sample(&mut self.rng);
             let (p, q) = perm_poly::perm_pair(&self.qr, degree);
-            let p = p.to_expr().substitute('x', e);
-            *e = Rc::new(q.to_expr().substitute('x', &mut Rc::new(p)));
+            let p = p.to_expr().substitute("x", e);
+            *e = Rc::new(q.to_expr().substitute("x", &mut Rc::new(p)));
         }
     }
 
     fn init(e: &Expr, n: u32) -> Self {
         // Get the variables in the expression.
-        let mut vars = Vec::new();
-        e.vars(&mut vars);
-        vars.sort_unstable();
-        vars.dedup();
+        let vars = e.vars();
 
         let ops = vec![
             LUExpr::from_string("X&Y").unwrap(),

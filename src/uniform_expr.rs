@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::ops::{Index, IndexMut, Neg};
+use std::{ops::{Index, IndexMut, Neg}, collections::BTreeSet};
 
 use rug::Integer;
 
@@ -19,15 +19,21 @@ impl LUExpr {
     }
 
     /// Creates an expression that equals a variable.
-    pub fn var(name: char) -> Self {
+    pub fn var(name: String) -> Self {
         Self(vec![(1.into(), UExpr::Var(name))])
     }
 
     /// Returns all variables in the expression.
     /// This will include duplicates.
-    pub fn vars(&self, v: &mut Vec<char>) {
+    pub fn vars(&self) -> Vec<String> {
+        let mut v = BTreeSet::new();
+        self.vars_impl(&mut v);
+        v.into_iter().collect()
+    }
+
+    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<String>) {
         for (_, e) in &self.0 {
-            e.vars(v);
+            e.vars_impl(v);
         }
     }
 
@@ -180,7 +186,7 @@ impl std::fmt::Display for LUExpr {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum UExpr {
     Ones,
-    Var(char),
+    Var(String),
     And(Box<Self>, Box<Self>),
     Or(Box<Self>, Box<Self>),
     Xor(Box<Self>, Box<Self>),
@@ -188,7 +194,7 @@ pub enum UExpr {
 }
 
 impl UExpr {
-    pub fn var(c: char) -> Self {
+    pub fn var(c: String) -> Self {
         Self::Var(c)
     }
 
@@ -210,15 +216,21 @@ impl UExpr {
 
     /// Returns all variables in the expression.
     /// This will include duplicates.
-    pub fn vars(&self, v: &mut Vec<char>) {
+    pub fn vars(&self) -> Vec<String> {
+        let mut v = BTreeSet::new();
+        self.vars_impl(&mut v);
+        v.into_iter().collect()
+    }
+
+    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<String>) {
         use UExpr::*;
         match self {
             Ones            => {},
-            Var(c)          => v.push(*c),
-            And(e1, e2)     => { e1.vars(v); e2.vars(v) },
-            Or(e1, e2)      => { e1.vars(v); e2.vars(v) },
-            Xor(e1, e2)     => { e1.vars(v); e2.vars(v) },
-            Not(e)          => e.vars(v),
+            Var(c)          => drop(v.insert(c.clone())),
+            And(e1, e2)     => { e1.vars_impl(v); e2.vars_impl(v) },
+            Or(e1, e2)      => { e1.vars_impl(v); e2.vars_impl(v) },
+            Xor(e1, e2)     => { e1.vars_impl(v); e2.vars_impl(v) },
+            Not(e)          => e.vars_impl(v),
         }
     }
 
@@ -227,7 +239,7 @@ impl UExpr {
         use UExpr::*;
         match self {
             Ones            => (-1).into(),
-            Var(c)          => v[*c].clone(),
+            Var(c)          => v[c].clone(),
             And(e1, e2)     => e1.eval(v) & e2.eval(v),
             Or(e1, e2)      => e1.eval(v) | e2.eval(v),
             Xor(e1, e2)     => e1.eval(v) ^ e2.eval(v),
@@ -236,11 +248,11 @@ impl UExpr {
     }
 
     /// Rename a variable.
-    pub fn rename_var(&mut self, old: char, new: char) {
+    pub fn rename_var(&mut self, old: &str, new: &str) {
         use UExpr::*;
         match self {
             Ones        => (),
-            Var(v)      => if *v == old { *v = new },
+            Var(v)      => if *v == old { v.clear(); v.push_str(new) },
             And(l, r)   => { l.rename_var(old, new); r.rename_var(old, new) },
             Or(l, r)    => { l.rename_var(old, new); r.rename_var(old, new) },
             Xor(l, r)   => { l.rename_var(old, new); r.rename_var(old, new) },
@@ -294,7 +306,21 @@ impl UExpr {
             Not(Box::new(e))
         } else if c.is_alphabetic() {
             it.next();
-            Var(c)
+            let mut var = String::from(c);
+            loop {
+                let Some(c) = it.peek() else {
+                    break
+                };
+
+                if !c.is_alphanumeric() {
+                    break
+                }
+
+                var.push(*c);
+                it.next();
+            }
+
+            Var(var)
         } else if c == '1' {
             it.next();
             Ones
@@ -339,7 +365,7 @@ impl UExpr {
         use UExpr::*;
         match self {
             Ones        => Expr::Const((-1).into()),
-            Var(c)      => Expr::Var(*c),
+            Var(c)      => Expr::Var(c.clone()),
             And(l, r)   => Expr::And(l.to_expr().into(), r.to_expr().into()),
             Or(l, r)    => Expr::Or(l.to_expr().into(), r.to_expr().into()),
             Xor(l, r)   => Expr::Xor(l.to_expr().into(), r.to_expr().into()),
@@ -373,34 +399,34 @@ pub struct Valuation {
     /// The key value pairs are stored as a Vector
     /// because I doubt a hashmap/tree would be faster
     /// when there are so few variables.
-    vals: Vec<(char, Integer)>,
+    vals: Vec<(String, Integer)>,
 }
 
 impl Valuation {
     /// Initializes a valuation from a list of variables
     /// each of which will be Initialized to 0.
-    pub fn zero(vars: &Vec<char>) -> Self {
-        let vals = vars.iter()
-            .map(|c| (*c, 0.into()))
+    pub fn zero(vars: Vec<String>) -> Self {
+        let vals = vars.into_iter()
+            .map(|c| (c, 0.into()))
             .collect();
 
         Self { vals }
     }
 }
 
-impl Index<char> for Valuation {
+impl Index<&str> for Valuation {
     type Output = Integer;
-    fn index(&self, index: char) -> &Self::Output {
+    fn index(&self, index: &str) -> &Self::Output {
         &self.vals.iter()
-            .find(|(name, _)| *name == index)
+            .find(|(name, _)| name == index)
             .unwrap().1
     }
 }
 
-impl IndexMut<char> for Valuation {
-    fn index_mut(&mut self, index: char) -> &mut Self::Output {
+impl IndexMut<&str> for Valuation {
+    fn index_mut(&mut self, index: &str) -> &mut Self::Output {
         &mut self.vals.iter_mut()
-            .find(|(name, _)| *name == index)
+            .find(|(name, _)| name == index)
             .unwrap().1
     }
 }
