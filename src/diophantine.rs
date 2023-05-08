@@ -1,122 +1,84 @@
+use num_traits::Zero;
+use rug::ops::DivRounding;
 use rug::{Integer, Complete};
 use rand::random;
 
 use crate::matrix::Matrix;
-use crate::vector::Vector;
+use crate::vector::*;
+use crate::lattice::{AffineLattice, Lattice};
 
-/// Describes the lattice of solutions.
-#[derive(Debug)]
-pub struct AffineLattice {
-    pub offset: Vector,
-    pub basis: Vec<Vector>,
-}
-
-impl AffineLattice {
-    /// Creates an empty lattice.
-    pub fn empty() -> Self {
-        Self {
-            offset: Vector::empty(),
-            basis: Vec::new(),
-        }
-    }
-
-    /// Is this lattice empty?
-    pub fn is_empty(&self) -> bool {
-        self.offset.dim == 0
-    }
-
-    /// Returns a random point on the lattice.
-    pub fn sample_point(&self) -> Vector {
-        assert!(!self.is_empty(), "Lattice is empty.");
-        let mut s = self.offset.clone();
-
-        for b in &self.basis {
-            let f = Integer::from(random::<usize>());
-            s += b * &f;
-        }
-
-        s
-    }
-}
-
-
-/// Computes the hermite normal form of a matrix in place
+/// Computes the (row-style) hermite normal form of a matrix in place
 /// and returns the transformation matrix.
-fn hermite_normal_form(a: &mut Matrix) -> Matrix {
+pub fn hermite_normal_form(a: &mut Matrix) -> Matrix {
     // The transformation matrix.
     let mut u = Matrix::identity(a.rows);
 
-    let mut i = 0;
-    let mut j = 0;
-    while i < a.rows && j < a.cols {
+    let mut r = 0;
+    let mut c = 0;
+    while r < a.rows && c < a.cols {
         // Choose a pivot in the jth column.
-        let pivot = a.column(j)
+        let pivot = a.column(c)
             .enumerate()
-            .skip(i)
-            .filter(|e| *e.1 != 0)
-            .min_by_key(|e| e.1.clone().abs())
+            .skip(r)
+            .filter(|e| !e.1.is_zero())
+            //.min_by_key(|e| e.1.clone().abs())
+            .min_by(|a, b| a.1.cmp_abs(b.1))
             .map(|e| e.0);
 
         let Some(pivot) = pivot else {
             // If we didn't find a pivot then the column is 0.
             // Continue with the next one.
-            j += 1;
+            c += 1;
             continue;
         };
 
         // Move the pivot to the beginning.
-        a.swap_rows(i, pivot);
-        u.swap_rows(i, pivot);
+        a.swap_rows(r, pivot);
+        u.swap_rows(r, pivot);
 
         // Try to eliminate every other entry in the column.
         // This might not work instantly.
         // If there remain non-zero entries in this column,
         // then we will go over this column again.
-        for k in i+1..a.rows {
-            if a[(k, j)] != 0 {
-                let m = -(&a[(k, j)] / &a[(i, j)]).complete();
+        for k in r+1..a.rows {
+            if a[(k, c)] != 0 {
+                let m = -(&a[(k, c)] / &a[(r, c)]).complete();
 
-                a.row_multiply_add(i, k, &m);
-                u.row_multiply_add(i, k, &m);
+                a.row_multiply_add(r, k, &m);
+                u.row_multiply_add(r, k, &m);
             }
         }
 
         // If there is any non-zero element then we need to continue in the same column.
-        if a.column(j).skip(i + 1).any(|e| *e != 0) {
+        if a.column(c).skip(r + 1).any(|e| *e != 0) {
             continue;
         }
 
         // Flip sign if necessary.
-        if a[(i, j)] < 0 {
-            a.flip_sign_row(i);
-            u.flip_sign_row(i);
+        if a[(r, c)] < 0 {
+            a.flip_sign_row(r);
+            u.flip_sign_row(r);
         }
 
         // Reduce the elements above the pivot
         // (in the column of the pivot and rows above the pivot).
-        if a[(i, j)] != 0 {
-            for k in 0..i {
-                let entry = &a[(k, j)];
-                // The Hermite normal form requires the entries above the pivot to be positive,
-                // so if the entry is negative we add 1 to the result of the euclidean division.
-                // E.g. -3/2 = -1 => m = 2 so we add -3+2*2 = 1.
-                // This isn't really needed for mixed-boolean arithmetic.
-                let m = match entry.cmp0() {
-                    std::cmp::Ordering::Equal => continue,
-                    std::cmp::Ordering::Greater => -(entry / &a[(i, j)]).complete(),
-                    std::cmp::Ordering::Less => -(entry / &a[(i, j)]).complete() + 1,
-                };
+        // The Hermite normal form requires the entries
+        // above the pivot to be positive.
+        if !a[(r, c)].is_zero() {
+            for k in 0..r {
+                let entry = &a[(k, c)];
+                let m = -Integer::from(entry.div_euc(&a[(r, c)]));
 
                 if m != 0 {
-                    a.row_multiply_add(i, k, &m);
-                    u.row_multiply_add(i, k, &m);
+                    a.row_multiply_add(r, k, &m);
+                    u.row_multiply_add(r, k, &m);
                 }
             }
         }
 
         // Continue with the bottom right part of the matrix that remains.
-        j += 1;
-        i += 1;
+        c += 1;
+        r += 1;
     }
 
     return u;
@@ -147,9 +109,9 @@ pub fn solve(a: &Matrix, b: &Vector) -> AffineLattice {
 
     // Compute the rank of the matrix.
     // It has a special form that we can take advantage of.
-    let rank = (0..m.rows)
-        .position(|i| m.row(i).iter().all(|e| *e == 0))
-        .unwrap_or_else(|| std::cmp::min(m.rows, m.cols));
+    let rank = m.rows()
+        .take_while(|r| r.iter().any(|e| !e.is_zero()))
+        .count();
 
     // Make sure the hermite normal form has the correct form,
     // because only then does it have a solution.
@@ -161,18 +123,15 @@ pub fn solve(a: &Matrix, b: &Vector) -> AffineLattice {
         return AffineLattice::empty();
     }
 
-    let mut offset = Vector::from_slice(&u.row(rank - 1)[..u.rows-1]);
-    for i in 0..offset.dim {
-        offset[i] *= -1;
-    }
+    let offset = -Vector::from_entries(
+        &u.row(r).as_slice()[..u.rows-1]
+    );
 
-    let basis: Vec<_> = (rank..u.rows).map(|i|
-        Vector::from_slice(&u.row(i)[..u.rows - 1])).collect();
+    let basis = Matrix::from_iter(u.rows - rank, u.rows - 1,
+        u.rows().skip(rank).flat_map(|r| r.iter().take(u.rows - 1).cloned()) 
+    );
 
-    AffineLattice {
-        offset,
-        basis,
-    }
+    AffineLattice::from_offset_basis(offset, basis)
 }
 
 /// Solves a linear system of equations Ax=b mod n.
@@ -204,15 +163,39 @@ pub fn solve_modular(a: &Matrix, b: &Vector, n: &Integer) -> AffineLattice {
     // removing the last components that correspond to the multipliers
     // of the n's and then removing (now) linearly dependent basis vectors.
 
-    let offset = Vector::from_slice(&l.offset.as_slice()[..a.cols]) % n;
+    let offset = Vector::from_entries(&l.offset.as_slice()[..a.cols])
+        .map(|i| *i = i.div_rem_euc_ref(n).complete().1);
 
-    let basis = l.basis.iter()
-        .map(|e| Vector::from_slice(&e.as_slice()[..a.cols]) % n)
-        .filter(|e| e.iter().any(|e| *e != 0))
-        .collect();
+    let iter = l.lattice.basis.rows()
+        .flat_map(|e| e.iter().take(a.cols).map(|i| i.clone() % n))
+        .chain((0..a.cols).flat_map(|i| (0..a.cols).map(
+            move |j| if j == i { n.clone() } else { Integer::new() }))
+        );
+    let mut bm = Matrix::from_iter(l.lattice.rank() + a.cols, a.cols,
+        iter
+    );
+
+    let lattice = Lattice::from_generating_set(bm);
 
     AffineLattice {
         offset,
-        basis,
+        lattice,
     }
+}
+
+#[test]
+fn small_test() {
+    let a = Matrix::from_rows(&[
+        [0, 0, -1, 1],
+        [0, 1, 0, 0],
+        [0, 1, 0, 0],
+        [1, 0, 0, 0],
+    ]);
+
+    let b = Vector::from_entries(&[0, 1, 1, 2]);
+
+    let l = solve(&a, &b);
+    assert!(l.offset.as_slice() == &[2, 1, 0, 0]);
+    assert!(l.lattice.rank() == 1);
+    assert!(l.lattice.basis.row(0).as_slice() == &[0, 0, 1, 1]);
 }

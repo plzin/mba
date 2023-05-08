@@ -537,8 +537,8 @@ pub fn test_inverse_generator() {
     let zi = ZeroIdeal::init(64);
     for d in 0..100usize {
         let p = random_perm_poly(&zi, d % 10 + 1).simplified(&zi);
-        //let q = compute_inverse_generator(&p, &qr);
-        let q = compute_inverse(&p, &zi);
+        let q = compute_inverse_generator(&p, &zi);
+        //let q = compute_inverse(&p, &zi);
         assert!(compose(&p, &q, &zi).simplified(&zi).is_id(),
             "compute_inverse_generator returned wrong inverse {} of {}", q, p);
     }

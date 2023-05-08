@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 use rug::{Integer, Complete};
-use crate::vector::Vector;
+use crate::vector::*;
 
+/// An matrix whose entries are integers.
 pub struct Matrix {
     /// The number of rows.
     pub rows: usize,
@@ -21,6 +22,11 @@ impl Matrix {
             cols: 0,
             entries: core::ptr::null_mut(),
         }
+    }
+
+    /// Is the matrix empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_null()
     }
 
     /// Returns an uninitialized mxn matrix.
@@ -67,7 +73,7 @@ impl Matrix {
         m
     }
 
-    /// Creates a matrix from an array.
+    /// Creates a matrix from an array of rows.
     pub fn from_array<T: Into<Integer>, const R: usize, const C: usize>(
         a: [[T; C]; R]
     ) -> Self {
@@ -87,7 +93,7 @@ impl Matrix {
         m
     }
 
-    /// Creates a matrix from a vector.
+    /// Creates a matrix from a Vec of rows.
     pub fn from_vec<T: Into<Integer>>(v: Vec<Vec<T>>) -> Self {
         let m = v.len();
         if m == 0 {
@@ -117,25 +123,65 @@ impl Matrix {
         r
     }
 
+    /// Creates a matrix from an iterator.
+    pub fn from_iter<I: Iterator<Item = Integer>>(r: usize, c: usize, mut iter: I) -> Self {
+        let mut m = Self::uninit(r, c);
+        for i in 0..r*c {
+            let e = iter.next()
+                .expect("The iterator needs to return at least r * c items.");
+            unsafe {
+                m.entries.add(i).write(e);
+            }
+        }
+
+        m
+    }
+
+    /// Creates a matrix from slice of rows.
+    pub fn from_rows<U, T>(rows: &[U]) -> Self
+    where
+        U: AsRef<[T]>,
+        T: Into<Integer> + Clone,
+    {
+        assert!(!rows.is_empty());
+        let r = rows.len();
+        let c = rows[0].as_ref().len();
+        assert!(rows.iter().all(|r| r.as_ref().len() == c));
+
+        Matrix::from_iter(r, c, rows.iter()
+            .flat_map(|r| r.as_ref().iter().map(|e| e.clone().into()))
+        )
+    }
+
+    /// Returns an iterator over the rows as Integer slices.
+    pub fn rows(&self) -> RowIter {
+        RowIter::from_matrix(self)
+    }
+
+    /// Returns an iterator over the rows as mutable Integer slices.
+    pub fn rows_mut(&mut self) -> RowIterMut {
+        RowIterMut::from_matrix(self)
+    }
+
     /// Returns a slice of a row.
-    pub fn row(&self, r: usize) -> &[Integer] {
+    pub fn row(&self, r: usize) -> &VV {
         debug_assert!(r < self.rows);
         unsafe {
-            core::slice::from_raw_parts(
+            VV::from_slice(core::slice::from_raw_parts(
                 self.entries.add(r * self.cols),
                 self.cols
-            )
+            ))
         }
     }
 
     /// Returns a mutable slice of a row.
-    pub fn row_mut(&mut self, r: usize) -> &mut [Integer] {
+    pub fn row_mut(&mut self, r: usize) -> &mut VV {
         debug_assert!(r < self.rows);
         unsafe {
-            core::slice::from_raw_parts_mut(
+            VV::from_slice_mut(core::slice::from_raw_parts_mut(
                 self.entries.add(r * self.cols),
                 self.cols
-            )
+            ))
         }
     }
 
@@ -236,6 +282,52 @@ impl Matrix {
             self[(i, m)] += c;
         }
     }
+
+    /// Removes rows at the end of the matrix.
+    pub fn shrink(&mut self, new_nrows: usize) {
+        if new_nrows == self.rows {
+            return;
+        }
+        assert!(new_nrows < self.rows);
+
+        // Call the destructor on all elements.
+        for i in new_nrows*self.cols..self.rows*self.cols {
+            unsafe {
+                core::ptr::drop_in_place(self.entries.add(i));
+            }
+        }
+
+        let esize = core::mem::size_of::<Integer>(); 
+        let layout = std::alloc::Layout::from_size_align(
+            self.rows * self.cols * esize,
+            core::mem::align_of::<Integer>()
+        ).unwrap();
+
+        // This should hopefully not actually allocate.
+        let new_ptr = unsafe {
+            std::alloc::realloc(
+                self.entries as _,
+                layout,
+                new_nrows * self.cols * esize
+            )
+        };
+        self.entries = new_ptr as _;
+        self.rows = new_nrows;
+    }
+}
+
+impl std::ops::Index<usize> for Matrix {
+    type Output = VV;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.row(index)
+    }
+}
+
+impl std::ops::IndexMut<usize> for Matrix {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        self.row_mut(index)
+    }
 }
 
 impl std::ops::Index<(usize, usize)> for Matrix {
@@ -296,13 +388,9 @@ impl std::ops::Mul<&Vector> for &Matrix {
 
 impl std::fmt::Debug for Matrix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut l = f.debug_list();
-
-        for r in 0..self.rows {
-            l.entry(&self.row(r));
-        }
-
-        l.finish()
+        f.debug_list()
+            .entries(self.rows().map(|r| r.as_slice()))
+            .finish()
     }
 }
 
@@ -325,6 +413,112 @@ impl Drop for Matrix {
 
             // Free the memory.
             std::alloc::dealloc(self.entries as _, layout);
+        }
+    }
+}
+
+pub struct RowIter<'a> {
+    /// Front iterator.
+    front: *mut Integer,
+
+    /// Back iterator.
+    back: *mut Integer,
+
+    /// The number of elements in a column.
+    count: usize,
+    lifetime: PhantomData<&'a Integer>,
+}
+
+impl<'a> RowIter<'a> {
+    pub fn from_matrix(a: &'a Matrix) -> Self {
+        Self {
+            front: a.entries,
+            count: a.cols,
+            back: unsafe { a.entries.add(a.cols * a.rows).sub(a.cols) },
+            lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'a> Iterator for RowIter<'a> {
+    type Item = &'a VV;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.front as usize > self.back as usize {
+            return None;
+        }
+
+        unsafe {
+            let row = std::slice::from_raw_parts(self.front, self.count);
+            self.front = self.front.add(self.count);
+            Some(VV::from_slice(row))
+        }
+    }
+}
+
+impl<'a> DoubleEndedIterator for RowIter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.front as usize > self.back as usize {
+            return None;
+        }
+
+        unsafe {
+            let row = std::slice::from_raw_parts(self.back, self.count);
+            self.back = self.back.sub(self.count);
+            Some(VV::from_slice(row))
+        }
+    }
+}
+
+pub struct RowIterMut<'a> {
+    /// Front iterator.
+    front: *mut Integer,
+
+    /// Back iterator.
+    back: *mut Integer,
+
+    /// The number of elements in a column.
+    count: usize,
+    lifetime: PhantomData<&'a Integer>,
+}
+
+impl<'a> RowIterMut<'a> {
+    pub fn from_matrix(a: &'a mut Matrix) -> Self {
+        Self {
+            front: a.entries,
+            count: a.cols,
+            back: unsafe { a.entries.add(a.cols * a.rows).sub(a.cols) },
+            lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'a> Iterator for RowIterMut<'a> {
+    type Item = &'a mut VV;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.front as usize > self.back as usize {
+            return None;
+        }
+
+        unsafe {
+            let row = std::slice::from_raw_parts_mut(self.front, self.count);
+            self.front = self.front.add(self.count);
+            Some(VV::from_slice_mut(row))
+        }
+    }
+}
+
+impl<'a> DoubleEndedIterator for RowIterMut<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.front as usize > self.back as usize {
+            return None;
+        }
+
+        unsafe {
+            let row = std::slice::from_raw_parts_mut(self.back, self.count);
+            self.back = self.back.sub(self.count);
+            Some(VV::from_slice_mut(row))
         }
     }
 }

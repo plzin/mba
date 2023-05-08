@@ -2,7 +2,8 @@
 
 use std::{ops::{Index, IndexMut, Neg}, collections::BTreeSet};
 
-use rug::Integer;
+use num_traits::Zero;
+use rug::{Integer, Complete};
 
 use crate::{Expr, int_from_it};
 
@@ -41,6 +42,20 @@ impl LUExpr {
     pub fn eval(&self, v: &Valuation) -> Integer {
         self.0.iter()
             .map(|(i, e)| i * e.eval(v))
+            .sum()
+    }
+
+    /// Returns a measure of the complexity of the expression.
+    pub fn complexity(&self, bits: u32) -> u32 {
+        // Complexity of a coefficient.
+        let coeff_complexity = |i: &Integer| {
+            let abs = i.keep_signed_bits_ref(bits).complete().abs();
+            abs.count_ones().unwrap() / 2 + abs.significant_bits()
+        };
+
+        self.0.iter()
+            .filter(|(c, _)| !c.is_zero())
+            .map(|(c, e)| coeff_complexity(c) + e.complexity())
             .sum()
     }
 
@@ -260,6 +275,17 @@ impl UExpr {
         }
     }
 
+    /// Returns some sort of complexity measure of the expression.
+    pub fn complexity(&self) -> u32 {
+        use UExpr::*;
+        match self {
+            Ones => 1,
+            Var(_) => 1,
+            And(l, r) | Or(l, r) | Xor(l, r) => l.complexity() + r.complexity() + 1,
+            Not(e) => e.complexity() + 1,
+        }
+    }
+
     fn write_safe(
         e1: &Self, e2: &Self, op: char, f: &mut std::fmt::Formatter<'_>
     ) -> std::fmt::Result {
@@ -378,7 +404,7 @@ impl std::fmt::Display for UExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use UExpr::*;
         match self {
-            Ones => write!(f, "1"),
+            Ones => write!(f, "-1"),
             Var(c) => write!(f, "{}", c),
             And(e1, e2)   => Self::write_safe(e1, e2, '&', f),
             Or(e1, e2)    => Self::write_safe(e1, e2, '|', f),

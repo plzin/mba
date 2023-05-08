@@ -35,6 +35,7 @@ pub enum Expr {
     Add(Rc<Expr>, Rc<Expr>),
     Sub(Rc<Expr>, Rc<Expr>),
     Mul(Rc<Expr>, Rc<Expr>),
+    /// This is an unsigned div for now.
     Div(Rc<Expr>, Rc<Expr>),
     Neg(Rc<Expr>),
     And(Rc<Expr>, Rc<Expr>),
@@ -348,6 +349,26 @@ impl Expr {
                 '^' => Xor(lhs, rhs),
                 _ => unreachable!(),
             };
+        }
+    }
+
+    /// This does not currently share common subexpressions.
+    #[cfg(feature = "z3")]
+    pub fn to_z3_bv<'ctx>(&self, ctx: &'ctx z3::Context, width: u32) -> z3::ast::BV<'ctx> {
+        use Expr::*;
+
+        match self {
+            Const(i) => crate::int_to_bv(ctx, width, i),
+            Var(v) => z3::ast::BV::new_const(ctx, v.as_str(), width),
+            Add(l, r) => l.to_z3_bv(ctx, width).bvadd(&r.to_z3_bv(ctx, width)),
+            Sub(l, r) => l.to_z3_bv(ctx, width).bvsub(&r.to_z3_bv(ctx, width)),
+            Mul(l, r) => l.to_z3_bv(ctx, width).bvmul(&r.to_z3_bv(ctx, width)),
+            Div(l, r) => l.to_z3_bv(ctx, width).bvudiv(&r.to_z3_bv(ctx, width)),
+            Neg(i) => i.to_z3_bv(ctx, width).bvneg(),
+            And(l, r) => l.to_z3_bv(ctx, width).bvand(&r.to_z3_bv(ctx, width)),
+            Or(l, r) => l.to_z3_bv(ctx, width).bvor(&r.to_z3_bv(ctx, width)),
+            Xor(l, r) => l.to_z3_bv(ctx, width).bvxor(&r.to_z3_bv(ctx, width)),
+            Not(i) => i.to_z3_bv(ctx, width).bvnot(),
         }
     }
 }
