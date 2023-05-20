@@ -1,56 +1,74 @@
-//! Owned vector with integer entries and
-//! trait to interpret any slice of integers as one.
+//! Owned and non-owned vectors constant runtime dimension.
 
+use std::{ops::{Deref, DerefMut}, fmt::Debug};
 use num_traits::Zero;
 use rug::{Integer, Complete, Float};
 
-/// Operations implemented for an integer vector.
-pub trait VectorOps {
-    /// The dimension (number of entries) of the vector.
-    fn dim(&self) -> usize;
+/// Vector view.
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct VV<T>([T]);
+
+pub type IVV = VV<Integer>;
+pub type FVV = VV<Float>;
+
+impl<T> VV<T> {
+    /// Get a vector view from a slice.
+    pub fn from_slice<'a>(s: &'a [T]) -> &'a Self {
+        unsafe {
+            &*std::ptr::from_raw_parts(s.as_ptr() as _, s.len())
+        }
+    }
+
+    /// Get a mutable vector view from a slice.
+    pub fn from_slice_mut<'a>(s: &'a mut [T]) -> &'a mut Self {
+        unsafe {
+            &mut *std::ptr::from_raw_parts_mut(s.as_mut_ptr() as _, s.len())
+        }
+    }
 
     /// Pointer to the entries.
-    fn as_ptr(&self) -> *const Integer;
+    pub fn as_ptr(&self) -> *const T {
+        self.0.as_ptr()
+    }
 
-    /// Pointer to mutable entries.
-    fn as_mut_ptr(&mut self) -> *mut Integer;
+    /// Mutable pointer to the entries.
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.0.as_mut_ptr()
+    }
 
-    /// Is this vector of dimension zero?
-    fn is_empty(&self) -> bool {
+    /// The dimension of the vector.
+    pub fn dim(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Is the vector empty, i.e. dimension zero?
+    pub fn is_empty(&self) -> bool {
         self.dim() == 0
     }
 
     /// Interpret the vector as a slice.
-    fn as_slice(&self) -> &[Integer] {
-        unsafe {
-            std::slice::from_raw_parts(self.as_ptr(), self.dim())
-        }
+    pub fn as_slice(&self) -> &[T] {
+        &self.0
     }
 
     /// Interpret the vector as a mutable slice.
-    fn as_slice_mut(&mut self) -> &mut [Integer] {
-        unsafe {
-            std::slice::from_raw_parts_mut(self.as_mut_ptr(), self.dim())
-        }
+    pub fn as_slice_mut(&mut self) -> &mut [T] {
+        &mut self.0
     }
 
     /// Returns an iterator over the elements.
-    fn iter(&self) -> std::slice::Iter<'_, Integer> {
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
         self.as_slice().iter()
     }
 
     /// Returns an iterator over the mutable elements.
-    fn iter_mut(&mut self) -> std::slice::IterMut<'_, Integer> {
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
         self.as_slice_mut().iter_mut()
     }
 
-    /// Is this the zero vector.
-    fn is_zero(&self) -> bool {
-        self.iter().all(|i| i.is_zero())
-    }
-
     /// Reference to an entry at an index.
-    fn entry(&self, idx: usize) -> &Integer {
+    pub fn entry(&self, idx: usize) -> &T {
         assert!(idx < self.dim());
         unsafe {
             &*self.as_ptr().add(idx)
@@ -58,41 +76,22 @@ pub trait VectorOps {
     }
 
     /// Mutable reference to an entry at an index.
-    fn entry_mut(&mut self, idx: usize) -> &mut Integer {
+    pub fn entry_mut(&mut self, idx: usize) -> &mut T {
         assert!(idx < self.dim());
         unsafe {
             &mut *self.as_mut_ptr().add(idx)
         }
     }
 
-    /// Computes the dot product of two vectors.
-    fn dot(&self, other: &Self) -> Integer {
-        assert!(self.dim() == other.dim());
-        self.iter().zip(other.iter())
-            .map(|(c, d)| (c * d).complete())
-            .sum()
-    }
-
-    /// Computes the square of the l2 norm of the vector.
-    fn norm_sqr(&self) -> Integer {
-        self.iter().map(|i| i.square_ref()).sum()
-    }
-
-    /// Computes the l2 norm of the vector.
-    fn norm(&self) -> Float {
-        let ns = self.norm_sqr();
-        Float::with_val(ns.signed_bits(), ns).sqrt()
-    }
-
     /// Apply a function to each entry.
-    fn map_mut<F: FnMut(&mut Integer)>(&mut self, mut f: F) {
+    pub fn map_mut<F: FnMut(&mut T)>(&mut self, mut f: F) {
         for e in self.iter_mut() {
             f(e);
         }
     }
 
     /// Swap the two entries i and j.
-    fn swap(&mut self, i : usize, j: usize) {
+    pub fn swap(&mut self, i : usize, j: usize) {
         unsafe {
             std::ptr::swap(
                 self.as_mut_ptr().add(i),
@@ -102,91 +101,91 @@ pub trait VectorOps {
     }
 }
 
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct VV([Integer]);
-
-impl VV {
-    pub fn from_slice<'a>(s: &'a [Integer]) -> &'a Self {
-        unsafe {
-            &*std::ptr::from_raw_parts(s.as_ptr() as _, s.len())
-        }
-    }
-
-    pub fn from_slice_mut<'a>(s: &'a mut [Integer]) -> &'a mut Self {
-        unsafe {
-            &mut *std::ptr::from_raw_parts_mut(s.as_mut_ptr() as _, s.len())
-        }
+impl<T: Zero> VV<T> {
+    /// Is this the zero vector.
+    pub fn is_zero(&self) -> bool {
+        self.iter().all(|i| i.is_zero())
     }
 }
 
-impl VectorOps for VV {
-    fn as_ptr(&self) -> *const Integer {
-        self.0.as_ptr()
+impl VV<Integer> {
+    /// Computes the dot product of two vectors.
+    pub fn dot(&self, other: &Self) -> Integer {
+        assert!(self.dim() == other.dim());
+        self.iter().zip(other.iter())
+            .map(|(c, d)| (c * d).complete())
+            .sum()
     }
 
-    fn as_mut_ptr(&mut self) -> *mut Integer {
-        self.0.as_mut_ptr()
+    /// Computes the square of the l2 norm of the vector.
+    pub fn norm_sqr(&self) -> Integer {
+        self.iter().map(|i| i.square_ref()).sum()
     }
 
-    fn dim(&self) -> usize {
-        self.0.len()
+    /// Computes the l2 norm of the vector.
+    pub fn norm(&self) -> Float {
+        let ns = self.norm_sqr();
+        Float::with_val(ns.signed_bits(), ns).sqrt()
     }
 }
 
-impl<'a> IntoIterator for &'a VV {
-    type Item = &'a Integer;
-    type IntoIter = std::slice::Iter<'a, Integer>;
+impl<'a, T> IntoIterator for &'a VV<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
     }
 }
 
-impl<'a> IntoIterator for &'a mut VV {
-    type Item = &'a mut Integer;
-    type IntoIter = std::slice::IterMut<'a, Integer>;
+impl<'a, T> IntoIterator for &'a mut VV<T> {
+    type Item = &'a mut T;
+    type IntoIter = std::slice::IterMut<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter_mut()
     }
 }
 
-impl std::ops::Index<usize> for VV {
-    type Output = Integer;
+impl<T> std::ops::Index<usize> for VV<T> {
+    type Output = T;
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
 }
 
-impl std::ops::IndexMut<usize> for VV {
+impl<T> std::ops::IndexMut<usize> for VV<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl AsRef<[Integer]> for VV {
-    fn as_ref(&self) -> &[Integer] {
+impl<T> AsRef<[T]> for VV<T> {
+    fn as_ref(&self) -> &[T] {
         self.as_slice()
     }
 }
 
-impl AsMut<[Integer]> for VV {
-    fn as_mut(&mut self) -> &mut [Integer] {
+impl<T> AsMut<[T]> for VV<T> {
+    fn as_mut(&mut self) -> &mut [T] {
         self.as_slice_mut()
     }
 }
 
 /// An owned vector whose entries are integers.
-pub struct Vector {
+pub struct Vector<T> {
+    /// Memory that holds the entries.
+    pub(self) entries: *mut T,
+
     /// The dimension (number of entries) of the vector.
     pub dim: usize,
 
-    /// Memory that holds the entries.
-    pub(self) entries: *mut Integer,
 }
 
-impl Vector {
+pub type IVector = Vector<Integer>;
+pub type FVector = Vector<Float>;
+
+impl<T> Vector<T> {
     /// Returns an empty vector.
     pub fn empty() -> Self {
         Self {
@@ -202,12 +201,12 @@ impl Vector {
         }
 
         let layout = std::alloc::Layout::from_size_align(
-            dim * core::mem::size_of::<Integer>(),
-            core::mem::align_of::<Integer>()
+            dim * core::mem::size_of::<T>(),
+            core::mem::align_of::<T>()
         ).unwrap();
 
         let entries = unsafe {
-            std::alloc::alloc(layout) as *mut Integer
+            std::alloc::alloc(layout) as *mut T
         };
 
         Self {
@@ -216,33 +215,11 @@ impl Vector {
         }
     }
 
-    /// Returns a zero vector.
-    pub fn zero(dim: usize) -> Self {
-        let v = Self::uninit(dim);
-
-        for i in 0..dim {
-            unsafe {
-                v.entries.add(i).write(Integer::new());
-            }
-        }
-
-        v
-    }
-
-    /// Returns a vector with index `i` set to `v`
-    /// and every other entry to zero.
-    pub fn ith(dim: usize, i: usize, v: Integer) -> Vector {
-        assert!(i < dim);
-        let mut r = Self::zero(dim);
-        r[i] = v;
-        r
-    }
-
     /// Creates a vector from a slice.
-    pub fn from_entries<T, U>(a: T) -> Self
+    pub fn from_entries<U, V>(a: U) -> Self
     where
-        T: AsRef<[U]>,
-        U: Into<Integer> + Clone,
+        U: AsRef<[V]>,
+        V: Into<T> + Clone,
     {
         let a = a.as_ref();
         let v = Self::uninit(a.len());
@@ -256,8 +233,8 @@ impl Vector {
     }
 
     /// Creates a vector from an iterator.
-    pub fn from_iter<T: Iterator<Item = Integer>>(
-        dim: usize, mut iter: T
+    pub fn from_iter<U: Iterator<Item = T>>(
+        dim: usize, mut iter: U
     ) -> Self {
         let v = Self::uninit(dim);
         for i in 0..dim {
@@ -272,7 +249,7 @@ impl Vector {
     }
 
     /// Creates a vector from an array.
-    pub fn from_array<T: Into<Integer>, const D: usize>(a: [T; D]) -> Self {
+    pub fn from_array<U: Into<T>, const D: usize>(a: [U; D]) -> Self {
         let v = Self::uninit(D);
 
         let mut ptr = v.entries;
@@ -298,41 +275,71 @@ impl Vector {
         std::alloc::dealloc(self.entries as _, layout);
     }
 
-    pub fn map<Fn: FnMut(&mut Integer)>(mut self, f: Fn) -> Self {
+    pub fn map<Fn: FnMut(&mut T)>(mut self, f: Fn) -> Self {
         self.map_mut(f);
         self
     }
 }
 
-impl VectorOps for Vector {
-    fn dim(&self) -> usize {
-        self.dim
+impl Vector<Integer> {
+        /// Returns a zero vector.
+    pub fn zero(dim: usize) -> Self {
+        let v = Self::uninit(dim);
+
+        for i in 0..dim {
+            unsafe {
+                v.entries.add(i).write(Integer::new());
+            }
+        }
+
+        v
     }
 
-    fn as_ptr(&self) -> *const Integer {
-        self.entries
-    }
-
-    fn as_mut_ptr(&mut self) -> *mut Integer {
-        self.entries
+    /// Returns a vector with index `i` set to `v`
+    /// and every other entry to zero.
+    pub fn ith(dim: usize, i: usize, v: Integer) -> Self {
+        assert!(i < dim);
+        let mut r = Self::zero(dim);
+        r[i] = v;
+        r
     }
 }
 
-impl std::ops::Index<usize> for Vector {
-    type Output = Integer;
+impl<T> Deref for Vector<T> {
+    type Target = VV<T>;
+
+    fn deref(&self) -> &Self::Target {
+        let slice = unsafe {
+            std::slice::from_raw_parts(self.entries, self.dim)
+        };
+        VV::from_slice(slice)
+    }
+}
+
+impl<T> DerefMut for Vector<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(self.entries, self.dim)
+        };
+        VV::from_slice_mut(slice)
+    }
+}
+
+impl<T> std::ops::Index<usize> for Vector<T> {
+    type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
         self.entry(index)
     }
 }
 
-impl std::ops::IndexMut<usize> for Vector {
+impl<T> std::ops::IndexMut<usize> for Vector<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         self.entry_mut(index)
     }
 }
 
-impl PartialEq for Vector {
+impl<T: PartialEq> PartialEq for Vector<T> {
     fn eq(&self, other: &Self) -> bool {
         assert!(self.dim == other.dim, "Can not compare vectors of different sizes");
         self.iter()
@@ -341,9 +348,9 @@ impl PartialEq for Vector {
     }
 }
 
-impl Eq for Vector {}
+impl<T: Eq> Eq for Vector<T> {}
 
-impl Clone for Vector {
+impl<T: Clone> Clone for Vector<T> {
     fn clone(&self) -> Self {
         let v = Self::uninit(self.dim);
 
@@ -357,7 +364,7 @@ impl Clone for Vector {
     }
 }
 
-impl std::fmt::Debug for Vector {
+impl<T: Debug> Debug for Vector<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
             .entries(self.as_slice())
@@ -365,19 +372,19 @@ impl std::fmt::Debug for Vector {
     }
 }
 
-impl AsRef<[Integer]> for Vector {
-    fn as_ref(&self) -> &[Integer] {
+impl<T> AsRef<[T]> for Vector<T> {
+    fn as_ref(&self) -> &[T] {
         self.as_slice()
     }
 }
 
-impl AsMut<[Integer]> for Vector {
-    fn as_mut(&mut self) -> &mut [Integer] {
+impl<T> AsMut<[T]> for Vector<T> {
+    fn as_mut(&mut self) -> &mut [T] {
         self.as_slice_mut()
     }
 }
 
-impl Drop for Vector {
+impl<T> Drop for Vector<T> {
     fn drop(&mut self) {
         if self.entries.is_null() {
             return;
@@ -398,7 +405,7 @@ impl Drop for Vector {
 macro_rules! impl_addsub {
     ($t:ty, $u:ty) => {
         impl std::ops::Add<$u> for $t {
-            type Output = Vector;
+            type Output = Vector<Integer>;
             fn add(self, rhs: $u) -> Self::Output {
                 assert!(self.dim() == rhs.dim(),
                     "Can not add vectors of incompatible sizes");
@@ -409,7 +416,7 @@ macro_rules! impl_addsub {
         }
 
         impl std::ops::Sub<$u> for $t {
-            type Output = Vector;
+            type Output = Vector<Integer>;
             fn sub(self, rhs: $u) -> Self::Output {
                 assert!(self.dim() == rhs.dim(),
                     "Can not subtract vectors of incompatible sizes");
@@ -421,15 +428,15 @@ macro_rules! impl_addsub {
     }
 }
 
-impl_addsub!(&Vector, &Vector);
-impl_addsub!(&Vector, &VV);
-impl_addsub!(&VV, &Vector);
-impl_addsub!(&VV, &VV);
+impl_addsub!(&Vector<Integer>, &Vector<Integer>);
+impl_addsub!(&Vector<Integer>, &VV<Integer>);
+impl_addsub!(&VV<Integer>, &Vector<Integer>);
+impl_addsub!(&VV<Integer>, &VV<Integer>);
 
 macro_rules! impl_addsub_reuse {
     ($t:ty) => {
-        impl std::ops::Add<$t> for Vector {
-            type Output = Vector;
+        impl std::ops::Add<$t> for Vector<Integer> {
+            type Output = Vector<Integer>;
             fn add(mut self, rhs: $t) -> Self::Output {
                 assert!(self.dim() == rhs.dim());
                 self += rhs;
@@ -437,17 +444,17 @@ macro_rules! impl_addsub_reuse {
             }
         }
 
-        impl std::ops::Add<Vector> for $t {
-            type Output = Vector;
-            fn add(self, mut rhs: Vector) -> Self::Output {
+        impl std::ops::Add<Vector<Integer>> for $t {
+            type Output = Vector<Integer>;
+            fn add(self, mut rhs: Vector<Integer>) -> Self::Output {
                 assert!(self.dim() == rhs.dim());
                 rhs += self;
                 rhs
             }
         }
 
-        impl std::ops::Sub<$t> for Vector {
-            type Output = Vector;
+        impl std::ops::Sub<$t> for Vector<Integer> {
+            type Output = Vector<Integer>;
             fn sub(mut self, rhs: $t) -> Self::Output {
                 assert!(self.dim() == rhs.dim());
                 self -= rhs;
@@ -455,9 +462,9 @@ macro_rules! impl_addsub_reuse {
             }
         }
 
-        impl std::ops::Sub<Vector> for $t {
-            type Output = Vector;
-            fn sub(self, mut rhs: Vector) -> Self::Output {
+        impl std::ops::Sub<Vector<Integer>> for $t {
+            type Output = Vector<Integer>;
+            fn sub(self, mut rhs: Vector<Integer>) -> Self::Output {
                 assert!(self.dim() == rhs.dim());
                 // We can't get away without any allocation because
                 // sub is not commutative.
@@ -472,13 +479,13 @@ macro_rules! impl_addsub_reuse {
     }
 }
 
-impl_addsub_reuse!(&Vector);
-impl_addsub_reuse!(&VV);
+impl_addsub_reuse!(&Vector<Integer>);
+impl_addsub_reuse!(&VV<Integer>);
 
 macro_rules! impl_muldiv {
     ($t:ty) => {
         impl std::ops::Mul<&Integer> for $t {
-            type Output = Vector;
+            type Output = Vector<Integer>;
             fn mul(self, rhs: &Integer) -> Self::Output {
                 Vector::from_iter(self.dim(),
                     self.iter().map(|i| (i * rhs).complete())
@@ -487,7 +494,7 @@ macro_rules! impl_muldiv {
         }
 
         impl std::ops::Mul<$t> for &Integer {
-            type Output = Vector;
+            type Output = Vector<Integer>;
             fn mul(self, rhs: $t) -> Self::Output {
                 Vector::from_iter(rhs.dim(),
                     rhs.iter().map(|i| (i * self).complete())
@@ -496,7 +503,7 @@ macro_rules! impl_muldiv {
         }
 
         impl std::ops::Div<&Integer> for $t {
-            type Output = Vector;
+            type Output = Vector<Integer>;
             fn div(self, rhs: &Integer) -> Self::Output {
                 Vector::from_iter(self.dim(),
                     self.iter().map(|i| (i / rhs).complete())
@@ -506,8 +513,8 @@ macro_rules! impl_muldiv {
     }
 }
 
-impl_muldiv!(&Vector);
-impl_muldiv!(&VV);
+impl_muldiv!(&Vector<Integer>);
+impl_muldiv!(&VV<Integer>);
 
 macro_rules! impl_assign_addsub {
     ($t:ty, $u:ty) => {
@@ -531,10 +538,10 @@ macro_rules! impl_assign_addsub {
     }
 }
 
-impl_assign_addsub!(Vector, &Vector);
-impl_assign_addsub!(Vector, &VV);
-impl_assign_addsub!(VV, &Vector);
-impl_assign_addsub!(VV, &VV);
+impl_assign_addsub!(Vector<Integer>, &Vector<Integer>);
+impl_assign_addsub!(Vector<Integer>, &VV<Integer>);
+impl_assign_addsub!(VV<Integer>, &Vector<Integer>);
+impl_assign_addsub!(VV<Integer>, &VV<Integer>);
 
 macro_rules! impl_assign_muldiv {
     ($t:ty) => {
@@ -552,11 +559,11 @@ macro_rules! impl_assign_muldiv {
     }
 }
 
-impl_assign_muldiv!(Vector);
-impl_assign_muldiv!(&mut VV);
+impl_assign_muldiv!(Vector<Integer>);
+impl_assign_muldiv!(&mut VV<Integer>);
 
-impl std::ops::Neg for Vector {
-    type Output = Vector;
+impl std::ops::Neg for Vector<Integer> {
+    type Output = Vector<Integer>;
     fn neg(mut self) -> Self::Output {
         for e in self.iter_mut() {
             *e *= -1;

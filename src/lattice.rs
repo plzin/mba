@@ -59,7 +59,7 @@ impl Lattice {
     
     /// Returns the vector on the lattice that is the linear
     /// combination of the basis vectors with the given coefficients.
-    pub fn at<T: AsRef<[Integer]>>(&self, coefficients: T) -> Vector {
+    pub fn at<T: AsRef<[Integer]>>(&self, coefficients: T) -> IVector {
         let coefficients = coefficients.as_ref();
         assert!(coefficients.len() == self.rank());
 
@@ -69,8 +69,8 @@ impl Lattice {
 
     /// Samples a point from the lattice that is added to the initial vector.
     pub(self) fn sample_point_impl(
-        &self, bits: u32, initial: Vector
-    ) -> Vector {
+        &self, bits: u32, initial: IVector
+    ) -> IVector {
         assert!(!self.is_empty(), "Lattice is empty.");
         assert!(initial.dim() == self.ambient_dim());
 
@@ -88,28 +88,28 @@ impl Lattice {
     }
 
     /// Returns a random point on the lattice mod 2^bits.
-    pub fn sample_point(&self, bits: u32) -> Vector {
+    pub fn sample_point(&self, bits: u32) -> IVector {
         self.sample_point_impl(bits, Vector::zero(self.ambient_dim()))
     }
 
     /// Approximate the CVP using Babai's rounding technique with floats,
     /// but returns the coefficients of the linear combination of the basis vectors.
-    pub fn cvp_rounding_coeff(&self, v: &Vector) -> Vector {
+    pub fn cvp_rounding_coeff(&self, v: &IVector) -> IVector {
         cvp_rounding_float(&self.basis, v)
     }
 
     /// Approximate the CVP using Babai's rounding technique with floats.
-    pub fn cvp_rounding(&self, v: &Vector) -> Vector {
+    pub fn cvp_rounding(&self, v: &IVector) -> IVector {
         self.at(self.cvp_rounding_coeff(v))
     }
 
     /// Approximate the CVP using Babai's rounding technique with rational numbers.
-    pub fn cvp_rounding_coeff_exact(&self, v: &Vector) -> Vector {
+    pub fn cvp_rounding_coeff_exact(&self, v: &IVector) -> IVector {
         cvp_rounding_exact(&self.basis, v)
     }
 
     /// Approximate the CVP using Babai's rounding technique with rational numbers.
-    pub fn cvp_rounding_exact(&self, v: &Vector) -> Vector {
+    pub fn cvp_rounding_exact(&self, v: &IVector) -> IVector {
         self.at(self.cvp_rounding_coeff_exact(v))
     }
 
@@ -163,7 +163,7 @@ impl Lattice {
 /// Mathematicians would call this a lattice coset.
 #[derive(Debug)]
 pub struct AffineLattice {
-    pub offset: Vector,
+    pub offset: IVector,
     pub lattice: Lattice,
 }
 
@@ -177,7 +177,7 @@ impl AffineLattice {
     }
 
     /// Creates an affine lattice from an offset and a basis.
-    pub fn from_offset_basis(offset: Vector, basis: Matrix) -> Self {
+    pub fn from_offset_basis(offset: IVector, basis: Matrix) -> Self {
         Self {
             offset,
             lattice: Lattice::from_basis(basis),
@@ -190,7 +190,7 @@ impl AffineLattice {
     }
 
     /// Returns a random point on the lattice mod 2^bits.
-    pub fn sample_point(&self, bits: u32) -> Vector {
+    pub fn sample_point(&self, bits: u32) -> IVector {
         self.lattice.sample_point_impl(bits, self.offset.clone())
     }
 }
@@ -202,7 +202,7 @@ impl AffineLattice {
 /// you still have to matrix multiply with the basis matrix.
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
-pub fn cvp_rounding<T: Field>(basis: &Matrix, v: &Vector) -> Vector {
+pub fn cvp_rounding<T: Field>(basis: &Matrix, v: &IVector) -> IVector {
     use nalgebra::{DMatrix, DVector, LU};
     let mut a = DMatrix::<T>::zeros(
         v.dim, basis.rows
@@ -255,7 +255,7 @@ pub fn cvp_rounding<T: Field>(basis: &Matrix, v: &Vector) -> Vector {
 /// Given the standard basis this will fail to return
 /// the correct coefficients when the entries in v
 /// can't be represented by 64-bit floats.
-pub fn cvp_rounding_float(basis: &Matrix, v: &Vector) -> Vector {
+pub fn cvp_rounding_float(basis: &Matrix, v: &IVector) -> IVector {
     cvp_rounding::<f64>(basis, v)
 }
 
@@ -266,20 +266,20 @@ pub fn cvp_rounding_float(basis: &Matrix, v: &Vector) -> Vector {
 /// you still have to matrix multiply with the basis matrix.
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
-pub fn cvp_rounding_exact(basis: &Matrix, v: &Vector) -> Vector {
+pub fn cvp_rounding_exact(basis: &Matrix, v: &IVector) -> IVector {
     cvp_rounding::<Rational>(basis, v)
 }
 
 #[test]
 fn babai_rounding_example() {
     let gen = Matrix::from_rows(&[
-        Vector::from_array([-97, 75, -97, 75, 22]),
-        Vector::from_array([101, 38, 101, 38, 117]),
-        Vector::from_array([256, 0, 0, 0, 0]),
-        Vector::from_array([0, 256, 0, 0, 0]),
-        Vector::from_array([0, 0, 256, 0, 0]),
-        Vector::from_array([0, 0, 0, 256, 0]),
-        Vector::from_array([0, 0, 0, 0, 256]),
+        IVector::from_array([-97, 75, -97, 75, 22]),
+        IVector::from_array([101, 38, 101, 38, 117]),
+        IVector::from_array([256, 0, 0, 0, 0]),
+        IVector::from_array([0, 256, 0, 0, 0]),
+        IVector::from_array([0, 0, 256, 0, 0]),
+        IVector::from_array([0, 0, 0, 256, 0]),
+        IVector::from_array([0, 0, 0, 0, 256]),
     ]);
 
     let mut lattice = Lattice::from_generating_set(gen);
@@ -333,7 +333,7 @@ fn babai_rounding_identity_dim_2_subspace() {
 fn babai_rounding_linear_dim_3() {
     use rand::random;
     let lattice = Lattice::from_basis(Matrix::from_rows(&[
-        Vector::from_array([3, 3, 3])
+        IVector::from_array([3, 3, 3])
     ]));
 
     assert_eq!(

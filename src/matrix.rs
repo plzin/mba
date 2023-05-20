@@ -164,7 +164,7 @@ impl Matrix {
     }
 
     /// Returns a slice of a row.
-    pub fn row(&self, r: usize) -> &VV {
+    pub fn row(&self, r: usize) -> &IVV {
         debug_assert!(r < self.rows);
         unsafe {
             VV::from_slice(core::slice::from_raw_parts(
@@ -175,7 +175,7 @@ impl Matrix {
     }
 
     /// Returns a mutable slice of a row.
-    pub fn row_mut(&mut self, r: usize) -> &mut VV {
+    pub fn row_mut(&mut self, r: usize) -> &mut IVV {
         debug_assert!(r < self.rows);
         unsafe {
             VV::from_slice_mut(core::slice::from_raw_parts_mut(
@@ -317,7 +317,7 @@ impl Matrix {
 }
 
 impl std::ops::Index<usize> for Matrix {
-    type Output = VV;
+    type Output = IVV;
 
     fn index(&self, index: usize) -> &Self::Output {
         self.row(index)
@@ -366,10 +366,10 @@ impl std::ops::Mul for &Matrix {
     }
 }
 
-impl std::ops::Mul<&Vector> for &Matrix {
-    type Output = Vector;
+impl std::ops::Mul<&IVector> for &Matrix {
+    type Output = IVector;
 
-    fn mul(self, rhs: &Vector) -> Self::Output {
+    fn mul(self, rhs: &IVector) -> Self::Output {
         assert!(self.cols == rhs.dim, "Can't multiply matrix and vector because of incompatible dimensions");
 
         let mut v = Vector::zero(self.rows);
@@ -441,7 +441,7 @@ impl<'a> RowIter<'a> {
 }
 
 impl<'a> Iterator for RowIter<'a> {
-    type Item = &'a VV;
+    type Item = &'a IVV;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front as usize > self.back as usize {
@@ -494,7 +494,7 @@ impl<'a> RowIterMut<'a> {
 }
 
 impl<'a> Iterator for RowIterMut<'a> {
-    type Item = &'a mut VV;
+    type Item = &'a mut IVV;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front as usize > self.back as usize {
