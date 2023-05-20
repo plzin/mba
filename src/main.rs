@@ -246,19 +246,19 @@ fn rewrite(
 
 fn main() {
     let s = "4071272 * w + 3590309086 * (w | z & z & (y |
-		w)) + 3690425492 * (w & x ^ ~z ^ ~y) + 3735539420 *
-		(y ^ (w & z | y)) + 3176111544 * ((x & y | x ^ z) ^
-		~y) + 90227856 * (y & x & x & (x & w | ~w)) +
-		2231609705 * (~z ^ w & x | z ^ x | x | w) +
-		263864489 * (w ^ z | x | w | z) + 17029904 *
-		(~w ^ w ^ (x | z) ^ ~x) + 2987805917 * (z & x) +
-		1280785607 * z + 2092481170 * (y & (w & y | ~z)) +
-		637019375 * (~w | w & z & ~x) + 3221225472 * ((x |
-		w) ^ x ^ x ^ y) + 3985988880 * x + 263864489 * (~~w &
-		x) + 469200020 * ((z ^ w & w) & ~(x ^ y)) +
-		1774328762 * ((w | x) & (x ^ z) & z) + 3645311564 *
-		(~(z | w) | w) + 3194849700 * ~((y | y) ^ y ^ z)
-		+ 1678283628 * ~(~y & ~w) + 1083630375 * y";
+        w)) + 3690425492 * (w & x ^ ~z ^ ~y) + 3735539420 *
+        (y ^ (w & z | y)) + 3176111544 * ((x & y | x ^ z) ^
+        ~y) + 90227856 * (y & x & x & (x & w | ~w)) +
+        2231609705 * (~z ^ w & x | z ^ x | x | w) +
+        263864489 * (w ^ z | x | w | z) + 17029904 *
+        (~w ^ w ^ (x | z) ^ ~x) + 2987805917 * (z & x) +
+        1280785607 * z + 2092481170 * (y & (w & y | ~z)) +
+        637019375 * (~w | w & z & ~x) + 3221225472 * ((x |
+        w) ^ x ^ x ^ y) + 3985988880 * x + 263864489 * (~~w &
+        x) + 469200020 * ((z ^ w & w) & ~(x ^ y)) +
+        1774328762 * ((w | x) & (x ^ z) & z) + 3645311564 *
+        (~(z | w) | w) + 3194849700 * ~((y | y) ^ y ^ z)
+        + 1678283628 * ~(~y & ~w) + 1083630375 * y";
     //let e = LUExpr::from_string("(x ^ y) + 2 * (x & y)").unwrap();
     let e = LUExpr::from_string(s).unwrap();
     let d = deobfuscate_linear(e, 32, false);
@@ -288,11 +288,11 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
     }
 
     // Insert the original operations so we always have a solution.
-    //for u in &e.0 {
-    //    if !ops.contains(&u.1) {
-    //        ops.push(u.1.clone());
-    //    }
-    //}
+    for u in &e.0 {
+        if !ops.contains(&u.1) {
+            ops.push(u.1.clone());
+        }
+    }
 
     //for o in &ops {
     //    println!("{o}");

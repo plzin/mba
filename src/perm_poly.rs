@@ -216,25 +216,8 @@ fn zero_ideal(n: u32) -> Vec<Poly> {
     for i in (2u32..).step_by(2) {
         div += i.trailing_zeros();
 
-        // If the exponent would be negative
-        // then add the last generator and stop.
-        if n <= div {
-            let mut p = Poly::one();
-
-            for j in 0..i {
-                // Multiply the current polynomial by (x-j).
-                p.mul_linfac(&j.into());
-            }
-
-            p.mod_coeff(n);
-            p.truncate();
-
-            gen.push(p);
-            break;
-        }
-
         // Compute the exponent.
-        let e = n - div;
+        let e = if n <= div { 0 } else { n - div };
 
         // Let's build the polynomial.
         let mut p = Poly::one();
@@ -249,6 +232,10 @@ fn zero_ideal(n: u32) -> Vec<Poly> {
         p.truncate();
 
         gen.push(p);
+
+        if e == 0 {
+            break;
+        }
     }
 
     gen

@@ -1,7 +1,7 @@
 use crate::diophantine::hermite_normal_form;
 use crate::{matrix::Matrix, vector::*};
 use nalgebra::{DMatrix, DVector, Scalar};
-use rug::{Integer, Rational, Complete};
+use rug::{Integer, Rational, Complete, Float};
 use num_traits::{Zero, One, NumAssign};
 use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign};
 use std::cmp::Ordering;
@@ -113,22 +113,28 @@ impl Lattice {
         self.at(self.cvp_rounding_coeff_exact(v))
     }
 
-    /// Performs LLL basis reduction.
+    /// Size reduce the basis.
+    /// This essentially is Gram-Schmidt
+    /// but rounding the coefficients to integers.
+    fn size_reduce(&mut self) {
+        for i in 0..self.basis.rows {
+            for j in 0..i {
+                let b_i = &self.basis[i];
+                let b_j = &self.basis[j];
+                let q = b_i.dot(&b_j).div_rem_round(b_j.norm_sqr()).0;
+                let s = b_j * &q;
+                self.basis[i] -= &s;
+            }
+        }
+    }
+
+    /// Performs LLL basis reduction using rational numbers.
     pub fn lll(&mut self, delta: &Rational) {
         let n = self.basis.rows;
         let mut swap_condition = true;
 
         while swap_condition {
-            // Gram-Schmidt
-            for i in 0..n {
-                for j in 0..i {
-                    let b_i = &self.basis[i];
-                    let b_j = &self.basis[j];
-                    let q = b_i.dot(&b_j).div_rem_round(b_j.norm_sqr()).0;
-                    let s = b_j * &q;
-                    self.basis[i] -= &s;
-                }
-            }
+            self.size_reduce();
 
             // Lovasz condition
             swap_condition = false;
@@ -173,7 +179,7 @@ impl AffineLattice {
     /// Creates an affine lattice from an offset and a basis.
     pub fn from_offset_basis(offset: Vector, basis: Matrix) -> Self {
         Self {
-            offset: offset,
+            offset,
             lattice: Lattice::from_basis(basis),
         }
     }
@@ -197,10 +203,6 @@ impl AffineLattice {
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
 pub fn cvp_rounding<T: Field>(basis: &Matrix, v: &Vector) -> Vector {
-    // This is of course not enough to ensure that the vectors
-    // in the basis are linearly independent.
-    assert!(basis.rows <= v.dim);
-
     use nalgebra::{DMatrix, DVector, LU};
     let mut a = DMatrix::<T>::zeros(
         v.dim, basis.rows
@@ -374,7 +376,7 @@ impl Field for Rational {
         self.round_ref().into()
     }
 
-    fn solve_linear(a: DMatrix<Self>, b: DVector<Self>) -> Option<DVector<Rational>> {
+    fn solve_linear(a: DMatrix<Self>, b: DVector<Self>) -> Option<DVector<Self>> {
         solve_linear_rat(a, b) 
     }
 }
