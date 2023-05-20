@@ -1,5 +1,5 @@
 use crate::diophantine::hermite_normal_form;
-use crate::{matrix::Matrix, vector::*};
+use crate::{matrix::*, vector::*};
 use nalgebra::{DMatrix, DVector, Scalar};
 use rug::{Integer, Rational, Complete, Float};
 use num_traits::{Zero, One, NumAssign};
@@ -11,7 +11,7 @@ use std::cmp::Ordering;
 pub struct Lattice {
     /// The basis matrix of the lattice.
     /// The basis vectors are the rows of the matrix.
-    pub basis: Matrix,
+    pub basis: IMatrix,
 }
 
 impl Lattice {
@@ -28,7 +28,7 @@ impl Lattice {
     }
 
     /// The lattice basis are the rows of the matrix.
-    pub fn from_basis(basis: Matrix) -> Self {
+    pub fn from_basis(basis: IMatrix) -> Self {
         Self { basis }
     }
 
@@ -36,7 +36,7 @@ impl Lattice {
     /// but are potentially linearly dependent.
     /// This function will compute the Hermite normal form
     /// and remove zero rows.
-    pub fn from_generating_set(mut generating_set: Matrix) -> Self {
+    pub fn from_generating_set(mut generating_set: IMatrix) -> Self {
         hermite_normal_form(&mut generating_set);
         let rank = generating_set.rows - generating_set.rows().rev()
             .take_while(|r| r.iter().all(|i| i.is_zero()))
@@ -177,7 +177,7 @@ impl AffineLattice {
     }
 
     /// Creates an affine lattice from an offset and a basis.
-    pub fn from_offset_basis(offset: IVector, basis: Matrix) -> Self {
+    pub fn from_offset_basis(offset: IVector, basis: IMatrix) -> Self {
         Self {
             offset,
             lattice: Lattice::from_basis(basis),
@@ -202,7 +202,7 @@ impl AffineLattice {
 /// you still have to matrix multiply with the basis matrix.
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
-pub fn cvp_rounding<T: Field>(basis: &Matrix, v: &IVector) -> IVector {
+pub fn cvp_rounding<T: Field>(basis: &IMatrix, v: &IVector) -> IVector {
     use nalgebra::{DMatrix, DVector, LU};
     let mut a = DMatrix::<T>::zeros(
         v.dim, basis.rows
@@ -255,7 +255,7 @@ pub fn cvp_rounding<T: Field>(basis: &Matrix, v: &IVector) -> IVector {
 /// Given the standard basis this will fail to return
 /// the correct coefficients when the entries in v
 /// can't be represented by 64-bit floats.
-pub fn cvp_rounding_float(basis: &Matrix, v: &IVector) -> IVector {
+pub fn cvp_rounding_float(basis: &IMatrix, v: &IVector) -> IVector {
     cvp_rounding::<f64>(basis, v)
 }
 
@@ -266,7 +266,7 @@ pub fn cvp_rounding_float(basis: &Matrix, v: &IVector) -> IVector {
 /// you still have to matrix multiply with the basis matrix.
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
-pub fn cvp_rounding_exact(basis: &Matrix, v: &IVector) -> IVector {
+pub fn cvp_rounding_exact(basis: &IMatrix, v: &IVector) -> IVector {
     cvp_rounding::<Rational>(basis, v)
 }
 

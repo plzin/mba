@@ -1,20 +1,25 @@
-use std::marker::PhantomData;
-use rug::{Integer, Complete};
+//! Owned matrix with constant runtime dimension.
+
+use std::{marker::PhantomData, fmt::Debug};
+use rug::{Integer, Complete, Float};
 use crate::vector::*;
 
-/// An matrix whose entries are integers.
-pub struct Matrix {
+/// Matrix.
+pub struct Matrix<T> {
+    /// Memory that holds the entries.
+    pub(self) entries: *mut T,
+
     /// The number of rows.
     pub rows: usize,
 
     /// The number of columns.
     pub cols: usize,
-
-    /// Memory that holds the entries.
-    pub(self) entries: *mut Integer,
 }
 
-impl Matrix {
+pub type IMatrix = Matrix<Integer>;
+pub type FMatrix = Matrix<Float>;
+
+impl<T> Matrix<T> {
     /// Return an empty matrix.
     pub fn empty() -> Self {
         Self {
@@ -37,13 +42,13 @@ impl Matrix {
 
         // The memory layout of the elements.
         let layout = std::alloc::Layout::from_size_align(
-            m * n * core::mem::size_of::<Integer>(),
-            core::mem::align_of::<Integer>()
+            m * n * core::mem::size_of::<T>(),
+            core::mem::align_of::<T>()
         ).unwrap();
 
         // Allocate memory for the entries.
         let entries = unsafe {
-            std::alloc::alloc(layout) as *mut Integer
+            std::alloc::alloc(layout) as *mut T
         };
 
         Self {
@@ -53,29 +58,9 @@ impl Matrix {
         }
     }
 
-    /// Returns an mxn zero matrix.
-    pub fn zero(m: usize, n: usize) -> Self {
-        let r = Self::uninit(m, n);
-        for i in 0..m*n {
-            unsafe {
-                r.entries.add(i).write(Integer::new());
-            }
-        }
-        r
-    }
-
-    /// Returns an nxn identity matrix.
-    pub fn identity(n: usize) -> Self {
-        let mut m = Self::zero(n, n);
-        for i in 0..n {
-            m[(i, i)] = Integer::from(1);
-        }
-        m
-    }
-
     /// Creates a matrix from an array of rows.
-    pub fn from_array<T: Into<Integer>, const R: usize, const C: usize>(
-        a: [[T; C]; R]
+    pub fn from_array<U: Into<T>, const R: usize, const C: usize>(
+        a: [[U; C]; R]
     ) -> Self {
         let m = Self::uninit(R, C);
 
@@ -93,38 +78,8 @@ impl Matrix {
         m
     }
 
-    /// Creates a matrix from a Vec of rows.
-    pub fn from_vec<T: Into<Integer>>(v: Vec<Vec<T>>) -> Self {
-        let m = v.len();
-        if m == 0 {
-            return Self::empty();
-        }
-
-        let n = v[0].len();
-        if n == 0 {
-            return Self::empty();
-        }
-
-        let r = Self::uninit(m, n);
-
-        let mut ptr = r.entries;
-        for row in v {
-            assert!(row.len() == n,
-                "Can't create matrix from vector \
-                    because not every row has the same number of elements");
-            for e in row {
-                unsafe {
-                    ptr.write(e.into());
-                    ptr = ptr.add(1);
-                }
-            }
-        }
-
-        r
-    }
-
     /// Creates a matrix from an iterator.
-    pub fn from_iter<I: Iterator<Item = Integer>>(r: usize, c: usize, mut iter: I) -> Self {
+    pub fn from_iter<I: Iterator<Item = T>>(r: usize, c: usize, mut iter: I) -> Self {
         let mut m = Self::uninit(r, c);
         for i in 0..r*c {
             let e = iter.next()
@@ -138,10 +93,10 @@ impl Matrix {
     }
 
     /// Creates a matrix from slice of rows.
-    pub fn from_rows<U, T>(rows: &[U]) -> Self
+    pub fn from_rows<U, V>(rows: &[U]) -> Self
     where
-        U: AsRef<[T]>,
-        T: Into<Integer> + Clone,
+        U: AsRef<[V]>,
+        V: Into<T> + Clone,
     {
         assert!(!rows.is_empty());
         let r = rows.len();
@@ -154,17 +109,17 @@ impl Matrix {
     }
 
     /// Returns an iterator over the rows as Integer slices.
-    pub fn rows(&self) -> RowIter {
+    pub fn rows(&self) -> RowIter<T> {
         RowIter::from_matrix(self)
     }
 
     /// Returns an iterator over the rows as mutable Integer slices.
-    pub fn rows_mut(&mut self) -> RowIterMut {
+    pub fn rows_mut(&mut self) -> RowIterMut<T> {
         RowIterMut::from_matrix(self)
     }
 
     /// Returns a slice of a row.
-    pub fn row(&self, r: usize) -> &IVV {
+    pub fn row(&self, r: usize) -> &VV<T> {
         debug_assert!(r < self.rows);
         unsafe {
             VV::from_slice(core::slice::from_raw_parts(
@@ -175,7 +130,7 @@ impl Matrix {
     }
 
     /// Returns a mutable slice of a row.
-    pub fn row_mut(&mut self, r: usize) -> &mut IVV {
+    pub fn row_mut(&mut self, r: usize) -> &mut VV<T> {
         debug_assert!(r < self.rows);
         unsafe {
             VV::from_slice_mut(core::slice::from_raw_parts_mut(
@@ -186,17 +141,17 @@ impl Matrix {
     }
 
     /// Returns an iterator over the column.
-    pub fn column(&self, c: usize) -> Column<'_> {
+    pub fn column(&self, c: usize) -> Column<T> {
         Column::from_matrix(self, c)
     }
 
     /// Returns an iterator over the column.
-    pub fn column_mut(&mut self, c: usize) -> ColumnMut<'_> {
+    pub fn column_mut(&mut self, c: usize) -> ColumnMut<T> {
         ColumnMut::from_matrix(self, c)
     }
 
     /// Returns an immutable reference to an element.
-    pub fn entry(&self, r: usize, c: usize) -> &Integer {
+    pub fn entry(&self, r: usize, c: usize) -> &T {
         debug_assert!(r < self.rows && c < self.cols, "Matrix index out of range");
 
         unsafe {
@@ -205,7 +160,7 @@ impl Matrix {
     }
 
     /// Returns a mutable reference to an element.
-    pub fn entry_mut(&mut self, r: usize, c: usize) -> &mut Integer {
+    pub fn entry_mut(&mut self, r: usize, c: usize) -> &mut T {
         debug_assert!(r < self.rows && c < self.cols, "Matrix index out of range");
 
         unsafe {
@@ -214,7 +169,7 @@ impl Matrix {
     }
 
     /// Returns a pointer to an entry.
-    pub fn entry_ptr(&mut self, r: usize, c: usize) -> *mut Integer {
+    pub fn entry_ptr(&mut self, r: usize, c: usize) -> *mut T {
         debug_assert!(r < self.rows && c < self.cols, "Matrix index out of range");
         unsafe {
             self.entries.add(r * self.cols + c)
@@ -251,38 +206,6 @@ impl Matrix {
         }
     }
 
-    /// Flip the sign of a row.
-    pub fn flip_sign_row(&mut self, row: usize) {
-        for e in self.row_mut(row) {
-            *e *= -1;
-        }
-    }
-
-    /// Flip the sign of a column.
-    pub fn flip_sign_column(&mut self, col: usize) {
-        for e in self.column_mut(col) {
-            *e *= -1;
-        }
-    }
-
-    /// Add a scaled row to another row. N = c * M.
-    pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
-        debug_assert!(n < self.rows && m < self.rows);
-        for i in 0..self.cols {
-            let c = (&self[(n, i)] * c).complete();
-            self[(m, i)] += c;
-        }
-    }
-
-    /// Add a scaled column to another column. N = c * M.
-    pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
-        debug_assert!(n < self.cols && m < self.cols);
-        for i in 0..self.rows {
-            let c = (&self[(i, n)] * c).complete();
-            self[(i, m)] += c;
-        }
-    }
-
     /// Removes rows at the end of the matrix.
     pub fn shrink(&mut self, new_nrows: usize) {
         if new_nrows == self.rows {
@@ -316,22 +239,76 @@ impl Matrix {
     }
 }
 
-impl std::ops::Index<usize> for Matrix {
-    type Output = IVV;
+impl Matrix<Integer> {
+    /// Returns an mxn zero matrix.
+    pub fn zero(m: usize, n: usize) -> Self {
+        let r = Self::uninit(m, n);
+        for i in 0..m*n {
+            unsafe {
+                r.entries.add(i).write(Integer::new());
+            }
+        }
+        r
+    }
+
+    /// Returns an nxn identity matrix.
+    pub fn identity(n: usize) -> Self {
+        let mut m = Self::zero(n, n);
+        for i in 0..n {
+            m[(i, i)] = Integer::from(1);
+        }
+        m
+    }
+
+    /// Flip the sign of a row.
+    pub fn flip_sign_row(&mut self, row: usize) {
+        for e in self.row_mut(row) {
+            *e *= -1;
+        }
+    }
+
+    /// Flip the sign of a column.
+    pub fn flip_sign_column(&mut self, col: usize) {
+        for e in self.column_mut(col) {
+            *e *= -1;
+        }
+    }
+
+    /// Add a scaled row to another row. N = c * M.
+    pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
+        debug_assert!(n < self.rows && m < self.rows);
+        for i in 0..self.cols {
+            let c = (&self[(n, i)] * c).complete();
+            self[(m, i)] += c;
+        }
+    }
+
+    /// Add a scaled column to another column. N = c * M.
+    pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
+        debug_assert!(n < self.cols && m < self.cols);
+        for i in 0..self.rows {
+            let c = (&self[(i, n)] * c).complete();
+            self[(i, m)] += c;
+        }
+    }
+}
+
+impl<T> std::ops::Index<usize> for Matrix<T> {
+    type Output = VV<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
         self.row(index)
     }
 }
 
-impl std::ops::IndexMut<usize> for Matrix {
+impl<T> std::ops::IndexMut<usize> for Matrix<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         self.row_mut(index)
     }
 }
 
-impl std::ops::Index<(usize, usize)> for Matrix {
-    type Output = Integer;
+impl<T> std::ops::Index<(usize, usize)> for Matrix<T> {
+    type Output = T;
 
     fn index(&self, index: (usize, usize)) -> &Self::Output {
         self.entry(index.0, index.1)
@@ -339,14 +316,14 @@ impl std::ops::Index<(usize, usize)> for Matrix {
 
 }
 
-impl std::ops::IndexMut<(usize, usize)> for Matrix {
+impl<T> std::ops::IndexMut<(usize, usize)> for Matrix<T> {
     fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
         self.entry_mut(index.0, index.1)
     }
 }
 
-impl std::ops::Mul for &Matrix {
-    type Output = Matrix;
+impl std::ops::Mul for &IMatrix {
+    type Output = IMatrix;
 
     fn mul(self, rhs: Self) -> Self::Output {
         assert!(self.cols == rhs.rows, "Can't multiply matrices because of incompatible dimensions");
@@ -366,7 +343,7 @@ impl std::ops::Mul for &Matrix {
     }
 }
 
-impl std::ops::Mul<&IVector> for &Matrix {
+impl std::ops::Mul<&IVector> for &IMatrix {
     type Output = IVector;
 
     fn mul(self, rhs: &IVector) -> Self::Output {
@@ -386,7 +363,7 @@ impl std::ops::Mul<&IVector> for &Matrix {
 
 }
 
-impl std::fmt::Debug for Matrix {
+impl<T: Debug> Debug for Matrix<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
             .entries(self.rows().map(|r| r.as_slice()))
@@ -394,7 +371,7 @@ impl std::fmt::Debug for Matrix {
     }
 }
 
-impl Drop for Matrix {
+impl<T> Drop for Matrix<T> {
     fn drop(&mut self) {
         if self.entries.is_null() {
             return;
@@ -417,20 +394,20 @@ impl Drop for Matrix {
     }
 }
 
-pub struct RowIter<'a> {
+pub struct RowIter<'a, T> {
     /// Front iterator.
-    front: *mut Integer,
+    front: *mut T,
 
     /// Back iterator.
-    back: *mut Integer,
+    back: *mut T,
 
     /// The number of elements in a column.
     count: usize,
-    lifetime: PhantomData<&'a Integer>,
+    lifetime: PhantomData<&'a T>,
 }
 
-impl<'a> RowIter<'a> {
-    pub fn from_matrix(a: &'a Matrix) -> Self {
+impl<'a, T> RowIter<'a, T> {
+    pub fn from_matrix(a: &'a Matrix<T>) -> Self {
         Self {
             front: a.entries,
             count: a.cols,
@@ -440,8 +417,8 @@ impl<'a> RowIter<'a> {
     }
 }
 
-impl<'a> Iterator for RowIter<'a> {
-    type Item = &'a IVV;
+impl<'a, T> Iterator for RowIter<'a, T> {
+    type Item = &'a VV<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front as usize > self.back as usize {
@@ -456,7 +433,7 @@ impl<'a> Iterator for RowIter<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for RowIter<'a> {
+impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.front as usize > self.back as usize {
             return None;
@@ -470,20 +447,20 @@ impl<'a> DoubleEndedIterator for RowIter<'a> {
     }
 }
 
-pub struct RowIterMut<'a> {
+pub struct RowIterMut<'a, T> {
     /// Front iterator.
-    front: *mut Integer,
+    front: *mut T,
 
     /// Back iterator.
-    back: *mut Integer,
+    back: *mut T,
 
     /// The number of elements in a column.
     count: usize,
-    lifetime: PhantomData<&'a Integer>,
+    lifetime: PhantomData<&'a T>,
 }
 
-impl<'a> RowIterMut<'a> {
-    pub fn from_matrix(a: &'a mut Matrix) -> Self {
+impl<'a, T> RowIterMut<'a, T> {
+    pub fn from_matrix(a: &'a mut Matrix<T>) -> Self {
         Self {
             front: a.entries,
             count: a.cols,
@@ -493,8 +470,8 @@ impl<'a> RowIterMut<'a> {
     }
 }
 
-impl<'a> Iterator for RowIterMut<'a> {
-    type Item = &'a mut IVV;
+impl<'a, T> Iterator for RowIterMut<'a, T> {
+    type Item = &'a mut VV<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front as usize > self.back as usize {
@@ -509,7 +486,7 @@ impl<'a> Iterator for RowIterMut<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for RowIterMut<'a> {
+impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.front as usize > self.back as usize {
             return None;
@@ -523,15 +500,15 @@ impl<'a> DoubleEndedIterator for RowIterMut<'a> {
     }
 }
 
-pub struct Column<'a> {
-    ptr: *mut Integer,
+pub struct Column<'a, T> {
+    ptr: *mut T,
     off: usize,
-    last: *mut Integer,
-    lifetime: PhantomData<&'a Integer>,
+    last: *mut T,
+    lifetime: PhantomData<&'a T>,
 }
 
-impl<'a> Column<'a> {
-    pub fn from_matrix(a: &'a Matrix, col: usize) -> Self {
+impl<'a, T> Column<'a, T> {
+    pub fn from_matrix(a: &'a Matrix<T>, col: usize) -> Self {
         debug_assert!(col < a.cols);
         Self {
             ptr: unsafe { a.entries.add(col) },
@@ -542,8 +519,8 @@ impl<'a> Column<'a> {
     }
 }
 
-impl<'a> Iterator for Column<'a> {
-    type Item = &'a Integer;
+impl<'a, T> Iterator for Column<'a, T> {
+    type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
         if self.ptr > self.last {
             None
@@ -557,15 +534,15 @@ impl<'a> Iterator for Column<'a> {
     }
 }
 
-pub struct ColumnMut<'a> {
-    ptr: *mut Integer,
+pub struct ColumnMut<'a, T> {
+    ptr: *mut T,
     off: usize,
-    last: *mut Integer,
-    lifetime: PhantomData<&'a mut Integer>,
+    last: *mut T,
+    lifetime: PhantomData<&'a mut T>,
 }
 
-impl<'a> ColumnMut<'a> {
-    pub fn from_matrix(a: &'a mut Matrix, col: usize) -> Self {
+impl<'a, T> ColumnMut<'a, T> {
+    pub fn from_matrix(a: &'a mut Matrix<T>, col: usize) -> Self {
         debug_assert!(col < a.cols);
         Self {
             ptr: unsafe { a.entries.add(col) },
@@ -576,8 +553,8 @@ impl<'a> ColumnMut<'a> {
     }
 }
 
-impl<'a> Iterator for ColumnMut<'a> {
-    type Item = &'a mut Integer;
+impl<'a, T> Iterator for ColumnMut<'a, T> {
+    type Item = &'a mut T;
     fn next(&mut self) -> Option<Self::Item> {
         if self.ptr > self.last {
             None

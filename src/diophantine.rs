@@ -3,13 +3,13 @@ use rug::ops::DivRounding;
 use rug::{Integer, Complete};
 use rand::random;
 
-use crate::matrix::Matrix;
+use crate::matrix::*;
 use crate::vector::*;
 use crate::lattice::{AffineLattice, Lattice};
 
 /// Computes the (row-style) hermite normal form of a matrix in place
 /// and returns the transformation matrix.
-pub fn hermite_normal_form(a: &mut Matrix) -> Matrix {
+pub fn hermite_normal_form(a: &mut IMatrix) -> IMatrix {
     // The transformation matrix.
     let mut u = Matrix::identity(a.rows);
 
@@ -85,7 +85,7 @@ pub fn hermite_normal_form(a: &mut Matrix) -> Matrix {
 }
 
 /// Solves a system of linear diophantine equations.
-pub fn solve(a: &Matrix, b: &IVector) -> AffineLattice {
+pub fn solve(a: &IMatrix, b: &IVector) -> AffineLattice {
     assert!(a.rows == b.dim,
         "Vector must have an entry for each row in the matrix.");
 
@@ -135,7 +135,7 @@ pub fn solve(a: &Matrix, b: &IVector) -> AffineLattice {
 }
 
 /// Solves a linear system of equations Ax=b mod n.
-pub fn solve_modular(a: &Matrix, b: &IVector, n: &Integer) -> AffineLattice {
+pub fn solve_modular(a: &IMatrix, b: &IVector, n: &Integer) -> AffineLattice {
     //
     // Concatenate an n times the identity matrix to the right of A.
     //
