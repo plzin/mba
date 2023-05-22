@@ -2,7 +2,7 @@
 
 use std::{ops::{Deref, DerefMut}, fmt::Debug};
 use num_traits::Zero;
-use rug::{Integer, Complete, Float};
+use rug::{Integer, Complete, Float, Rational};
 
 /// Vector view.
 #[derive(Debug)]
@@ -10,6 +10,7 @@ use rug::{Integer, Complete, Float};
 pub struct VV<T>([T]);
 
 pub type IVV = VV<Integer>;
+pub type QVV = VV<Rational>;
 pub type FVV = VV<Float>;
 
 impl<T> VV<T> {
@@ -108,7 +109,7 @@ impl<T: Zero> VV<T> {
     }
 }
 
-impl VV<Integer> {
+impl IVV {
     /// Computes the dot product of two vectors.
     pub fn dot(&self, other: &Self) -> Integer {
         assert!(self.dim() == other.dim());
@@ -126,6 +127,23 @@ impl VV<Integer> {
     pub fn norm(&self) -> Float {
         let ns = self.norm_sqr();
         Float::with_val(ns.signed_bits(), ns).sqrt()
+    }
+}
+
+impl FVV {
+    pub fn precision(&self) -> u32 {
+        if cfg!(debug_assert) {
+            self.assert_precision();
+        }
+        self.entry(0).prec()
+    }
+
+    pub fn assert_precision(&self) {
+        let mut iter = self.iter();
+        let Some(prec) = iter.next().map(|f| f.prec()) else {
+            return
+        };
+        assert!(iter.all(|f| f.prec() == prec));
     }
 }
 
@@ -183,6 +201,7 @@ pub struct Vector<T> {
 }
 
 pub type IVector = Vector<Integer>;
+pub type QVector = Vector<Rational>;
 pub type FVector = Vector<Float>;
 
 impl<T> Vector<T> {
@@ -264,6 +283,20 @@ impl<T> Vector<T> {
         v
     }
 
+    pub fn view(&self) -> &VV<T> {
+        let slice = unsafe {
+            std::slice::from_raw_parts(self.entries, self.dim)
+        };
+        VV::from_slice(slice)
+    }
+
+    pub fn view_mut(&mut self) -> &mut VV<T> {
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(self.entries, self.dim)
+        };
+        VV::from_slice_mut(slice)
+    }
+
     /// Free the entries.
     pub(self) unsafe fn free(&mut self) {
         let layout = std::alloc::Layout::from_size_align(
@@ -281,14 +314,14 @@ impl<T> Vector<T> {
     }
 }
 
-impl Vector<Integer> {
-        /// Returns a zero vector.
+impl<T: Zero> Vector<T> {
+    /// Returns a zero vector.
     pub fn zero(dim: usize) -> Self {
         let v = Self::uninit(dim);
 
         for i in 0..dim {
             unsafe {
-                v.entries.add(i).write(Integer::new());
+                v.entries.add(i).write(T::zero());
             }
         }
 
@@ -297,7 +330,7 @@ impl Vector<Integer> {
 
     /// Returns a vector with index `i` set to `v`
     /// and every other entry to zero.
-    pub fn ith(dim: usize, i: usize, v: Integer) -> Self {
+    pub fn ith(dim: usize, i: usize, v: T) -> Self {
         assert!(i < dim);
         let mut r = Self::zero(dim);
         r[i] = v;
@@ -305,23 +338,24 @@ impl Vector<Integer> {
     }
 }
 
+impl FVector {
+    /// Zero vector with a certain precision.
+    pub fn zero_prec(dim: usize, prec: u32) -> Self {
+        Self::from_iter(dim, std::iter::repeat(Float::with_val(prec, 0)))
+    }
+}
+
 impl<T> Deref for Vector<T> {
     type Target = VV<T>;
 
     fn deref(&self) -> &Self::Target {
-        let slice = unsafe {
-            std::slice::from_raw_parts(self.entries, self.dim)
-        };
-        VV::from_slice(slice)
+        self.view()
     }
 }
 
 impl<T> DerefMut for Vector<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(self.entries, self.dim)
-        };
-        VV::from_slice_mut(slice)
+        self.view_mut()
     }
 }
 

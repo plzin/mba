@@ -1,6 +1,5 @@
 use crate::diophantine::hermite_normal_form;
 use crate::{matrix::*, vector::*};
-use nalgebra::{DMatrix, DVector, Scalar};
 use rug::{Integer, Rational, Complete, Float};
 use num_traits::{Zero, One, NumAssign};
 use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign};
@@ -202,18 +201,20 @@ impl AffineLattice {
 /// you still have to matrix multiply with the basis matrix.
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
-pub fn cvp_rounding<T: Field>(basis: &IMatrix, v: &IVector) -> IVector {
-    use nalgebra::{DMatrix, DVector, LU};
-    let mut a = DMatrix::<T>::zeros(
-        v.dim, basis.rows
+pub fn cvp_rounding<T: Field>(basis: &'_ IMatrix, v: &'_ IVector) -> IVector
+    where for<'a, 'b, 'c> &'a Matrix<T>: Mul<&'b Matrix<T>, Output = Matrix<T>>
+        + Mul<&'c VV<T>, Output = Vector<T>>,
+{
+    let mut a = Matrix::<T>::zero(
+        basis.cols, basis.rows
     );
-    for c in 0..a.ncols() {
-        for r in 0..a.nrows() {
-            a[(r, c)] = T::from_int(&basis[c][r]);
+    for r in 0..a.rows {
+        for c in 0..a.cols {
+            a[(r, c)] = T::from_int(&basis[(c, r)]);
         }
     }
 
-    let b = DVector::<T>::from_iterator(v.dim, v.iter().map(T::from_int));
+    let b = Vector::<T>::from_iter(v.dim, v.iter().map(T::from_int));
 
     // If the system has full rank,
     // then we can just use an exact solution.
@@ -225,14 +226,13 @@ pub fn cvp_rounding<T: Field>(basis: &IMatrix, v: &IVector) -> IVector {
     // i.e. find the point in the subspace spanned by the vectors
     // that is closest to the given point.
     else {
-        let a_t = a.transpose();
-        let b_new = &a_t * &b;
-        T::solve_linear(a_t * a, b_new)
+        let a_t = a.transposed();
+        T::solve_linear(&a_t * &a, &a_t * b.view())
     };
 
     let x = x.expect("Basis vectors were not independent.");
 
-    let mut res = Vector::zero(x.nrows());
+    let mut res = Vector::zero(x.dim);
     for (i, f) in res.iter_mut().zip(x.iter()) {
         *i = f.to_int();
     }
@@ -364,7 +364,7 @@ pub trait Field: 'static + Clone + PartialEq + Zero + One
     fn to_int(&self) -> Integer;
 
     /// Solve a linear system of equations with coefficients in the field.
-    fn solve_linear(a: DMatrix<Self>, b: DVector<Self>) -> Option<DVector<Self>>;
+    fn solve_linear(a: Matrix<Self>, b: Vector<Self>) -> Option<Vector<Self>>;
 }
 
 impl Field for Rational {
@@ -376,7 +376,7 @@ impl Field for Rational {
         self.round_ref().into()
     }
 
-    fn solve_linear(a: DMatrix<Self>, b: DVector<Self>) -> Option<DVector<Self>> {
+    fn solve_linear(a: Matrix<Self>, b: Vector<Self>) -> Option<Vector<Self>> {
         solve_linear_rat(a, b) 
     }
 }
@@ -390,7 +390,7 @@ impl Field for f32 {
         Integer::from_f32(self.round()).unwrap()
     }
 
-    fn solve_linear(a: DMatrix<Self>, b: DVector<Self>) -> Option<DVector<Self>> {
+    fn solve_linear(a: Matrix<Self>, b: Vector<Self>) -> Option<Vector<Self>> {
         solve_linear(a, b)
     }
 }
@@ -404,30 +404,29 @@ impl Field for f64 {
         Integer::from_f64(self.round()).unwrap()
     }
 
-    fn solve_linear(a: DMatrix<Self>, b: DVector<Self>) -> Option<DVector<Self>> {
+    fn solve_linear(a: Matrix<Self>, b: Vector<Self>) -> Option<Vector<Self>> {
         solve_linear(a, b)
     }
 }
 
 
 fn solve_linear_rat(
-    mut a: DMatrix<Rational>, mut b: DVector<Rational>
-) -> Option<DVector<Rational>> {
-    assert!(a.nrows() == a.ncols(),
+    mut a: Matrix<Rational>, mut b: Vector<Rational>
+) -> Option<Vector<Rational>> {
+    assert!(a.rows == a.cols,
         "This function only supports non-singular square systems.");
-    for i in 0..a.ncols() {
+    for i in 0..a.cols {
         // Choose a pivot in the c-th column.
         let pivot = a.column(i)
-            .iter()
             .enumerate()
             .skip(i)
             .filter(|e| e.1 != &Rational::new())
             .max_by(|e, f| e.1.cmp_abs(f.1))?.0;
         a.swap_rows(pivot, i);
         let pivot = a[(i, i)].clone();
-        for r in i+1..a.nrows() {
+        for r in i+1..a.rows {
             let fac = (&a[(r, i)] / &pivot).complete();
-            for c in i+1..a.ncols() {
+            for c in i+1..a.cols {
                 let s = (&fac * &a[(i, c)]).complete();
                 a[(r, c)] -= s;
             }
@@ -436,10 +435,10 @@ fn solve_linear_rat(
         }
     }
 
-    let mut result = DVector::<Rational>::zeros(a.ncols());
-    for i in (0..a.ncols()).rev() {
+    let mut result = Vector::<Rational>::zero(a.cols);
+    for i in (0..a.cols).rev() {
         let mut sum = b[i].clone();
-        for j in i+1..a.ncols() {
+        for j in i+1..a.cols {
             sum -= (&a[(i, j)] * &result[j]).complete();
         }
 
@@ -452,25 +451,24 @@ fn solve_linear_rat(
 
 /// PartialOrd should not return None for any of the elements in the matrix.
 /// We can't use Ord because of the floating point types.
-fn solve_linear<T: NumAssign + PartialOrd + Copy + Scalar>(
-    mut a: DMatrix<T>, mut b: DVector<T>
-) -> Option<DVector<T>> {
-    assert!(a.nrows() == a.ncols(),
+fn solve_linear<T: NumAssign + PartialOrd + Copy>(
+    mut a: Matrix<T>, mut b: Vector<T>
+) -> Option<Vector<T>> {
+    assert!(a.rows == a.cols,
         "This function only supports non-singular square systems.");
     let abs = |x: T| if x < T::zero() { T::zero() - x } else { x };
-    for i in 0..a.ncols() {
+    for i in 0..a.cols {
         // Choose a pivot in the c-th column.
         let pivot = a.column(i)
-            .iter()
             .enumerate()
             .skip(i)
             .filter(|e| *e.1 != T::zero())
             .max_by(|e, f| abs(*e.1).partial_cmp(&abs(*f.1)).unwrap())?.0;
         a.swap_rows(pivot, i);
         let pivot = a[(i, i)].clone();
-        for r in i+1..a.nrows() {
+        for r in i+1..a.rows {
             let fac = a[(r, i)] / pivot;
-            for c in i+1..a.ncols() {
+            for c in i+1..a.cols {
                 let s = fac * a[(i, c)];
                 a[(r, c)] -= s;
             }
@@ -479,10 +477,10 @@ fn solve_linear<T: NumAssign + PartialOrd + Copy + Scalar>(
         }
     }
 
-    let mut result = DVector::zeros(a.ncols());
-    for i in (0..a.ncols()).rev() {
+    let mut result = Vector::zero(a.cols);
+    for i in (0..a.cols).rev() {
         let mut sum = b[i].clone();
-        for j in i+1..a.ncols() {
+        for j in i+1..a.cols {
             sum -= a[(i, j)] * result[j];
         }
 
