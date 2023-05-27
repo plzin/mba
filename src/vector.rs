@@ -1,28 +1,33 @@
 //! Owned and non-owned vectors constant runtime dimension.
 
-use std::{ops::{Deref, DerefMut}, fmt::Debug};
+use std::borrow::{Borrow, BorrowMut};
+use std::ops::{Deref, DerefMut, Neg, Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign, Index, Range, IndexMut};
+use std::fmt::Debug;
 use num_traits::Zero;
-use rug::{Integer, Complete, Float, Rational};
+use rug::{Integer, Complete, Float, Rational, ops::NegAssign};
 
 /// Vector view.
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct VV<T>([T]);
 
+#[allow(clippy::upper_case_acronyms)]
 pub type IVV = VV<Integer>;
+#[allow(clippy::upper_case_acronyms)]
 pub type QVV = VV<Rational>;
+#[allow(clippy::upper_case_acronyms)]
 pub type FVV = VV<Float>;
 
 impl<T> VV<T> {
     /// Get a vector view from a slice.
-    pub fn from_slice<'a>(s: &'a [T]) -> &'a Self {
+    pub fn from_slice(s: &[T]) -> &Self {
         unsafe {
             &*std::ptr::from_raw_parts(s.as_ptr() as _, s.len())
         }
     }
 
     /// Get a mutable vector view from a slice.
-    pub fn from_slice_mut<'a>(s: &'a mut [T]) -> &'a mut Self {
+    pub fn from_slice_mut(s: &mut [T]) -> &mut Self {
         unsafe {
             &mut *std::ptr::from_raw_parts_mut(s.as_mut_ptr() as _, s.len())
         }
@@ -85,6 +90,11 @@ impl<T> VV<T> {
     }
 
     /// Apply a function to each entry.
+    pub fn map<U, F: FnMut(&T) -> U>(&self, f: F) -> Vector<U> {
+        Vector::from_iter(self.dim(), self.iter().map(f))
+    }
+
+    /// Apply a function to each entry.
     pub fn map_mut<F: FnMut(&mut T)>(&mut self, mut f: F) {
         for e in self.iter_mut() {
             f(e);
@@ -109,12 +119,20 @@ impl<T: Zero> VV<T> {
     }
 }
 
+impl<T> VV<T>
+    where for<'a> Float: rug::Assign<&'a T>
+{
+    pub fn to_float(&self, prec: u32) -> FVector {
+        self.map(|e| Float::with_val(prec, e))
+    }
+}
+
 impl IVV {
     /// Computes the dot product of two vectors.
     pub fn dot(&self, other: &Self) -> Integer {
         assert!(self.dim() == other.dim());
         self.iter().zip(other.iter())
-            .map(|(c, d)| (c * d).complete())
+            .map(|(c, d)| c * d)
             .sum()
     }
 
@@ -144,6 +162,45 @@ impl FVV {
             return
         };
         assert!(iter.all(|f| f.prec() == prec));
+    }
+
+    /// Computes the dot product of two vectors.
+    pub fn dot(&self, other: &Self) -> Float {
+        assert!(self.dim() == other.dim());
+        self.iter().zip(other.iter())
+            .map(|(c, d)| c * d)
+            .fold(Float::with_val(self.precision(), 0), |acc, f| acc + f)
+    }
+
+    /// Computes the square of the l2 norm of the vector.
+    pub fn norm_sqr(&self) -> Float {
+        self.iter().map(|i| i * i)
+            .fold(Float::with_val(self.precision(), 0), |acc, f| acc + f)
+    }
+
+    /// Computes the l2 norm of the vector.
+    pub fn norm(&self) -> Float {
+        self.norm_sqr().sqrt()
+    }
+}
+
+impl<T> Index<Range<usize>> for VV<T> {
+    type Output = VV<T>;
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        VV::from_slice(&self.as_slice()[index])
+    }
+}
+
+impl<T> IndexMut<Range<usize>> for VV<T> {
+    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+        VV::from_slice_mut(&mut self.as_slice_mut()[index])
+    }
+}
+
+impl<T: Clone> ToOwned for VV<T> {
+    type Owned = Vector<T>;
+    fn to_owned(&self) -> Self::Owned {
+        Vector::from_iter(self.dim(), self.iter().cloned())
     }
 }
 
@@ -187,6 +244,14 @@ impl<T> AsRef<[T]> for VV<T> {
 impl<T> AsMut<[T]> for VV<T> {
     fn as_mut(&mut self) -> &mut [T] {
         self.as_slice_mut()
+    }
+}
+
+impl<T, U> PartialEq<U> for VV<T>
+    where [T]: PartialEq<U>
+{
+    fn eq(&self, other: &U) -> bool {
+        self.as_slice().eq(other)
     }
 }
 
@@ -241,14 +306,7 @@ impl<T> Vector<T> {
         V: Into<T> + Clone,
     {
         let a = a.as_ref();
-        let v = Self::uninit(a.len());
-        for i in 0..v.dim {
-            unsafe {
-                v.entries.add(i).write(a[i].clone().into());
-            }
-        }
-
-        v
+        Self::from_iter(a.len(), a.iter().cloned().map(Into::into))
     }
 
     /// Creates a vector from an iterator.
@@ -300,8 +358,8 @@ impl<T> Vector<T> {
     /// Free the entries.
     pub(self) unsafe fn free(&mut self) {
         let layout = std::alloc::Layout::from_size_align(
-            self.dim * core::mem::size_of::<Integer>(),
-            core::mem::align_of::<Integer>()
+            self.dim * core::mem::size_of::<T>(),
+            core::mem::align_of::<T>()
         ).unwrap();
 
         // Free the memory.
@@ -311,6 +369,25 @@ impl<T> Vector<T> {
     pub fn map<Fn: FnMut(&mut T)>(mut self, f: Fn) -> Self {
         self.map_mut(f);
         self
+    }
+
+    /// Appends an element to the end.
+    pub fn append(&mut self, e: T) {
+        let layout = std::alloc::Layout::from_size_align(
+            self.dim * core::mem::size_of::<T>(),
+            core::mem::align_of::<T>()
+        ).unwrap();
+        self.dim += 1;
+        unsafe {
+            // Reallocate the entries.
+            self.entries = std::alloc::realloc(
+                self.entries as _,
+                layout,
+                core::mem::size_of::<T>() * self.dim
+            ) as _;
+            // Write the new element into the last entry.
+            self.entries.add(self.dim - 1).write(e);
+        };
     }
 }
 
@@ -342,6 +419,18 @@ impl FVector {
     /// Zero vector with a certain precision.
     pub fn zero_prec(dim: usize, prec: u32) -> Self {
         Self::from_iter(dim, std::iter::repeat(Float::with_val(prec, 0)))
+    }
+}
+
+impl<T> Borrow<VV<T>> for Vector<T> {
+    fn borrow(&self) -> &VV<T> {
+        self.view()
+    }
+}
+
+impl<T> BorrowMut<VV<T>> for Vector<T> {
+    fn borrow_mut(&mut self) -> &mut VV<T> {
+        self.view_mut()
     }
 }
 
@@ -394,7 +483,7 @@ impl<T: Clone> Clone for Vector<T> {
             }
         }
 
-        return v;
+        v
     }
 }
 
@@ -403,6 +492,18 @@ impl<T: Debug> Debug for Vector<T> {
         f.debug_list()
             .entries(self.as_slice())
             .finish()
+    }
+}
+
+impl<T> AsRef<VV<T>> for Vector<T> {
+    fn as_ref(&self) -> &VV<T> {
+        self.view()
+    }
+}
+
+impl<T> AsMut<VV<T>> for Vector<T> {
+    fn as_mut(&mut self) -> &mut VV<T> {
+        self.view_mut()
     }
 }
 
@@ -435,174 +536,255 @@ impl<T> Drop for Vector<T> {
     }
 }
 
-
 macro_rules! impl_addsub {
-    ($t:ty, $u:ty) => {
-        impl std::ops::Add<$u> for $t {
-            type Output = Vector<Integer>;
-            fn add(self, rhs: $u) -> Self::Output {
-                assert!(self.dim() == rhs.dim(),
-                    "Can not add vectors of incompatible sizes");
+    ($t:tt) => {
+        impl_addsub!(impl, $t, add, Add);
+        impl_addsub!(impl, $t, sub, Sub);
+    };
+    (impl, $t:tt, $op:tt, $class:tt) => {
+        impl_addsub!(impl, &Vector<$t>,   &Vector<$t>,    $t, $op, $class);
+        impl_addsub!(impl, &Vector<$t>,   &VV<$t>,        $t, $op, $class);
+        impl_addsub!(impl, &VV<$t>,       &Vector<$t>,    $t, $op, $class);
+        impl_addsub!(impl, &VV<$t>,       &VV<$t>,        $t, $op, $class);
+    };
+    (impl, $t:ty, $u:ty, $v:tt, $op:tt, $class:tt) => {
+        impl $class<$u> for $t {
+            type Output = Vector<$v>;
+            fn $op(self, rhs: $u) -> Self::Output {
+                assert!(self.dim() == rhs.dim(), "Can not perform operation \
+                    for vectors of incompatible sizes");
+                macro_rules! prec {
+                    (Float) => {
+                        {
+                            let prec = self.precision();
+                            assert!(prec == rhs.precision(),
+                                "Can not add vectors of different precision.");
+                            prec
+                        }
+                    };
+                    ($_:tt) => { 0u32 };
+                };
+                let prec = prec!($v);
+                macro_rules! op_impl {
+                    ($x:tt, $opa:tt) => { op_impl!($x, $x, $opa) };
+                    (default, $x:ty, $opa:tt) => {
+                        |(a, b): (&$x, &$x)| <&$x>::$opa(a, b).complete()
+                    };
+                    (Integer, $x:ty, $opa:tt) => { op_impl!(default, $x, $opa) };
+                    (Rational, $x:ty, $opa:tt) => { op_impl!(default, $x, $opa) };
+                    (Float, $x:ty, $opa:tt) => {
+                        |(a, b): (&$x, &$x)| Float::with_val(prec, <&$x>::$opa(a, b))
+                    };
+                }
                 Vector::from_iter(self.dim(),
-                    self.iter().zip(rhs.iter()).map(|(a, b)| (a + b).complete())
-                )
+                    self.iter().zip(rhs.iter()).map(op_impl!($v, $op)))
             }
         }
-
-        impl std::ops::Sub<$u> for $t {
-            type Output = Vector<Integer>;
-            fn sub(self, rhs: $u) -> Self::Output {
-                assert!(self.dim() == rhs.dim(),
-                    "Can not subtract vectors of incompatible sizes");
-                Vector::from_iter(self.dim(),
-                    self.iter().zip(rhs.iter()).map(|(a, b)| (a - b).complete())
-                )
-            }
-        }
-    }
+    };
+    ($t:tt, $($o:tt),+) => {
+        impl_addsub!($t);
+        impl_addsub!($($o),+);
+    };
 }
 
-impl_addsub!(&Vector<Integer>, &Vector<Integer>);
-impl_addsub!(&Vector<Integer>, &VV<Integer>);
-impl_addsub!(&VV<Integer>, &Vector<Integer>);
-impl_addsub!(&VV<Integer>, &VV<Integer>);
+impl_addsub!(Integer, Rational, Float);
 
 macro_rules! impl_addsub_reuse {
-    ($t:ty) => {
-        impl std::ops::Add<$t> for Vector<Integer> {
-            type Output = Vector<Integer>;
+    (impl, $t:ty, $u:ty) => {
+        impl Add<$t> for Vector<$u> {
+            type Output = Vector<$u>;
             fn add(mut self, rhs: $t) -> Self::Output {
-                assert!(self.dim() == rhs.dim());
                 self += rhs;
                 self
             }
         }
 
-        impl std::ops::Add<Vector<Integer>> for $t {
-            type Output = Vector<Integer>;
-            fn add(self, mut rhs: Vector<Integer>) -> Self::Output {
-                assert!(self.dim() == rhs.dim());
+        impl Add<Vector<$u>> for $t {
+            type Output = Vector<$u>;
+            fn add(self, mut rhs: Vector<$u>) -> Self::Output {
                 rhs += self;
                 rhs
             }
         }
 
-        impl std::ops::Sub<$t> for Vector<Integer> {
-            type Output = Vector<Integer>;
+        impl Sub<$t> for Vector<$u> {
+            type Output = Vector<$u>;
             fn sub(mut self, rhs: $t) -> Self::Output {
-                assert!(self.dim() == rhs.dim());
                 self -= rhs;
                 self
             }
         }
 
-        impl std::ops::Sub<Vector<Integer>> for $t {
-            type Output = Vector<Integer>;
-            fn sub(self, mut rhs: Vector<Integer>) -> Self::Output {
-                assert!(self.dim() == rhs.dim());
-                // We can't get away without any allocation because
-                // sub is not commutative.
-                for i in 0..self.dim() {
-                    let s = &self[i] - &rhs[i];
-                    let s = s.complete();
-                    rhs[i] = s;
-                }
-                rhs
+        impl Sub<Vector<$u>> for $t {
+            type Output = Vector<$u>;
+            fn sub(self, mut rhs: Vector<$u>) -> Self::Output {
+                // If we were to do this in one step,
+                // we would need to allocate a temporary object.
+                // Might be worth it, not too sure.
+                rhs = -rhs;
+                rhs + self
             }
         }
-    }
+    };
+    ($t:ty) => {
+        impl_addsub_reuse!(impl, &Vector<$t>, $t);
+        impl_addsub_reuse!(impl, &VV<$t>, $t);
+    };
+    ($t:ty, $($o:ty),+) => {
+        impl_addsub_reuse!($t);
+        impl_addsub_reuse!($($o),+);
+    };
 }
 
-impl_addsub_reuse!(&Vector<Integer>);
-impl_addsub_reuse!(&VV<Integer>);
+impl_addsub_reuse!(Integer, Rational, Float);
 
 macro_rules! impl_muldiv {
-    ($t:ty) => {
-        impl std::ops::Mul<&Integer> for $t {
-            type Output = Vector<Integer>;
-            fn mul(self, rhs: &Integer) -> Self::Output {
+    ($t:tt) => {
+        impl_muldiv!(impl, $t, mul, Mul);
+        impl_muldiv!(impl, $t, div, Div);
+        impl_muldiv!(invert, $t, &Vector<$t>);
+        impl_muldiv!(invert, $t, &VV<$t>);
+    };
+    (impl, $t:tt, $op:tt, $class:tt) => {
+        impl_muldiv!(impl, &Vector<$t>,   $t, $op, $class);
+        impl_muldiv!(impl, &VV<$t>,       $t, $op, $class);
+    };
+    (invert, $t:ty, $v:ty) => {
+        impl Mul<$v> for &$t {
+            type Output = Vector<$t>;
+            fn mul(self, rhs: $v) -> Self::Output {
+                rhs * self
+            }
+        }
+    };
+    (impl, $v:ty, $t:tt, $op:tt, $class:tt) => {
+        impl $class<&$t> for $v {
+            type Output = Vector<$t>;
+            fn $op(self, rhs: &$t) -> Self::Output {
+                macro_rules! prec {
+                    (Float) => {
+                        {
+                            let prec = self.precision();
+                            assert!(prec == rhs.prec(), "Can not \
+                                multiply/divide vectors with float of \
+                                different precision of different precision.");
+                            prec
+                        }
+                    };
+                    ($_:tt) => { 0u32 };
+                };
+                let prec = prec!($t);
+                macro_rules! op_impl {
+                    ($x:tt, $opa:tt) => { op_impl!($x, $x, $opa) };
+                    (default, $x:ty, $opa:tt) => {
+                        |i: &$x| <&$x>::$opa(i, rhs).complete()
+                    };
+                    (Integer, $x:ty, $opa:tt) => { op_impl!(default, $x, $opa) };
+                    (Rational, $x:ty, $opa:tt) => { op_impl!(default, $x, $opa) };
+                    (Float, $x:ty, $opa:tt) => {
+                        |i: &$x| Float::with_val(prec, <&$x>::$opa(i, rhs))
+                    };
+                }
                 Vector::from_iter(self.dim(),
-                    self.iter().map(|i| (i * rhs).complete())
-                )
+                    self.iter().map(op_impl!($t, $op)))
             }
         }
-
-        impl std::ops::Mul<$t> for &Integer {
-            type Output = Vector<Integer>;
-            fn mul(self, rhs: $t) -> Self::Output {
-                Vector::from_iter(rhs.dim(),
-                    rhs.iter().map(|i| (i * self).complete())
-                )
-            }
-        }
-
-        impl std::ops::Div<&Integer> for $t {
-            type Output = Vector<Integer>;
-            fn div(self, rhs: &Integer) -> Self::Output {
-                Vector::from_iter(self.dim(),
-                    self.iter().map(|i| (i / rhs).complete())
-                )
-            }
-        }
-    }
+    };
+    ($t:tt, $($o:tt),+) => {
+        impl_muldiv!($t);
+        impl_muldiv!($($o),+);
+    };
 }
 
-impl_muldiv!(&Vector<Integer>);
-impl_muldiv!(&VV<Integer>);
+impl_muldiv!(Integer, Rational, Float);
+
+macro_rules! check_prec {
+    (Float, $l:expr, $r:expr) => {
+        assert!($l.precision() == $r.precision(),
+            "Can't add subtract vectors of different precision.");
+    };
+    ($_:tt, $l:expr, $r:expr) => {};
+}
 
 macro_rules! impl_assign_addsub {
-    ($t:ty, $u:ty) => {
-        impl std::ops::AddAssign<$u> for $t {
+    (impl, $i:tt, $t:ty, $u:ty) => {
+        impl AddAssign<$u> for $t {
             fn add_assign(&mut self, rhs: $u) {
                 assert!(self.dim() == rhs.dim(), "Can not add vectors of different dimensions.");
+                check_prec!($i, self, rhs);
                 for i in 0..self.dim() {
                     self[i] += &rhs[i];
                 }
             }
         }
 
-        impl std::ops::SubAssign<$u> for $t {
+        impl SubAssign<$u> for $t {
             fn sub_assign(&mut self, rhs: $u) {
                 assert!(self.dim() == rhs.dim(), "Can not subtract vectors of different dimensions.");
+                check_prec!($i, self, rhs);
                 for i in 0..self.dim() {
                     self[i] -= &rhs[i];
                 }
             }
         }
-    }
+    };
+    ($t:tt) => {
+        impl_assign_addsub!(impl, $t, Vector<$t>, &Vector<$t>);
+        impl_assign_addsub!(impl, $t, Vector<$t>, &VV<$t>);
+        impl_assign_addsub!(impl, $t, VV<$t>, &Vector<$t>);
+        impl_assign_addsub!(impl, $t, VV<$t>, &VV<$t>);
+    };
+    ($t:tt, $($o:tt),+) => {
+        impl_assign_addsub!($t);
+        impl_assign_addsub!($($o),+);
+    };
 }
 
-impl_assign_addsub!(Vector<Integer>, &Vector<Integer>);
-impl_assign_addsub!(Vector<Integer>, &VV<Integer>);
-impl_assign_addsub!(VV<Integer>, &Vector<Integer>);
-impl_assign_addsub!(VV<Integer>, &VV<Integer>);
+impl_assign_addsub!(Integer, Rational, Float);
 
 macro_rules! impl_assign_muldiv {
-    ($t:ty) => {
-        impl std::ops::MulAssign<&Integer> for $t {
-            fn mul_assign(&mut self, rhs: &Integer) {
+    (impl, $t:ty, $v:ty) => {
+        impl MulAssign<&$t> for $v {
+            fn mul_assign(&mut self, rhs: &$t) {
+                check_prec!($t, self, rhs);
                 self.map_mut(|i| *i *= rhs);
             }
         }
 
-        impl std::ops::DivAssign<&Integer> for $t {
-            fn div_assign(&mut self, rhs: &Integer) {
+        impl DivAssign<&$t> for $v {
+            fn div_assign(&mut self, rhs: &$t) {
+                check_prec!($t, self, rhs);
                 self.map_mut(|i| *i /= rhs);
             }
         }
-    }
+    };
+    ($t:ty, $($o:ty),+) => {
+        impl_assign_muldiv!($($o),+);
+    };
+    ($t:ty) => {
+        impl_assign_muldiv!(impl, $t, Vector<$t>);
+        impl_assign_muldiv!(impl, $t, VV<$t>);
+    };
 }
 
-impl_assign_muldiv!(Vector<Integer>);
-impl_assign_muldiv!(&mut VV<Integer>);
+impl_assign_muldiv!(Integer, Rational, Float);
 
-impl std::ops::Neg for Vector<Integer> {
-    type Output = Vector<Integer>;
-    fn neg(mut self) -> Self::Output {
-        for e in self.iter_mut() {
-            *e *= -1;
+macro_rules! impl_neg {
+    ($t:ty) => {
+        impl Neg for Vector<$t> {
+            type Output = Vector<$t>;
+            fn neg(mut self) -> Self::Output {
+                for e in self.iter_mut() {
+                    e.neg_assign();
+                }
+                self
+            }
         }
-
-        self
+    };
+    ($t:ty, $($o:ty),+) => {
+        impl_neg!($t);
+        impl_neg!($($o),+);
     }
 }
+
+impl_neg!(Integer, Rational, Float);

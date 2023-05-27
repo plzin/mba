@@ -1,5 +1,6 @@
 use crate::diophantine::hermite_normal_form;
 use crate::{matrix::*, vector::*};
+use rug::ops::NegAssign;
 use rug::{Integer, Rational, Complete, Float};
 use num_traits::{Zero, One, NumAssign};
 use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign};
@@ -93,22 +94,22 @@ impl Lattice {
 
     /// Approximate the CVP using Babai's rounding technique with floats,
     /// but returns the coefficients of the linear combination of the basis vectors.
-    pub fn cvp_rounding_coeff(&self, v: &IVector) -> IVector {
+    pub fn cvp_rounding_coeff(&self, v: &IVV) -> IVector {
         cvp_rounding_float(&self.basis, v)
     }
 
     /// Approximate the CVP using Babai's rounding technique with floats.
-    pub fn cvp_rounding(&self, v: &IVector) -> IVector {
+    pub fn cvp_rounding(&self, v: &IVV) -> IVector {
         self.at(self.cvp_rounding_coeff(v))
     }
 
     /// Approximate the CVP using Babai's rounding technique with rational numbers.
-    pub fn cvp_rounding_coeff_exact(&self, v: &IVector) -> IVector {
+    pub fn cvp_rounding_coeff_exact(&self, v: &IVV) -> IVector {
         cvp_rounding_exact(&self.basis, v)
     }
 
     /// Approximate the CVP using Babai's rounding technique with rational numbers.
-    pub fn cvp_rounding_exact(&self, v: &IVector) -> IVector {
+    pub fn cvp_rounding_exact(&self, v: &IVV) -> IVector {
         self.at(self.cvp_rounding_coeff_exact(v))
     }
 
@@ -120,7 +121,7 @@ impl Lattice {
             for j in 0..i {
                 let b_i = &self.basis[i];
                 let b_j = &self.basis[j];
-                let q = b_i.dot(&b_j).div_rem_round(b_j.norm_sqr()).0;
+                let q = b_i.dot(b_j).div_rem_round(b_j.norm_sqr()).0;
                 let s = b_j * &q;
                 self.basis[i] -= &s;
             }
@@ -201,7 +202,7 @@ impl AffineLattice {
 /// you still have to matrix multiply with the basis matrix.
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
-pub fn cvp_rounding<T: Field>(basis: &'_ IMatrix, v: &'_ IVector) -> IVector
+pub fn cvp_rounding<T: Field>(basis: &'_ IMatrix, v: &'_ IVV) -> IVector
     where for<'a, 'b, 'c> &'a Matrix<T>: Mul<&'b Matrix<T>, Output = Matrix<T>>
         + Mul<&'c VV<T>, Output = Vector<T>>,
 {
@@ -214,11 +215,11 @@ pub fn cvp_rounding<T: Field>(basis: &'_ IMatrix, v: &'_ IVector) -> IVector
         }
     }
 
-    let b = Vector::<T>::from_iter(v.dim, v.iter().map(T::from_int));
+    let b = Vector::<T>::from_iter(v.dim(), v.iter().map(T::from_int));
 
     // If the system has full rank,
     // then we can just use an exact solution.
-    let x = if v.dim == basis.rows {
+    let x = if v.dim() == basis.rows {
         T::solve_linear(a, b)
     }
     
@@ -255,7 +256,7 @@ pub fn cvp_rounding<T: Field>(basis: &'_ IMatrix, v: &'_ IVector) -> IVector
 /// Given the standard basis this will fail to return
 /// the correct coefficients when the entries in v
 /// can't be represented by 64-bit floats.
-pub fn cvp_rounding_float(basis: &IMatrix, v: &IVector) -> IVector {
+pub fn cvp_rounding_float(basis: &IMatrix, v: &IVV) -> IVector {
     cvp_rounding::<f64>(basis, v)
 }
 
@@ -266,8 +267,286 @@ pub fn cvp_rounding_float(basis: &IMatrix, v: &IVector) -> IVector {
 /// you still have to matrix multiply with the basis matrix.
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
-pub fn cvp_rounding_exact(basis: &IMatrix, v: &IVector) -> IVector {
+pub fn cvp_rounding_exact(basis: &IMatrix, v: &IVV) -> IVector {
     cvp_rounding::<Rational>(basis, v)
+}
+
+/// Approximates the CVP using Babai's nearest plane algorithm.
+pub fn cvp_nearest_plane_float(basis: &IMatrix, v: &IVV, prec: u32) -> IVector {
+    let q = gram_schmidt(basis.to_float(prec), false);
+    let mut b = v.to_owned();
+    for i in (0..basis.rows).rev() {
+        let a = &q[i];
+        // c = round(⟨a, b⟩ / ⟨a, a⟩)
+        let c = b.iter().zip(a.iter())
+            .map(|(i, f)| Float::with_val(prec, i) * f)
+            .fold(Float::with_val(prec, 0), |acc, f| acc + f);
+        let c = c / a.norm_sqr();
+        let c = c.to_integer().unwrap();
+        b -= &(&c * &basis[i]);
+    }
+
+    v - b
+}
+
+/// Solves the CVP exactly.
+/// - `basis` is the matrix that contains the basis as rows.
+/// - `t` is the target vector.
+/// - `prec` is the precision of the floating point numbers used.
+/// - `r` is an optional float that contains the maximum distance to search for.
+/// This will always return some vector unless no vector is within `r` of the target.
+/// This algorithm is a generalization Babai's nearest plane algorithm
+/// that searches all planes that could contain the closest vector.
+/// It is the simplest one I could think of.
+pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -> Option<IVector> {
+    assert!(basis.cols == t.dim(), "Mismatch of basis/target vector dimension.");
+    assert!(rad.as_ref().map_or(true, |rad| rad.prec() == prec),
+        "rad needs to have the given precision.");
+    let bf = basis.to_float(prec);
+
+    // Q is the Gram-Schmidt orthonormalization and
+    // R is the basis matrix with respect to the Gram-Schmidt basis.
+    let (r, q) = rq_decomposition(&bf);
+    assert!(r.cols == r.rows);
+
+    // Write the target vector in that basis.
+    // If the vector not in the span of the basis,
+    // then this will project it into the span.
+    let qt = &q * &t.to_float(prec);
+    //println!("Lattice in the new basis: {:?}", r);
+    //println!("Target vector in the new basis: {:?}", qt);
+
+    rad = rad.map(|f| f.square());
+
+    /// Utility function for comparing a distance with the radius.
+    /// If the radius is None, then this always accepts.
+    fn in_radius(d: &Float, rad: &Option<Float>) -> bool {
+        rad.as_ref().map_or(true, |rad| d.cmp_abs(rad).unwrap().is_le())
+    }
+
+    /// This actually finds the closest point.
+    /// `rad` is the squared norm.
+    fn cvp_impl(i: usize, r: &FMatrix, qt: &FVV, prec: u32, rad: &Option<Float>) -> Option<IVector> {
+        // One dimensional lattice.
+        if i == 0 {
+            let qt = &qt[0];
+            let r = &r[(0, 0)];
+            // Index of the closest point.
+            let m = Float::with_val(prec, qt / r).round();
+            let d = Float::with_val(prec, &m * r - qt);
+            let d = d.square();
+            return in_radius(&d, rad)
+                .then(|| IVector::from_array([m.to_integer().unwrap()]));
+        }
+
+        let qtc = &qt[i];
+        let rc = &r[(i, i)];
+
+        // Index of the closest plane before rounding.
+        let start_index_fl = Float::with_val(prec, qtc / rc);
+        let start_index = Float::with_val(prec, start_index_fl.round_ref());
+        //println!("Start index: {start_index} ({start_index_fl})");
+
+        // Suppose the start index was -0.4.
+        // We would want to check the planes in the order
+        // 0, -1, 1, -2, 2.
+        // But if the start index was 0.4, we would want
+        // 0, 1, -1, 2, -2
+        // So depending on whether we round up or down
+        // to the integer start index, we will negate
+        // the offset from the start index.
+        let negate_offset = (start_index_fl - &start_index).is_sign_negative();
+
+        // The current plane's offset.
+        let mut offset = Integer::new();
+
+        let mut min_dist = rad.clone();
+        let mut min = None;
+
+        // Iterate over all possible planes.
+        loop {
+            // Index of the plane we are considering.
+            let index = Float::with_val(prec, &start_index + &offset);
+
+            // Compute the index offset of the next plane.
+            // Negate the offset first.
+            offset.neg_assign();
+
+            // Compare it to zero.
+            let sign = offset.cmp0();
+
+            // If we negate the offsets, i.e. 0, -1, 1, -2, ...,
+            // then if we are <= 0, we need to subtract 1.
+            // E.g. if the offset was 1, then we negated it to -1
+            // and subtract 1.
+            if negate_offset && sign.is_le() {
+                offset -= 1;
+            }
+
+            // In the 0, 1, -1, 2, ... case,
+            // if the offset was <= 0, we need to add 1.
+            // E.g. if the offset was -1, then we negated it to 1
+            // and add 1.
+            else if !negate_offset && sign.is_ge() {
+                offset += 1;
+            }
+
+            // Distance to the plane.
+            // This is the distance of the target to
+            // its orthogonal projection in the plane.
+            let d = index.clone() * rc - qtc;
+            let d = d.square();
+            //println!("Index: {index} Distance: {d}");
+
+            // If the plane is not in the radius,
+            // then the next one in the loop definitely is not
+            // either, by the way we iterate over the planes.
+            if !in_radius(&d, &min_dist) {
+                break;
+            }
+
+            // We can use a smaller radius inside the plane.
+            // The target to its projection to any point
+            // in the plane form a right triangle.
+            // So by Pythagoras the squared distance in the
+            // plane can only be <= rad - d.
+            // rad and d are already the square of the distance.
+            let plane_dist = rad.as_ref().map(|f| f - d);
+
+            // Compute the point in the plane we need to be close to now.
+            let point_in_plane = qt - &index * &r[i];
+
+            // Recursively find the closest point.
+            let Some(mut v) = cvp_impl(i - 1, r, &point_in_plane, prec, &plane_dist/*&min_dist*/) else {
+                continue
+            };
+            assert!(v.dim == i);
+
+            // v is the new index vector of the point.
+            // It is the index of the closest point of the previous call,
+            // plus the index of the plane.
+            v.append(index.to_integer().unwrap());
+
+            // Compute the actual vector of the index vector,
+            // i.e. v * r[:i+1, :i+1]. Since there is currently no
+            // way to multiply by a submatrix, just do it manually.
+            let iter = (0..v.dim).map(|i| v.iter().zip(r.column(i))
+                .map(|(l, r)| Float::with_val(prec, l) * r)
+                .fold(Float::with_val(prec, 0), |acc, f| acc + f)
+            );
+            let vv = FVector::from_iter(v.dim, iter);
+
+            // Compute the distance to the point.
+            let d = (&vv - &qt[0..i+1]).norm_sqr();
+
+            // If the distance is smaller than the current minimal dist,
+            // then we have found the new best point.
+            if in_radius(&d, &min_dist) {
+                min = Some(v);
+                min_dist = Some(d);
+            }
+        }
+
+        min
+    }
+
+    cvp_impl(r.cols - 1, &r, &qt, prec, &rad)
+        .map(|v| v.view() * basis)
+}
+
+#[test]
+fn cvp_exact() {
+    let b = IMatrix::from_rows(&[
+        [  1,  -74,   20,   19,   -5,   21,  -19,   18,  -54,  -56,  -40,  -38,  -58,   54,  -34,   -1,   -3,    0,  -27,    8],
+        [-44,   19,  -20,   14,  -34,  -61,   53,  -31,   42,   42,   27,   40,  -77,  -59,    2,  -26,    9,    3,  -49,   33],
+        [-19,  -12,   18,  -31,   63,    8,   52,   52,  -50,  -19,   22,   -1,   51,   -8,  -57,   70,  -62,  -45,   48,  -51],
+        [-66,   -5,   15,   34,    2,  -50,   82,   28,   16,   18,   17,   66,   23,  -38,   39,  -36,  -66,   19,  -64,  -62],
+        [-15,   10,  -65,  -46,  -55,  -22,  -88,  -49,   46,  -19,   -4,   -6,   -5,  -20,   23,  -24,  -86,  -29,   -7,   16],
+        [ 35,  -57,    9,   41,    9,   -7,   63,   11,  -72,  -23,   -2, -103,   62,   -9,   64,    1,   25,   10,   48,  -41],
+        [ 18,   11,   31,    2,  -51,   48,   11,  -33,   69,   93,  -12,  -52,   -3, -100,   14,  -15,   85,  -61,    6,   27],
+        [-58,  -54,  -29,  -28,   93,  -88,    3,  -63,   -3,   -9,   26,   22,   89,   26,   11,   -2,  -21,   -5,   37,  -36],
+        [ 24,   72,  -79,  -38,   50,   17,  -54,  -24,   38,   -9,  -64,  -32,  -10,   70,  -67,  -88,   -4,  -34,   -4,   -3],
+        [-24,  -54,   11,   34,  -14,   -5, -132,   46,   51,   67,   24,   -3,  -10,   -6,   22,   38,  -15,  -23,   29,  -39],
+        [ 72,    9,   49,  -19,   66,   -6,  -53,  -77,   40,   -9,  -52,  -20,   90,  -12,   58, -107,  -47,  -64,  -66,  -10],
+        [ 48,  -28,   41,  -76,   17,  -13,  -20,  -16,  -15,   75,  -30,   51,  -55,   31,  -50,    3,  -60,  -34,   13,   31],
+        [ 62,   -9,   13,  -10,   39,   50,   81,   94,  -38,    7,  -62,  -49,   34,   61,   45,   30,  -51,  -78,  -70,   -4],
+        [ 34,   92,  -16,   -3,  113,  -24,    1,   40,  -30,   91,  -57,   -6,  -28,   -7,   13,   64,   18,   24,  -33,  -10],
+        [ -1,  -20,  -45,   44,  -75,   31,   -9,  -47,   74,   -7,   64,   77,  -41,    9,   52,  -33,  -83,  118,   63,    1],
+        [ -9,  -37,   11, -106,  -13,    1,   74,   11,   89,  -10,   61,   43,  -17,  -45,   -7,    5, -103,   43,  -36,   46],
+        [ 60, -101,  -48,  -23,   37,  -45,    1,   23,   52,  -18,  -19,  -36, -125,  -23,   22,  -32,  -28,  -41,   16,  -34],
+        [ 19,  -47,  -85,   17,    2,    1,   12,   19,   27,  -21,   43,   43,   -9,    8,  -60,   36,   83,   65,  -50,   58],
+        [ 59,   -4,   51,   36,  -10,  -12,  -19,  -54,   93,   12,   23,   31,   77,   18,   45,   57,   46,   52,  -21,  -51],
+        [-57,   49,   26,   10,  -22,   32,  -52,  -71,   -9,   31,   45,   28,  -28,  -30,   24,   44,   88,    2,  -63, -105],
+    ]);
+    let t = IVector::from_entries([-48, 69, -76, 36, -72, 31, -53, -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
+    let now = std::time::Instant::now();
+    for _ in 0..1 {
+        let v = cvp_planes(&b, &t, 53, None);
+    }
+    println!("{}", now.elapsed().as_secs_f64());
+    //let v = cvp_planes(&b, &t, 53, None).unwrap();
+    //println!("exact solution: {:?} ({:3})", v, (&v - &t).norm());
+    //let v_plane = cvp_nearest_plane_float(&b, &t, 53);
+    //println!("nearest plane: {:?} ({:3})", v_plane, (&v_plane - &t).norm());
+    //let v_rounding = cvp_rounding_float(&b, &t);
+    //println!("rounding: {:?} ({:3})", v_rounding, (&v_rounding - &t).norm());
+}
+
+/// Gram-Schmidt of the rows of the matrix `a`.
+/// If `orthonormal` is true, the result will be normalized.
+fn gram_schmidt(mut a: FMatrix, orthonormal: bool) -> FMatrix {
+    for i in 0..a.rows {
+        for j in 0..i {
+            let f = a[j].dot(&a[i]) / a[j].norm_sqr();
+            let p = &f * &a[j];
+            a[i] -= &p;
+        }
+    }
+
+    if orthonormal {
+        for i in 0..a.rows {
+            let n = a[i].norm();
+            a[i] /= &n;
+        }
+    }
+
+    a
+}
+
+/// Computes the RQ-decomposition (row QR-decomposition) of a matrix.
+/// Returns a lower triangular matrix `R` and an orthogonal matrix `Q`,
+/// such that `R * Q = A`.
+pub fn rq_decomposition(a: &FMatrix) -> (FMatrix, FMatrix) {
+    let q = gram_schmidt(a.clone(), true);
+    let r = a.mul_transpose(&q);
+    (r, q)
+}
+
+#[test]
+fn gram_schmidt_test() {
+    let a = Matrix::<i32>::from_rows(&[
+        [1, 2, 3],
+        [3, 4, 5],
+    ]);
+    let a = a.to_float(53);
+    let (r, q) = rq_decomposition(&a);
+    println!("q: {:?}\nr: {:?}", q, r);
+    println!("{:?}", &r * &q);
+    println!("{:?}", &q * &FVector::from_array(
+        [Float::with_val(53, 5), Float::with_val(53, 6), Float::with_val(53, 7)]));
+}
+
+#[test]
+fn nearest_plane_example() {
+    let a = IMatrix::from_rows(&[
+        [2, 3, 1],
+        [4, 1, -3],
+        [2, 2, 2],
+    ]);
+
+    let t = IVector::from_entries([4, 2, 7]);
+    let c = cvp_nearest_plane_float(&a, &t, 53);
+    println!("{:?}", c);
 }
 
 #[test]
@@ -465,21 +744,21 @@ fn solve_linear<T: NumAssign + PartialOrd + Copy>(
             .filter(|e| *e.1 != T::zero())
             .max_by(|e, f| abs(*e.1).partial_cmp(&abs(*f.1)).unwrap())?.0;
         a.swap_rows(pivot, i);
-        let pivot = a[(i, i)].clone();
+        let pivot = a[(i, i)];
         for r in i+1..a.rows {
             let fac = a[(r, i)] / pivot;
             for c in i+1..a.cols {
                 let s = fac * a[(i, c)];
                 a[(r, c)] -= s;
             }
-            let s = b[i].clone() * fac;
+            let s = b[i] * fac;
             b[r] -= s;
         }
     }
 
     let mut result = Vector::zero(a.cols);
     for i in (0..a.cols).rev() {
-        let mut sum = b[i].clone();
+        let mut sum = b[i];
         for j in i+1..a.cols {
             sum -= a[(i, j)] * result[j];
         }

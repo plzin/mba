@@ -69,7 +69,7 @@ impl Poly {
     pub fn is_id(&self) -> bool {
         debug_assert!(self.coeffs.last().map_or(true, |i| *i != 0),
             "Truncate the polynomial before checking if it is the identity");
-        return self.coeffs == &[0, 1];
+        self.coeffs == [0, 1]
     }
 
     /// Evaluate the polynomial at a using Horner's method.
@@ -78,7 +78,7 @@ impl Poly {
         let mut iter = self.coeffs.iter().rev();
 
         // The last coefficient is the initial value.
-        let mut v = iter.next().map_or_else(|| Integer::new(), |c| c.clone());
+        let mut v = iter.next().map_or_else(Integer::new, |c| c.clone());
         for c in iter {
             // Multiply the current value by a and add the next coefficient.
             v *= a;
@@ -95,7 +95,7 @@ impl Poly {
 
         // The last coefficient is the initial value.
         let mut v = iter.next()
-            .map_or_else(|| Integer::new(), |c| c.clone().keep_bits(n));
+            .map_or_else(Integer::new, |c| c.clone().keep_bits(n));
         for c in iter {
             // Multiply the current value by a and add the next coefficient.
             v *= a;
@@ -301,7 +301,7 @@ impl SubAssign<&Poly> for Poly {
         // Subtract the rhs for the coefficients that exist in both.
         self.coeffs.iter_mut()
             .zip(rhs.coeffs.iter())
-            .for_each(|(l, r)| *l += r);
+            .for_each(|(l, r)| *l -= r);
 
         // Push the remaining coefficients of the rhs
         // if it has more coefficients.
@@ -346,7 +346,7 @@ impl Mul<&Integer> for &Poly {
     fn mul(self, rhs: &Integer) -> Self::Output {
         let mut r = self.clone();
         r *= rhs;
-        return r;
+        r
     }
 }
 

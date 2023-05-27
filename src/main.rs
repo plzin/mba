@@ -48,7 +48,7 @@ fn rewrite(
 
     let mut val = Valuation::zero(v.clone());
 
-    let rows = (1 as usize) << v.len();
+    let rows = 1 << v.len();
     let cols = ops.len();
 
     let mut a = Matrix::zero(rows, cols);
@@ -86,7 +86,7 @@ fn rewrite(
     let solution = if randomize {
         l.sample_point(bits)
     } else {
-        l.offset.clone()
+        l.offset
     };
 
     // Put it in a LUExpr.
@@ -277,7 +277,7 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
     }
     for v in &vars {
         for w in &vars {
-            if v as *const _ == w as *const _ {
+            if std::ptr::eq(v, w) {
                 break;
             }
 
@@ -308,7 +308,7 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
 
     let mut val = Valuation::zero(vars.clone());
 
-    let rows = (1 as usize) << vars.len();
+    let rows = 1 << vars.len();
     let cols = ops.len();
 
     let mut a = Matrix::zero(rows, cols);
@@ -391,7 +391,7 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
 fn deobfuscate_nonlinear(e: Rc<Expr>) {
     let mut v = Vec::new();
     let mut q = std::collections::VecDeque::new();
-    q.push_back(e.clone());
+    q.push_back(e);
     while let Some(e) = q.pop_front() {
         match e.as_ref() {
             Expr::Add(l, r) => {

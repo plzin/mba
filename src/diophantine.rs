@@ -81,7 +81,7 @@ pub fn hermite_normal_form(a: &mut IMatrix) -> IMatrix {
         r += 1;
     }
 
-    return u;
+    u
 }
 
 /// Solves a system of linear diophantine equations.
@@ -123,7 +123,7 @@ pub fn solve(a: &IMatrix, b: &IVector) -> AffineLattice {
         return AffineLattice::empty();
     }
 
-    let offset = -Vector::from_entries(
+    let offset = -Vector::<Integer>::from_entries(
         &u.row(r).as_slice()[..u.rows-1]
     );
 
@@ -192,10 +192,10 @@ fn small_test() {
         [1, 0, 0, 0],
     ]);
 
-    let b = Vector::from_entries(&[0, 1, 1, 2]);
+    let b = Vector::from_entries([0, 1, 1, 2]);
 
     let l = solve(&a, &b);
-    assert!(l.offset.as_slice() == &[2, 1, 0, 0]);
+    assert!(l.offset.as_slice() == [2, 1, 0, 0]);
     assert!(l.lattice.rank() == 1);
-    assert!(l.lattice.basis.row(0).as_slice() == &[0, 0, 1, 1]);
+    assert!(l.lattice.basis.row(0).as_slice() == [0, 0, 1, 1]);
 }

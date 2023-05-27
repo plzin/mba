@@ -119,7 +119,7 @@ fn compose(p: &Poly, q: &Poly, zi: &ZeroIdeal) -> Poly {
     let mut iter = p.coeffs.iter().rev();
 
     let mut r = Poly::constant(
-        iter.next().map_or_else(|| Integer::new(), |c| c.clone())
+        iter.next().map_or_else(Integer::new, |c| c.clone())
     );
 
     // The last coefficient is the initial value.
@@ -135,7 +135,7 @@ fn compose(p: &Poly, q: &Poly, zi: &ZeroIdeal) -> Poly {
 
 /// Computes the inverse of a permutation polynomial using Newton's Method.
 pub fn compute_inverse(f: &Poly, zi: &ZeroIdeal) -> Poly {
-    assert!(is_perm_poly(&f),
+    assert!(is_perm_poly(f),
         "Can't invert the function as it is not a permutation polynomial");
     // Simplify p.
     let p = f.clone().simplified(zi);
@@ -194,8 +194,7 @@ fn compute_inverse_generator(f: &Poly, zi: &ZeroIdeal) -> Poly {
         inverse = compose(&inverse, &g, zi).simplified(zi);
     }
 
-    assert!(false, "Failed to compute the inverse if {} mod 2^{}", f, zi.n);
-    return Poly::zero();
+    panic!("Failed to compute the inverse if {} mod 2^{}", f, zi.n);
 }
 
 /// Computes a set of generators for the "zero ideal" of Z_{2^n}[x],
@@ -367,7 +366,7 @@ impl Poly {
                 let m = (&self.coeffs[coeff] / &gen.coeffs[gen_len-1])
                     .complete();
                 if m != 0 {
-                    let iter = (&mut self.coeffs[coeff+1-gen_len..=coeff])
+                    let iter = self.coeffs[coeff+1-gen_len..=coeff]
                         .iter_mut().zip(gen.coeffs.iter());
 
                     for (p, g) in iter {
@@ -401,7 +400,7 @@ impl Poly {
             let p_len = self.len();
             let (c, rest) = self.coeffs.split_last_mut().unwrap();
             if *c != 0 {
-                let iter = (&mut rest[p_len-gen_len..]).iter_mut()
+                let iter = rest[p_len-gen_len..].iter_mut()
                     .zip(gen.coeffs.iter());
 
                 for (p, g) in iter {
@@ -498,15 +497,14 @@ fn order(p: &Poly, zi: &ZeroIdeal) -> usize {
 
     let mut f = p.clone();
     for i in 1..1usize << zi.n {
-        f = compose(&f, &p, zi).simplified(zi);
+        f = compose(&f, p, zi).simplified(zi);
         if f.is_id() {
             return i + 1;
         }
     }
 
-    assert!(false, "We shouldn't get here.\
+    panic!("We shouldn't get here.\
         Either p is not a permutation polynomial or the composition is wrong.");
-    return 0;
 }
 
 #[test]

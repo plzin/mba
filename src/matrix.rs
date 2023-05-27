@@ -1,7 +1,7 @@
 //! Owned matrix with constant runtime dimension.
 
 use std::{marker::PhantomData, fmt::Debug, ops::Mul};
-use num_traits::Zero;
+use num_traits::{Zero, One};
 use rug::{Integer, Complete, Float, Rational};
 use crate::vector::*;
 
@@ -237,6 +237,11 @@ impl<T> Matrix<T> {
         }
     }
 
+    /// Map the entries of the matrix with a function.
+    pub fn map<U, F: FnMut(&T) -> U>(&self, f: F) -> Matrix<U> {
+        Matrix::from_iter(self.rows, self.cols, self.iter().map(f))
+    }
+
     /// Removes rows at the end of the matrix.
     pub fn shrink(&mut self, new_nrows: usize) {
         if new_nrows == self.rows {
@@ -286,7 +291,7 @@ impl<T: Clone> Matrix<T> {
 
 }
 
-impl<T: Zero> Matrix<T> {
+impl<T: Zero + One> Matrix<T> {
     /// Returns an rxc zero matrix.
     pub fn zero(r: usize, c: usize) -> Self {
         let a = Self::uninit(r, c);
@@ -297,18 +302,27 @@ impl<T: Zero> Matrix<T> {
         }
         a
     }
-}
 
-impl IMatrix {
     /// Returns an nxn identity matrix.
     pub fn identity(n: usize) -> Self {
         let mut m = Self::zero(n, n);
         for i in 0..n {
-            m[(i, i)] = Integer::from(1);
+            m[(i, i)] = T::one();
         }
         m
     }
+}
 
+impl<T> Matrix<T>
+    where for<'a> Float: rug::Assign<&'a T>
+{
+    pub fn to_float(&self, prec: u32) -> Matrix<Float> {
+        self.map(|e| Float::with_val(prec, e))
+    }
+}
+
+
+impl IMatrix {
     /// Flip the sign of a row.
     pub fn flip_sign_row(&mut self, row: usize) {
         for e in self.row_mut(row) {
@@ -367,6 +381,34 @@ impl FMatrix {
     pub fn zero_prec(r: usize, c: usize, prec: u32) -> Self {
         Self::from_iter(r, c, std::iter::repeat(Float::with_val(prec, 0)))
     }
+
+    /// Returns an nxn identity matrix.
+    pub fn identity_prec(n: usize, prec: u32) -> Self {
+        let mut m = Self::zero_prec(n, n, prec);
+        for i in 0..n {
+            m[(i, i)] = Float::with_val(prec, 1);
+        }
+        m
+    }
+
+    /// Multiply the matrix by the transpose of another matrix.
+    pub fn mul_transpose(&self, rhs: &Self) -> Self {
+        assert!(self.cols == rhs.cols,
+            "Invalid dimensions for multiplication.");
+        let prec = self.precision();
+        assert!(prec == rhs.precision(),
+            "Can only multiply matrices of equal precision.");
+        let mut r = Self::zero_prec(self.rows, rhs.rows, prec);
+        for i in 0..self.rows {
+            for j in 0..rhs.rows {
+                r[(i, j)] = self.row(i).iter()
+                    .zip(rhs.row(j).iter())
+                    .map(|(a, b)| a * b)
+                    .fold(Float::with_val(prec, 0), |acc, f| acc + f)
+            }
+        }
+        r
+    }
 }
 
 impl<T> std::ops::Index<usize> for Matrix<T> {
@@ -398,7 +440,7 @@ impl<T> std::ops::IndexMut<(usize, usize)> for Matrix<T> {
     }
 }
 
-macro_rules! impl_mul_big {
+macro_rules! impl_mul {
     ($t:ty, {$($sum:tt)*}) => {
         impl Mul<&Matrix<$t>> for &Matrix<$t> {
             type Output = Matrix<$t>;
@@ -428,21 +470,29 @@ macro_rules! impl_mul_big {
                     vector because of incompatible dimensions");
 
                 let iter = self.rows()
-                    .map(|r| {
-                        r.iter()
-                            .zip(rhs.iter())
-                            $($sum)*
-                    });
+                    .map(|r| r.iter().zip(rhs.iter())$($sum)*);
                 Vector::from_iter(self.rows, iter)
+            }
+        }
+
+        impl Mul<&Matrix<$t>> for &VV<$t> {
+            type Output = Vector<$t>;
+
+            fn mul(self, rhs: &Matrix<$t>) -> Self::Output {
+                assert!(self.dim() == rhs.rows, "Can't multiply matrix and \
+                    vector because of incompatible dimensions");
+                let iter = (0..rhs.cols)
+                    .map(|i| self.iter().zip(rhs.column(i))$($sum)*);
+                Vector::from_iter(rhs.cols, iter)
             }
         }
     }
 }
 
-impl_mul_big!(Integer, { .map(|(l, r)| l * r).fold(Integer::new(), |acc, f| acc + f) });
-impl_mul_big!(Rational, { .map(|(l, r)| (l * r).complete()).sum() });
-impl_mul_big!(f64, { .map(|(l, r)| l * r).sum() });
-impl_mul_big!(f32, { .map(|(l, r)| l * r).sum() });
+impl_mul!(Integer, { .map(|(l, r)| l * r).fold(Integer::new(), |acc, f| acc + f) });
+impl_mul!(Rational, { .map(|(l, r)| (l * r).complete()).sum() });
+impl_mul!(f64, { .map(|(l, r)| l * r).sum() });
+impl_mul!(f32, { .map(|(l, r)| l * r).sum() });
 
 impl Mul for &FMatrix {
     type Output = FMatrix;
@@ -489,6 +539,25 @@ impl Mul<&FVector> for &FMatrix {
                 .fold(Float::with_val(prec, 0), |acc, f| acc + f)
             );
         Vector::from_iter(self.rows, iter)
+    }
+}
+
+impl Mul<&FMatrix> for &FVV {
+    type Output = FVector;
+
+    fn mul(self, rhs: &FMatrix) -> Self::Output {
+        assert!(self.dim() == rhs.rows, "Can't multiply matrix and \
+            vector because of incompatible dimensions");
+        let prec = self.precision();
+        assert!(prec == rhs.precision(),
+            "Can't multiply matrix and vector of different precision.\
+            This can be relaxed in the future.");
+        let iter = (0..rhs.cols)
+            .map(|i| self.iter().zip(rhs.column(i))
+                .map(|(l, r)| l * r)
+                .fold(Float::with_val(prec, 0), |l, r| l + r)
+            );
+        Vector::from_iter(rhs.cols, iter)
     }
 }
 
@@ -701,4 +770,42 @@ impl<'a, T> Iterator for ColumnMut<'a, T> {
             }
         }
     }
+}
+
+#[test]
+fn column_iter() {
+    let m = Matrix::<i32>::from_rows(&[
+        [2, 3],
+        [4, 5],
+    ]);
+    let mut c0 = m.column(0);
+    assert_eq!(c0.next(), Some(&2));
+    assert_eq!(c0.next(), Some(&4));
+    assert!(c0.next().is_none());
+    let mut c1 = m.column(1);
+    assert_eq!(c1.next(), Some(&3));
+    assert_eq!(c1.next(), Some(&5));
+    assert!(c0.next().is_none());
+}
+
+#[test]
+fn row() {
+    let m = Matrix::<i32>::from_rows(&[
+        [2, 3],
+        [4, 5],
+    ]);
+    assert_eq!(m.row(0), &[2, 3]);
+    assert_eq!(m.row(1), &[4, 5]);
+}
+
+#[test]
+fn rows_iter() {
+    let m = Matrix::<i32>::from_rows(&[
+        [2, 3],
+        [4, 5],
+    ]);
+    let mut r = m.rows();
+    assert_eq!(r.next().unwrap(), &[2, 3]);
+    assert_eq!(r.next().unwrap(), &[4, 5]);
+    assert!(r.next().is_none());
 }
