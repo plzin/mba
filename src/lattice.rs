@@ -321,7 +321,7 @@ pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -
     /// Utility function for comparing a distance with the radius.
     /// If the radius is None, then this always accepts.
     fn in_radius(d: &Float, rad: &Option<Float>) -> bool {
-        rad.as_ref().map_or(true, |rad| d.cmp_abs(rad).unwrap().is_le())
+        rad.as_ref().map_or(true, |rad| d.total_cmp(rad).is_le())
     }
 
     /// This actually finds the closest point.
@@ -411,13 +411,13 @@ pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -
             // So by Pythagoras the squared distance in the
             // plane can only be <= rad - d.
             // rad and d are already the square of the distance.
-            let plane_dist = rad.as_ref().map(|f| f - d);
+            let plane_dist = min_dist.as_ref().map(|f| f - d);
 
             // Compute the point in the plane we need to be close to now.
             let point_in_plane = qt - &index * &r[i];
 
             // Recursively find the closest point.
-            let Some(mut v) = cvp_impl(i - 1, r, &point_in_plane, prec, &plane_dist/*&min_dist*/) else {
+            let Some(mut v) = cvp_impl(i - 1, r, &point_in_plane, prec, &plane_dist) else {
                 continue
             };
             assert!(v.dim == i);
