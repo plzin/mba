@@ -247,8 +247,9 @@ impl<T> AsMut<[T]> for VV<T> {
     }
 }
 
-impl<T, U> PartialEq<U> for VV<T>
-    where [T]: PartialEq<U>
+impl<T, U: ?Sized> PartialEq<U> for VV<T>
+    where
+        [T]: PartialEq<U>,
 {
     fn eq(&self, other: &U) -> bool {
         self.as_slice().eq(other)

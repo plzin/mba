@@ -805,7 +805,7 @@ fn rows_iter() {
         [4, 5],
     ]);
     let mut r = m.rows();
-    assert_eq!(r.next().unwrap(), &[2, 3]);
+    assert_eq!(r.next().unwrap(), &[2i32, 3][..]);
     assert_eq!(r.next().unwrap(), &[4, 5]);
     assert!(r.next().is_none());
 }

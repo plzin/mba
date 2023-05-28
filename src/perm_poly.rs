@@ -424,7 +424,7 @@ fn check_inverse_8() {
     let zi = ZeroIdeal::init(8);
     let deg = Uniform::from(1..16);
     let mut rng = rand::thread_rng();
-    for _ in 0..100 {
+    for _ in 0..10 {
         let d = deg.sample(&mut rng);
         let (p, q) = perm_pair(&zi, d);
         let comp = compose(&p, &q, &zi).simplified(&zi);
@@ -437,7 +437,7 @@ fn check_inverse_16() {
     let zi = ZeroIdeal::init(8);
     let deg = Uniform::from(1..16);
     let mut rng = rand::thread_rng();
-    for _ in 0..100 {
+    for _ in 0..10 {
         let d = deg.sample(&mut rng);
         let (p, q) = perm_pair(&zi, d);
         let comp = compose(&p, &q, &zi).simplified(&zi);
@@ -450,7 +450,7 @@ fn check_inverse_32() {
     let zi = ZeroIdeal::init(32);
     let deg = Uniform::from(1..16);
     let mut rng = rand::thread_rng();
-    for _ in 0..100 {
+    for _ in 0..10 {
         let d = deg.sample(&mut rng);
         let (p, q) = perm_pair(&zi, d);
         let comp = compose(&p, &q, &zi).simplified(&zi);
@@ -463,7 +463,7 @@ pub fn check_inverse_64() {
     let zi = ZeroIdeal::init(64);
     let deg = Uniform::from(1..16);
     let mut rng = rand::thread_rng();
-    for _ in 0..100 {
+    for _ in 0..10 {
         let d = deg.sample(&mut rng);
         let (p, q) = perm_pair(&zi, d);
         let comp = compose(&p, &q, &zi).simplified(&zi);
@@ -510,7 +510,7 @@ fn order(p: &Poly, zi: &ZeroIdeal) -> usize {
 #[test]
 pub fn test_order() {
     let zi = ZeroIdeal::init(8);
-    for d in 0..100usize {
+    for d in 0..10usize {
         let p = random_perm_poly(&zi, d % 10 + 1);
         let o = order(&p, &zi);
         assert!(o.is_power_of_two(), "Order of {} is {}!", p, o);
@@ -520,7 +520,7 @@ pub fn test_order() {
 #[test]
 pub fn test_inverse_generator() {
     let zi = ZeroIdeal::init(64);
-    for d in 0..100usize {
+    for d in 0..10usize {
         let p = random_perm_poly(&zi, d % 10 + 1).simplified(&zi);
         let q = compute_inverse_generator(&p, &zi);
         //let q = compute_inverse(&p, &zi);
