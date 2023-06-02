@@ -1,3 +1,4 @@
+use crate::select;
 use crate::diophantine::hermite_normal_form;
 use crate::{matrix::*, vector::*};
 use rug::ops::NegAssign;
@@ -5,6 +6,7 @@ use rug::{Integer, Rational, Complete, Float};
 use num_traits::{Zero, One, NumAssign};
 use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign};
 use std::cmp::Ordering;
+
 
 /// An integer lattice.
 #[derive(Debug)]
@@ -59,7 +61,7 @@ impl Lattice {
     
     /// Returns the vector on the lattice that is the linear
     /// combination of the basis vectors with the given coefficients.
-    pub fn at<T: AsRef<[Integer]>>(&self, coefficients: T) -> IVector {
+    pub fn at<T: AsRef<[Integer]>>(&self, coefficients: T) -> IOwnedVector {
         let coefficients = coefficients.as_ref();
         assert!(coefficients.len() == self.rank());
 
@@ -69,8 +71,8 @@ impl Lattice {
 
     /// Samples a point from the lattice that is added to the initial vector.
     pub(self) fn sample_point_impl(
-        &self, bits: u32, initial: IVector
-    ) -> IVector {
+        &self, bits: u32, initial: IOwnedVector
+    ) -> IOwnedVector {
         assert!(!self.is_empty(), "Lattice is empty.");
         assert!(initial.dim() == self.ambient_dim());
 
@@ -88,29 +90,8 @@ impl Lattice {
     }
 
     /// Returns a random point on the lattice mod 2^bits.
-    pub fn sample_point(&self, bits: u32) -> IVector {
+    pub fn sample_point(&self, bits: u32) -> IOwnedVector {
         self.sample_point_impl(bits, Vector::zero(self.ambient_dim()))
-    }
-
-    /// Approximate the CVP using Babai's rounding technique with floats,
-    /// but returns the coefficients of the linear combination of the basis vectors.
-    pub fn cvp_rounding_coeff(&self, v: &IVV) -> IVector {
-        cvp_rounding_float(&self.basis, v)
-    }
-
-    /// Approximate the CVP using Babai's rounding technique with floats.
-    pub fn cvp_rounding(&self, v: &IVV) -> IVector {
-        self.at(self.cvp_rounding_coeff(v))
-    }
-
-    /// Approximate the CVP using Babai's rounding technique with rational numbers.
-    pub fn cvp_rounding_coeff_exact(&self, v: &IVV) -> IVector {
-        cvp_rounding_exact(&self.basis, v)
-    }
-
-    /// Approximate the CVP using Babai's rounding technique with rational numbers.
-    pub fn cvp_rounding_exact(&self, v: &IVV) -> IVector {
-        self.at(self.cvp_rounding_coeff_exact(v))
     }
 
     /// Size reduce the basis.
@@ -158,12 +139,11 @@ impl Lattice {
     }
 }
 
-
 /// A lattice that is offset from the origin by a vector.
 /// Mathematicians would call this a lattice coset.
 #[derive(Debug)]
 pub struct AffineLattice {
-    pub offset: IVector,
+    pub offset: IOwnedVector,
     pub lattice: Lattice,
 }
 
@@ -177,7 +157,7 @@ impl AffineLattice {
     }
 
     /// Creates an affine lattice from an offset and a basis.
-    pub fn from_offset_basis(offset: IVector, basis: IMatrix) -> Self {
+    pub fn from_offset_basis(offset: IOwnedVector, basis: IMatrix) -> Self {
         Self {
             offset,
             lattice: Lattice::from_basis(basis),
@@ -190,7 +170,7 @@ impl AffineLattice {
     }
 
     /// Returns a random point on the lattice mod 2^bits.
-    pub fn sample_point(&self, bits: u32) -> IVector {
+    pub fn sample_point(&self, bits: u32) -> IOwnedVector {
         self.lattice.sample_point_impl(bits, self.offset.clone())
     }
 }
@@ -202,78 +182,157 @@ impl AffineLattice {
 /// you still have to matrix multiply with the basis matrix.
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
-pub fn cvp_rounding<T: Field>(basis: &'_ IMatrix, v: &'_ IVV) -> IVector
-    where for<'a, 'b, 'c> &'a Matrix<T>: Mul<&'b Matrix<T>, Output = Matrix<T>>
-        + Mul<&'c VV<T>, Output = Vector<T>>,
+macro_rules! impl_cvp_rounding {
+    (body, $t:tt, $basis:expr, $v:ident, $prec:ident) => { 
+        {
+            let mut a = select!($t,
+                Float => { FMatrix::zero_prec($basis.cols, $basis.rows, $prec) },
+                default => { Matrix::<$t>::zero($basis.cols, $basis.rows) },
+            );
+
+            let from_int = |i: &Integer| select!($t,
+                Float => { Float::with_val($prec, i) },
+                Rational => { Rational::from(i) },
+                f32 => { i.to_f32() },
+                f64 => { i.to_f64() },
+            );
+
+            for r in 0..a.rows {
+                for c in 0..a.cols {
+                    a[(r, c)] = from_int(&$basis[(c, r)]);
+                }
+            }
+
+            let b = OwnedVector::<$t>::from_iter($v.dim(), $v.iter().map(from_int));
+
+            let solve_linear = select!($t,
+                Float => { solve_linear_float },
+                Rational => { solve_linear_rat },
+                f32 => { solve_linear_f32 },
+                f64 => { solve_linear_f64 },
+            );
+
+            // If the system has full rank,
+            // then we can just use an exact solution.
+            let x = if $v.dim() == $basis.rows {
+                solve_linear(a, b)
+            }
+
+            // Otherwise we can treat it as a Ordinary Least Squares problem,
+            // i.e. find the point in the subspace spanned by the vectors
+            // that is closest to the given point.
+            else {
+                let a_t = a.transposed();
+                solve_linear(&a_t * &a, &a_t * &b)
+            };
+
+            let x = x.expect("Basis vectors were not independent.");
+
+            let mut res = IOwnedVector::zero(x.dim());
+            for (i, f) in res.iter_mut().zip(x.iter()) {
+                *i = select!($t,
+                    Float => { f.to_integer().unwrap() },
+                    Rational => { f.round_ref().into() },
+                    f32 => { Integer::from_f32(f.round()).unwrap() },
+                    f64 => { Integer::from_f64(f.round()).unwrap() },
+                );
+            }
+
+            res
+        }
+    };
+    (Float, $n:ident, $m:ident) => {
+        impl Lattice {
+            pub fn $m(&self, v: &IVectorView, prec: u32) -> IOwnedVector {
+                impl_cvp_rounding!(body, Float, self.basis, v, prec)
+            }
+
+            pub fn $n(&self, v: &IVectorView, prec: u32) -> IOwnedVector {
+                self.at(self.$m(v, prec))
+            }
+        }
+    };
+    ($t:tt, $n:ident, $m:ident) => {
+        impl Lattice {
+            /// Approximates the CVP using Babai's rounding technique.
+            /// The return value is a vector of the coefficients
+            /// of the linear combination of the basis vectors,
+            /// so if you want the actual point,
+            /// you still have to matrix multiply with the basis matrix.
+            /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
+            /// so that the approximation is good.
+            pub fn $m(&self, v: &IVectorView) -> IOwnedVector {
+                impl_cvp_rounding!(body, $t, self.basis, v, prec)
+            }
+
+            pub fn $n(&self, v: &IVectorView) -> IOwnedVector {
+                self.at(self.$m(v))
+            }
+        }
+    };
+}
+
+impl_cvp_rounding!(f64, cvp_rounding_f64, cvp_rounding_f64_coeff);
+impl_cvp_rounding!(f32, cvp_rounding_f32, cvp_rounding_f32_coeff);
+impl_cvp_rounding!(Rational, cvp_rounding_rat, cvp_rounding_rat_coeff);
+impl_cvp_rounding!(Float, cvp_rounding_float, cvp_rounding_float_coeff);
+
+/// Gram-Schmidt of the rows of the matrix `a`.
+/// The rows will span the same subspace as the original rows,
+/// even if they are not linearly independent.
+/// The rows of the result are not normalized.
+/// Call `gram_schmidt_orthonormal` if you want that.
+pub fn gram_schmidt<T>(mut a: Matrix<T>) -> Matrix<T>
+    where
+        T: Div<T, Output = T>,
+        for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
+        VectorView<T>: InnerProductSpace<Scalar = T>
+            + for<'a> SubAssign<&'a OwnedVector<T>>,
 {
-    let mut a = Matrix::<T>::zero(
-        basis.cols, basis.rows
-    );
-    for r in 0..a.rows {
-        for c in 0..a.cols {
-            a[(r, c)] = T::from_int(&basis[(c, r)]);
+    for i in 0..a.rows {
+        for j in 0..i {
+            let f = a[j].dot(&a[i]) / a[j].norm_sqr();
+            let p = &f * &a[j];
+            a[i] -= &p;
         }
     }
 
-    let b = Vector::<T>::from_iter(v.dim(), v.iter().map(T::from_int));
-
-    // If the system has full rank,
-    // then we can just use an exact solution.
-    let x = if v.dim() == basis.rows {
-        T::solve_linear(a, b)
-    }
-    
-    // Otherwise we can treat it as a Ordinary Least Squares problem,
-    // i.e. find the point in the subspace spanned by the vectors
-    // that is closest to the given point.
-    else {
-        let a_t = a.transposed();
-        T::solve_linear(&a_t * &a, &a_t * b.view())
-    };
-
-    let x = x.expect("Basis vectors were not independent.");
-
-    let mut res = Vector::zero(x.dim);
-    for (i, f) in res.iter_mut().zip(x.iter()) {
-        *i = f.to_int();
-    }
-
-    res
+    a
 }
 
-/// Approximates the CVP using Babai's rounding technique.
-/// The returns value is a vector of the coefficients
-/// of the linear combination of the basis vectors,
-/// so if you want the actual point,
-/// you still have to matrix multiply with the basis matrix.
-/// In practice, it is a good idea to reduce the basis (e.g. using LLL)
-/// so that the approximation is good.
-/// 
-/// This uses 64-bit floating point arithmetic instead of
-/// exact rational arithmetic.
-/// Make sure the entries in the basis fit into 64-bit floats,
-/// but even then, this can lead to inaccuracies.
-/// Given the standard basis this will fail to return
-/// the correct coefficients when the entries in v
-/// can't be represented by 64-bit floats.
-pub fn cvp_rounding_float(basis: &IMatrix, v: &IVV) -> IVector {
-    cvp_rounding::<f64>(basis, v)
+/// Gram-Schmidt of the rows of the matrix `a`.
+/// The rows of the result are normalized.
+/// Call `gram_schmidt` if you don't want that.
+/// This functions requires that the rows are linearly independent
+/// (unlike `gram_schmidt`).
+pub fn gram_schmidt_orthonormal<T>(mut a: Matrix<T>) -> Matrix<T>
+    where
+        T: Div<T, Output = T>,
+        for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
+        VectorView<T>: InnerProductSpace<Scalar = T> + NormedSpace<Scalar = T>
+            + for<'a> SubAssign<&'a OwnedVector<T>>,
+{
+    a = gram_schmidt(a);
+    for i in 0..a.rows {
+        a[i].normalize();
+    }
+    a
 }
 
-/// Approximates the CVP using Babai's rounding technique.
-/// The returns value is a vector of the coefficients
-/// of the linear combination of the basis vectors,
-/// so if you want the actual point,
-/// you still have to matrix multiply with the basis matrix.
-/// In practice, it is a good idea to reduce the basis (e.g. using LLL)
-/// so that the approximation is good.
-pub fn cvp_rounding_exact(basis: &IMatrix, v: &IVV) -> IVector {
-    cvp_rounding::<Rational>(basis, v)
+/// Computes the RQ-decomposition (row QR-decomposition) of a matrix.
+/// Returns a lower triangular matrix `R` and an orthogonal matrix `Q`,
+/// such that `R * Q = A`.
+pub fn rq_decomposition(a: &FMatrix) -> (FMatrix, FMatrix) {
+    let q = gram_schmidt_orthonormal(a.clone());
+    let r = a.mul_transpose(&q);
+    (r, q)
 }
 
 /// Approximates the CVP using Babai's nearest plane algorithm.
-pub fn cvp_nearest_plane_float(basis: &IMatrix, v: &IVV, prec: u32) -> IVector {
-    let q = gram_schmidt(basis.to_float(prec), false);
+pub fn cvp_nearest_plane_float(
+    basis: &IMatrix, v: &IVectorView, prec: u32
+) -> IOwnedVector {
+    let q = gram_schmidt(basis.to_float(prec));
     let mut b = v.to_owned();
     for i in (0..basis.rows).rev() {
         let a = &q[i];
@@ -298,7 +357,9 @@ pub fn cvp_nearest_plane_float(basis: &IMatrix, v: &IVV, prec: u32) -> IVector {
 /// This algorithm is a generalization Babai's nearest plane algorithm
 /// that searches all planes that could contain the closest vector.
 /// It is the simplest one I could think of.
-pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -> Option<IVector> {
+pub fn cvp_planes(
+    basis: &IMatrix, t: &IVectorView, prec: u32, mut rad: Option<Float>
+) -> Option<IOwnedVector> {
     assert!(basis.cols == t.dim(), "Mismatch of basis/target vector dimension.");
     assert!(rad.as_ref().map_or(true, |rad| rad.prec() == prec),
         "rad needs to have the given precision.");
@@ -321,12 +382,14 @@ pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -
     /// Utility function for comparing a distance with the radius.
     /// If the radius is None, then this always accepts.
     fn in_radius(d: &Float, rad: &Option<Float>) -> bool {
-        rad.as_ref().map_or(true, |rad| d.total_cmp(rad).is_le())
+        rad.as_ref().map_or(true, |rad| d.partial_cmp(rad).unwrap().is_le())
     }
 
     /// This actually finds the closest point.
     /// `rad` is the squared norm.
-    fn cvp_impl(i: usize, r: &FMatrix, qt: &FVV, prec: u32, rad: &Option<Float>) -> Option<IVector> {
+    fn cvp_impl(
+        i: usize, r: &FMatrix, qt: &FVectorView, prec: u32, rad: &Option<Float>
+    ) -> Option<IOwnedVector> {
         // One dimensional lattice.
         if i == 0 {
             let qt = &qt[0];
@@ -336,7 +399,7 @@ pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -
             let d = Float::with_val(prec, &m * r - qt);
             let d = d.square();
             return in_radius(&d, rad)
-                .then(|| IVector::from_array([m.to_integer().unwrap()]));
+                .then(|| IOwnedVector::from_array([m.to_integer().unwrap()]));
         }
 
         let qtc = &qt[i];
@@ -418,11 +481,11 @@ pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -
             let point_in_plane = qt - &index * &r[i];
 
             // Recursively find the closest point.
-            let v = cvp_impl(i - 1, r, &point_in_plane, prec, &plane_dist);
+            let v = cvp_impl(i - 1, r, point_in_plane.view(), prec, &plane_dist);
             let Some(mut v) = v else {
                 continue
             };
-            assert!(v.dim == i);
+            assert!(v.dim() == i);
 
             // v is the new index vector of the point.
             // It is the index of the closest point of the previous call,
@@ -432,11 +495,11 @@ pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -
             // Compute the actual vector of the index vector,
             // i.e. v * r[:i+1, :i+1]. Since there is currently no
             // way to multiply by a submatrix, just do it manually.
-            let iter = (0..v.dim).map(|i| v.iter().zip(r.column(i))
+            let iter = (0..v.dim()).map(|i| v.iter().zip(r.column(i))
                 .map(|(l, r)| Float::with_val(prec, l) * r)
                 .fold(Float::with_val(prec, 0), |acc, f| acc + f)
             );
-            let vv = FVector::from_iter(v.dim, iter);
+            let vv = FOwnedVector::from_iter(v.dim(), iter);
 
             // Compute the distance to the point.
             let d = (&vv - &qt[0..i+1]).norm_sqr();
@@ -453,9 +516,90 @@ pub fn cvp_planes(basis: &IMatrix, t: &IVV, prec: u32, mut rad: Option<Float>) -
     }
 
     // Multiply the coefficients by the basis.
-    cvp_impl(r.cols - 1, &r, &qt, prec, &rad)
+    cvp_impl(r.cols - 1, &r, qt.view(), prec, &rad)
         .map(|v| v.view() * basis)
 }
+
+macro_rules! impl_solve_linear {
+    ($t:tt, $n:ident) => {
+        /// PartialOrd should not return None for any of the elements in the matrix.
+        /// We can't use Ord because of the floating point types.
+        fn $n(
+            mut a: Matrix<$t>, mut b: OwnedVector<$t>
+        ) -> Option<OwnedVector<$t>> {
+            assert!(a.rows == a.cols,
+                "This function only supports non-singular square systems.");
+            select!($t,
+                Float => {
+                    let prec = a.precision();
+                    assert!(prec == b.precision(),
+                        "Matrix and vector need to have the same precision.");
+                },
+                default => {},
+            );
+            for i in 0..a.cols {
+                // Choose a pivot in the c-th column.
+                let pivot = a.column(i)
+                    .enumerate()
+                    .skip(i)
+                    .filter(select!($t,
+                        Rational => { |e| e.1.cmp0().is_ne() },
+                        Float => { |e| e.1.cmp0().unwrap().is_ne() },
+                        default => { |e| *e.1 != 0. },
+                    ))
+                    .max_by(select!($t,
+                        Rational => { |e, f| e.1.cmp_abs(f.1) },
+                        Float => { |e, f| e.1.cmp_abs(f.1).unwrap() },
+                        default => { |e, f| e.1.abs().partial_cmp(&f.1.abs()).unwrap() },
+                    ))?.0;
+                a.swap_rows(pivot, i);
+                let pivot = a[(i, i)].clone();
+                for r in i+1..a.rows {
+                    let fac = select!($t,
+                        Rational => { (&a[(r, i)] / &pivot).complete() },
+                        Float => { Float::with_val(prec, &a[(r, i)] / &pivot) },
+                        default => { a[(r, i)] / pivot }, 
+                    );
+                    for c in i+1..a.cols {
+                        let s = select!($t,
+                            Rational => { (&fac * &a[(i, c)]).complete() },
+                            Float => { Float::with_val(prec, &fac * &a[(i, c)]) },
+                            default => { fac * a[(i, c)] },
+                        );
+                        a[(r, c)] -= s;
+                    }
+                    let s = fac * &b[i];
+                    b[r] -= s;
+                }
+            }
+        
+            let mut result = select!($t,
+                Float => { FOwnedVector::zero_prec(a.cols, prec) },
+                default => { OwnedVector::<$t>::zero(a.cols) },
+            );
+            for i in (0..a.cols).rev() {
+                let mut sum = b[i].clone();
+                for j in i+1..a.cols {
+                    sum -= select!($t,
+                        Rational => { (&a[(i, j)] * &result[j]).complete() },
+                        Float => { Float::with_val(prec, &a[(i, j)] * &result[j]) },
+                        default => { a[(i, j)] * result[j] },
+                    );
+                }
+
+                sum /= &a[(i, i)];
+                result[i] = sum;
+            }
+
+            Some(result)
+        }
+    }
+}
+
+impl_solve_linear!(Rational, solve_linear_rat);
+impl_solve_linear!(Float, solve_linear_float);
+impl_solve_linear!(f32, solve_linear_f32);
+impl_solve_linear!(f64, solve_linear_f64);
 
 #[test]
 fn cvp_temp_test() {
@@ -501,17 +645,17 @@ fn cvp_temp_test() {
         [-57,   49,   26,   10,  -22,   32,  -52,  -71,   -9,   31,   45,
            28,  -28,  -30,   24,   44,   88,    2,  -63, -105],
     ]);
-    let t = IVector::from_entries([-48, 69, -76, 36, -72, 31, -53, -7, 54,
-        74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
+    let t = IOwnedVector::from_entries([-48, 69, -76, 36, -72, 31, -53,
+        -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
     //let now = std::time::Instant::now();
     //for _ in 0..100 {
     //    let v = cvp_planes(&b, &t, 53, None);
     //}
     //println!("{}", now.elapsed().as_secs_f64());
 
-    fn bench(name: &str, f: impl Fn() -> IVector, t: &IVector) {
+    fn bench(name: &str, f: impl Fn() -> IOwnedVector, t: &IOwnedVector) {
         let now = std::time::Instant::now();
-        let mut v = IVector::empty();
+        let mut v = IOwnedVector::empty();
         for _ in 0..100 {
             v = f();
         }
@@ -521,9 +665,9 @@ fn cvp_temp_test() {
     }
 
     let now = std::time::Instant::now();
-    bench("exact solution", || cvp_planes(&b, &t, 53, None).unwrap(), &t);
-    bench("nearest plane", || cvp_nearest_plane_float(&b, &t, 53), &t);
-    bench("rounding", || cvp_rounding_float(&b, &t), &t);
+    bench("exact solution", || cvp_planes(&b, t.view(), 53, None).unwrap(), &t);
+    //bench("nearest plane", || cvp_nearest_plane_float(&b, &t, 53), &t);
+    //bench("rounding", || cvp_rounding_f64(&b, &t), &t);
 }
 
 #[test]
@@ -570,40 +714,10 @@ fn cvp_exact_dim20() {
         [-57,   49,   26,   10,  -22,   32,  -52,  -71,   -9,   31,   45,
            28,  -28,  -30,   24,   44,   88,    2,  -63, -105],
     ]);
-    let t = IVector::from_entries([-48, 69, -76, 36, -72, 31, -53, -7, 54,
-        74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
-    assert!(cvp_planes(&b, &t, 53, None).unwrap().view() == &[-30, 35, -98,
+    let t = IOwnedVector::from_entries([-48, 69, -76, 36, -72, 31, -53,
+        -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
+    assert_eq!(cvp_planes(&b, t.view(), 53, None).unwrap(), [-30i32, 35, -98,
         61, -27, 75, -32, -3, 70, 8, 3, -77, -29, -103, 61, 58, -71, 41, 37, -40]);
-}
-
-/// Gram-Schmidt of the rows of the matrix `a`.
-/// If `orthonormal` is true, the result will be normalized.
-fn gram_schmidt(mut a: FMatrix, orthonormal: bool) -> FMatrix {
-    for i in 0..a.rows {
-        for j in 0..i {
-            let f = a[j].dot(&a[i]) / a[j].norm_sqr();
-            let p = &f * &a[j];
-            a[i] -= &p;
-        }
-    }
-
-    if orthonormal {
-        for i in 0..a.rows {
-            let n = a[i].norm();
-            a[i] /= &n;
-        }
-    }
-
-    a
-}
-
-/// Computes the RQ-decomposition (row QR-decomposition) of a matrix.
-/// Returns a lower triangular matrix `R` and an orthogonal matrix `Q`,
-/// such that `R * Q = A`.
-pub fn rq_decomposition(a: &FMatrix) -> (FMatrix, FMatrix) {
-    let q = gram_schmidt(a.clone(), true);
-    let r = a.mul_transpose(&q);
-    (r, q)
 }
 
 #[test]
@@ -616,8 +730,9 @@ fn gram_schmidt_test() {
     let (r, q) = rq_decomposition(&a);
     println!("q: {:?}\nr: {:?}", q, r);
     println!("{:?}", &r * &q);
-    println!("{:?}", &q * &FVector::from_array(
-        [Float::with_val(53, 5), Float::with_val(53, 6), Float::with_val(53, 7)]));
+    println!("{:?}", &q * FVectorView::from_slice(&[
+        Float::with_val(53, 5), Float::with_val(53, 6), Float::with_val(53, 7)
+    ]));
 }
 
 #[test]
@@ -628,21 +743,21 @@ fn nearest_plane_example() {
         [2, 2, 2],
     ]);
 
-    let t = IVector::from_entries([4, 2, 7]);
-    let c = cvp_nearest_plane_float(&a, &t, 53);
+    let t = IOwnedVector::from_entries([4, 2, 7]);
+    let c = cvp_nearest_plane_float(&a, t.view(), 53);
     println!("{:?}", c);
 }
 
 #[test]
 fn babai_rounding_example() {
     let gen = Matrix::from_rows(&[
-        IVector::from_array([-97, 75, -97, 75, 22]),
-        IVector::from_array([101, 38, 101, 38, 117]),
-        IVector::from_array([256, 0, 0, 0, 0]),
-        IVector::from_array([0, 256, 0, 0, 0]),
-        IVector::from_array([0, 0, 256, 0, 0]),
-        IVector::from_array([0, 0, 0, 256, 0]),
-        IVector::from_array([0, 0, 0, 0, 256]),
+        [-97, 75, -97, 75, 22],
+        [101, 38, 101, 38, 117],
+        [256, 0, 0, 0, 0],
+        [0, 256, 0, 0, 0],
+        [0, 0, 256, 0, 0],
+        [0, 0, 0, 256, 0],
+        [0, 0, 0, 0, 256],
     ]);
 
     let mut lattice = Lattice::from_generating_set(gen);
@@ -656,7 +771,7 @@ fn babai_rounding_example() {
 
     let sample = lattice.sample_point(8);
     println!("{:?}", sample);
-    let closest = lattice.lattice.cvp_rounding(&sample);
+    let closest = lattice.lattice.cvp_rounding_f64(sample.view());
     println!("{:?}", closest);
 }
 
@@ -670,7 +785,7 @@ fn babai_rounding_identity_dim_2() {
 
     for _ in 0..256 {
         let v = Vector::from_array([random::<u64>(), random::<u64>()]);
-        let r = lattice.cvp_rounding_exact(&v);
+        let r = lattice.cvp_rounding_rat(v.view());
         assert_eq!(r, v);
     }
 }
@@ -687,7 +802,7 @@ fn babai_rounding_identity_dim_2_subspace() {
         let v = Vector::from_array(
             [random::<u32>(), random::<u32>(), random::<u32>()]
         );
-        let r = lattice.cvp_rounding(&v);
+        let r = lattice.cvp_rounding_f64(v.view());
         assert_eq!(r.as_slice()[..2], v.as_slice()[..2]);
     }
 }
@@ -696,160 +811,91 @@ fn babai_rounding_identity_dim_2_subspace() {
 fn babai_rounding_linear_dim_3() {
     use rand::random;
     let lattice = Lattice::from_basis(Matrix::from_rows(&[
-        IVector::from_array([3, 3, 3])
+        [3, 3, 3]
     ]));
 
-    assert_eq!(
-        lattice.cvp_rounding_coeff(&Vector::from_array([2, 2, 2])).as_slice(),
-        &[1]);
-    assert_eq!(
-        lattice.cvp_rounding_coeff(&Vector::from_array([2, -2, 0])).as_slice(),
-        &[0]);
+    assert_eq!(lattice.cvp_rounding_f64_coeff(
+        Vector::from_entries([2, 2, 2]).view()), [1]);
+    assert_eq!(lattice.cvp_rounding_f64_coeff(
+        Vector::from_entries([2, -2, 0]).view()), [0]);
 }
 
-/// Field for linear algebra.
-/// This will either be floating point numbers or rug::Rational.
-pub trait Field: 'static + Clone + PartialEq + Zero + One
-    + Add<Self, Output = Self>
-    + Sub<Self, Output = Self>
-    + Mul<Self, Output = Self>
-    + Div<Self, Output = Self>
-    + AddAssign<Self>
-    + SubAssign<Self>
-    + MulAssign<Self>
-    + DivAssign<Self>
-    + std::fmt::Debug
+/// Not used at the moment.
+/// A trait for types that are used internally by lattice algorithms.
+pub trait WorkingType
+    where
+        Self: Copy,
+        Self::Scalar: Clone,
+        //for<'a> &'a VV<Self::Scalar>:
+        //    Add<&'a VV<Self::Scalar>, Output=Vector<Self::Scalar>> +
+        //    Sub<&'a VV<Self::Scalar>, Output=Vector<Self::Scalar>> +
+        //    Mul<&'a Self::Scalar, Output=Vector<Self::Scalar>> +
+        //    Div<&'a Self::Scalar, Output=Vector<Self::Scalar>>,
 {
-    /// Converts an integer to this type.
-    fn from_int(i: &Integer) -> Self;
+    /// The actual type.
+    type Scalar;
 
-    /// Converts this type to an integer.
-    fn to_int(&self) -> Integer;
+    /// Converts an integer to the working type.
+    #[allow(clippy::wrong_self_convention)]
+    fn from_int(self, i: &Integer) -> Self::Scalar;
 
-    /// Solve a linear system of equations with coefficients in the field.
-    fn solve_linear(a: Matrix<Self>, b: Vector<Self>) -> Option<Vector<Self>>;
+    /// Converts a working type to an integer.
+    fn to_int(self, v: &Self::Scalar) -> Integer;
 }
 
-impl Field for Rational {
-    fn from_int(i: &Integer) -> Self {
-        Rational::from(i)
+#[derive(Clone, Copy)]
+pub struct F64;
+impl WorkingType for F64 {
+    type Scalar = f64;
+
+    fn from_int(self, i: &Integer) -> Self::Scalar {
+        i.to_f64()
     }
 
-    fn to_int(&self) -> Integer {
-        self.round_ref().into()
-    }
-
-    fn solve_linear(a: Matrix<Self>, b: Vector<Self>) -> Option<Vector<Self>> {
-        solve_linear_rat(a, b) 
+    fn to_int(self, v: &Self::Scalar) -> Integer {
+        Integer::from_f64(*v).unwrap()
     }
 }
 
-impl Field for f32 {
-    fn from_int(i: &Integer) -> Self {
+#[derive(Clone, Copy)]
+pub struct F32;
+impl WorkingType for F32 {
+    type Scalar = f32;
+
+    fn from_int(self, i: &Integer) -> Self::Scalar {
         i.to_f32()
     }
 
-    fn to_int(&self) -> Integer {
-        Integer::from_f32(self.round()).unwrap()
-    }
-
-    fn solve_linear(a: Matrix<Self>, b: Vector<Self>) -> Option<Vector<Self>> {
-        solve_linear(a, b)
+    fn to_int(self, v: &Self::Scalar) -> Integer {
+        Integer::from_f32(*v).unwrap()
     }
 }
 
-impl Field for f64 {
-    fn from_int(i: &Integer) -> Self {
-        i.to_f64()        
+/// Floating point type with fixed precision.
+#[derive(Clone, Copy)]
+pub struct FP(u32);
+impl WorkingType for FP {
+    type Scalar = Float;
+
+    fn from_int(self, i: &Integer) -> Self::Scalar {
+        Float::with_val(self.0, i)
     }
 
-    fn to_int(&self) -> Integer {
-        Integer::from_f64(self.round()).unwrap()
-    }
-
-    fn solve_linear(a: Matrix<Self>, b: Vector<Self>) -> Option<Vector<Self>> {
-        solve_linear(a, b)
+    fn to_int(self, v: &Self::Scalar) -> Integer {
+        v.to_integer().unwrap()
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct Rat;
+impl WorkingType for Rat {
+    type Scalar = Rational;
 
-fn solve_linear_rat(
-    mut a: Matrix<Rational>, mut b: Vector<Rational>
-) -> Option<Vector<Rational>> {
-    assert!(a.rows == a.cols,
-        "This function only supports non-singular square systems.");
-    for i in 0..a.cols {
-        // Choose a pivot in the c-th column.
-        let pivot = a.column(i)
-            .enumerate()
-            .skip(i)
-            .filter(|e| e.1 != &Rational::new())
-            .max_by(|e, f| e.1.cmp_abs(f.1))?.0;
-        a.swap_rows(pivot, i);
-        let pivot = a[(i, i)].clone();
-        for r in i+1..a.rows {
-            let fac = (&a[(r, i)] / &pivot).complete();
-            for c in i+1..a.cols {
-                let s = (&fac * &a[(i, c)]).complete();
-                a[(r, c)] -= s;
-            }
-            let s = fac * &b[i];
-            b[r] -= s;
-        }
+    fn from_int(self, i: &Integer) -> Self::Scalar {
+        Rational::from(i)
     }
 
-    let mut result = Vector::<Rational>::zero(a.cols);
-    for i in (0..a.cols).rev() {
-        let mut sum = b[i].clone();
-        for j in i+1..a.cols {
-            sum -= (&a[(i, j)] * &result[j]).complete();
-        }
-
-        sum /= &a[(i, i)];
-        result[i] = sum;
+    fn to_int(self, v: &Self::Scalar) -> Integer {
+        v.round_ref().into()
     }
-
-    Some(result)
-}
-
-/// PartialOrd should not return None for any of the elements in the matrix.
-/// We can't use Ord because of the floating point types.
-fn solve_linear<T: NumAssign + PartialOrd + Copy>(
-    mut a: Matrix<T>, mut b: Vector<T>
-) -> Option<Vector<T>> {
-    assert!(a.rows == a.cols,
-        "This function only supports non-singular square systems.");
-    let abs = |x: T| if x < T::zero() { T::zero() - x } else { x };
-    for i in 0..a.cols {
-        // Choose a pivot in the c-th column.
-        let pivot = a.column(i)
-            .enumerate()
-            .skip(i)
-            .filter(|e| *e.1 != T::zero())
-            .max_by(|e, f| abs(*e.1).partial_cmp(&abs(*f.1)).unwrap())?.0;
-        a.swap_rows(pivot, i);
-        let pivot = a[(i, i)];
-        for r in i+1..a.rows {
-            let fac = a[(r, i)] / pivot;
-            for c in i+1..a.cols {
-                let s = fac * a[(i, c)];
-                a[(r, c)] -= s;
-            }
-            let s = b[i] * fac;
-            b[r] -= s;
-        }
-    }
-
-    let mut result = Vector::zero(a.cols);
-    for i in (0..a.cols).rev() {
-        let mut sum = b[i];
-        for j in i+1..a.cols {
-            sum -= a[(i, j)] * result[j];
-        }
-
-        sum /= a[(i, i)];
-        result[i] = sum;
-    }
-
-    Some(result)
 }

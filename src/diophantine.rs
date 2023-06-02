@@ -85,8 +85,8 @@ pub fn hermite_normal_form(a: &mut IMatrix) -> IMatrix {
 }
 
 /// Solves a system of linear diophantine equations.
-pub fn solve(a: &IMatrix, b: &IVector) -> AffineLattice {
-    assert!(a.rows == b.dim,
+pub fn solve(a: &IMatrix, b: &IOwnedVector) -> AffineLattice {
+    assert!(a.rows == b.dim(),
         "Vector must have an entry for each row in the matrix.");
 
     let mut m = Matrix::zero(a.cols + 1, a.rows + 1);
@@ -98,7 +98,7 @@ pub fn solve(a: &IMatrix, b: &IVector) -> AffineLattice {
         }
     }
 
-    for i in 0..b.dim {
+    for i in 0..b.dim() {
         m[(a.cols, i)] = b[i].clone();
     }
 
@@ -123,7 +123,7 @@ pub fn solve(a: &IMatrix, b: &IVector) -> AffineLattice {
         return AffineLattice::empty();
     }
 
-    let offset = -Vector::<Integer>::from_entries(
+    let offset = -IOwnedVector::from_entries(
         &u.row(r).as_slice()[..u.rows-1]
     );
 
@@ -135,7 +135,7 @@ pub fn solve(a: &IMatrix, b: &IVector) -> AffineLattice {
 }
 
 /// Solves a linear system of equations Ax=b mod n.
-pub fn solve_modular(a: &IMatrix, b: &IVector, n: &Integer) -> AffineLattice {
+pub fn solve_modular(a: &IMatrix, b: &IOwnedVector, n: &Integer) -> AffineLattice {
     //
     // Concatenate an n times the identity matrix to the right of A.
     //
@@ -163,8 +163,8 @@ pub fn solve_modular(a: &IMatrix, b: &IVector, n: &Integer) -> AffineLattice {
     // removing the last components that correspond to the multipliers
     // of the n's and then removing (now) linearly dependent basis vectors.
 
-    let offset = IVector::from_entries(&l.offset.as_slice()[..a.cols])
-        .map(|i| *i = i.div_rem_euc_ref(n).complete().1);
+    let offset = IOwnedVector::from_entries(&l.offset.as_slice()[..a.cols])
+        .map(|i| i.div_rem_euc_ref(n).complete().1);
 
     let iter = l.lattice.basis.rows()
         .flat_map(|e| e.iter().take(a.cols).map(|i| i.clone() % n))

@@ -2,8 +2,10 @@
 
 use std::{marker::PhantomData, fmt::Debug, ops::Mul};
 use num_traits::{Zero, One};
+use rug::ops::NegAssign;
 use rug::{Integer, Complete, Float, Rational};
 use crate::vector::*;
+use crate::select;
 
 /// Matrix.
 pub struct Matrix<T> {
@@ -147,10 +149,10 @@ impl<T> Matrix<T> {
     }
 
     /// Returns a slice of a row.
-    pub fn row(&self, r: usize) -> &VV<T> {
+    pub fn row(&self, r: usize) -> &VectorView<T> {
         debug_assert!(r < self.rows);
         unsafe {
-            VV::from_slice(core::slice::from_raw_parts(
+            VectorView::from_slice(core::slice::from_raw_parts(
                 self.entries.add(r * self.cols),
                 self.cols
             ))
@@ -158,10 +160,10 @@ impl<T> Matrix<T> {
     }
 
     /// Returns a mutable slice of a row.
-    pub fn row_mut(&mut self, r: usize) -> &mut VV<T> {
+    pub fn row_mut(&mut self, r: usize) -> &mut VectorView<T> {
         debug_assert!(r < self.rows);
         unsafe {
-            VV::from_slice_mut(core::slice::from_raw_parts_mut(
+            VectorView::from_slice_mut(core::slice::from_raw_parts_mut(
                 self.entries.add(r * self.cols),
                 self.cols
             ))
@@ -326,14 +328,14 @@ impl IMatrix {
     /// Flip the sign of a row.
     pub fn flip_sign_row(&mut self, row: usize) {
         for e in self.row_mut(row) {
-            *e *= -1;
+            e.neg_assign();
         }
     }
 
     /// Flip the sign of a column.
     pub fn flip_sign_column(&mut self, col: usize) {
         for e in self.column_mut(col) {
-            *e *= -1;
+            e.neg_assign();
         }
     }
 
@@ -391,28 +393,45 @@ impl FMatrix {
         m
     }
 
-    /// Multiply the matrix by the transpose of another matrix.
-    pub fn mul_transpose(&self, rhs: &Self) -> Self {
-        assert!(self.cols == rhs.cols,
-            "Invalid dimensions for multiplication.");
-        let prec = self.precision();
-        assert!(prec == rhs.precision(),
-            "Can only multiply matrices of equal precision.");
-        let mut r = Self::zero_prec(self.rows, rhs.rows, prec);
-        for i in 0..self.rows {
-            for j in 0..rhs.rows {
-                r[(i, j)] = self.row(i).iter()
-                    .zip(rhs.row(j).iter())
-                    .map(|(a, b)| a * b)
-                    .fold(Float::with_val(prec, 0), |acc, f| acc + f)
+}
+
+macro_rules! impl_mul_transpose {
+    ($t:tt) => {
+        impl Matrix<$t> {
+            /// Multiply the matrix by the transpose of another matrix.
+            pub fn mul_transpose(&self, rhs: &Self) -> Self {
+                assert!(self.cols == rhs.cols,
+                    "Invalid dimensions for multiplication.");
+                select!($t,
+                    Float => {
+                        let prec = self.precision();
+                        assert!(prec == rhs.precision(),
+                            "Can only multiply matrices of equal precision.");
+                        let mut r = Self::zero_prec(self.rows, rhs.rows, prec);
+                    },
+                    default => {
+                        let mut r = Self::zero(self.rows, rhs.rows);
+                    },
+                );
+                for i in 0..self.rows {
+                    for j in 0..rhs.rows {
+                        r[(i, j)] = self.row(i).dot(rhs.row(j));
+                    }
+                }
+                r
             }
         }
-        r
+    };
+    ($t:tt, $($o:tt),+) => {
+        impl_mul_transpose!($t);
+        impl_mul_transpose!($($o),+);
     }
 }
 
+impl_mul_transpose!(Integer, Float, f32, f64);
+
 impl<T> std::ops::Index<usize> for Matrix<T> {
-    type Output = VV<T>;
+    type Output = VectorView<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
         self.row(index)
@@ -462,10 +481,10 @@ macro_rules! impl_mul {
             }
         }
 
-        impl Mul<&VV<$t>> for &Matrix<$t> {
-            type Output = Vector<$t>;
+        impl<S: VectorStorage<$t> + ?Sized> Mul<&Vector<$t, S>> for &Matrix<$t> {
+            type Output = OwnedVector<$t>;
 
-            fn mul(self, rhs: &VV<$t>) -> Self::Output {
+            fn mul(self, rhs: &Vector<$t, S>) -> Self::Output {
                 assert!(self.cols == rhs.dim(), "Can't multiply matrix and \
                     vector because of incompatible dimensions");
 
@@ -475,8 +494,8 @@ macro_rules! impl_mul {
             }
         }
 
-        impl Mul<&Matrix<$t>> for &VV<$t> {
-            type Output = Vector<$t>;
+        impl<S: VectorStorage<$t> + ?Sized> Mul<&Matrix<$t>> for &Vector<$t, S> {
+            type Output = OwnedVector<$t>;
 
             fn mul(self, rhs: &Matrix<$t>) -> Self::Output {
                 assert!(self.dim() == rhs.rows, "Can't multiply matrix and \
@@ -520,11 +539,11 @@ impl Mul for &FMatrix {
     }
 }
 
-impl Mul<&FVector> for &FMatrix {
-    type Output = FVector;
+impl<S: VectorStorage<Float> + ?Sized> Mul<&Vector<Float, S>> for &FMatrix {
+    type Output = FOwnedVector;
 
-    fn mul(self, rhs: &FVector) -> Self::Output {
-        assert!(self.cols == rhs.dim, "Can't multiply matrix and \
+    fn mul(self, rhs: &Vector<Float, S>) -> Self::Output {
+        assert!(self.cols == rhs.dim(), "Can't multiply matrix and \
             vector because of incompatible dimensions");
 
         let prec = self.precision();
@@ -542,8 +561,8 @@ impl Mul<&FVector> for &FMatrix {
     }
 }
 
-impl Mul<&FMatrix> for &FVV {
-    type Output = FVector;
+impl<S: VectorStorage<Float> + ?Sized> Mul<&FMatrix> for &Vector<Float, S> {
+    type Output = FOwnedVector;
 
     fn mul(self, rhs: &FMatrix) -> Self::Output {
         assert!(self.dim() == rhs.rows, "Can't multiply matrix and \
@@ -558,6 +577,13 @@ impl Mul<&FMatrix> for &FVV {
                 .fold(Float::with_val(prec, 0), |l, r| l + r)
             );
         Vector::from_iter(rhs.cols, iter)
+    }
+}
+
+impl<T: PartialEq> PartialEq for Matrix<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rows == other.rows && self.cols == other.cols
+            && self.iter().eq(other.iter())
     }
 }
 
@@ -622,7 +648,7 @@ impl<'a, T> RowIter<'a, T> {
 }
 
 impl<'a, T> Iterator for RowIter<'a, T> {
-    type Item = &'a VV<T>;
+    type Item = &'a VectorView<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front as usize > self.back as usize {
@@ -632,7 +658,7 @@ impl<'a, T> Iterator for RowIter<'a, T> {
         unsafe {
             let row = std::slice::from_raw_parts(self.front, self.count);
             self.front = self.front.add(self.count);
-            Some(VV::from_slice(row))
+            Some(VectorView::from_slice(row))
         }
     }
 }
@@ -646,7 +672,7 @@ impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
         unsafe {
             let row = std::slice::from_raw_parts(self.back, self.count);
             self.back = self.back.sub(self.count);
-            Some(VV::from_slice(row))
+            Some(VectorView::from_slice(row))
         }
     }
 }
@@ -675,7 +701,7 @@ impl<'a, T> RowIterMut<'a, T> {
 }
 
 impl<'a, T> Iterator for RowIterMut<'a, T> {
-    type Item = &'a mut VV<T>;
+    type Item = &'a mut VectorView<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front as usize > self.back as usize {
@@ -685,7 +711,7 @@ impl<'a, T> Iterator for RowIterMut<'a, T> {
         unsafe {
             let row = std::slice::from_raw_parts_mut(self.front, self.count);
             self.front = self.front.add(self.count);
-            Some(VV::from_slice_mut(row))
+            Some(VectorView::from_slice_mut(row))
         }
     }
 }
@@ -699,7 +725,7 @@ impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
         unsafe {
             let row = std::slice::from_raw_parts_mut(self.back, self.count);
             self.back = self.back.sub(self.count);
-            Some(VV::from_slice_mut(row))
+            Some(VectorView::from_slice_mut(row))
         }
     }
 }
@@ -805,7 +831,19 @@ fn rows_iter() {
         [4, 5],
     ]);
     let mut r = m.rows();
-    assert_eq!(r.next().unwrap(), &[2i32, 3][..]);
+    assert_eq!(r.next().unwrap(), &[2, 3][..]);
     assert_eq!(r.next().unwrap(), &[4, 5]);
     assert!(r.next().is_none());
+}
+
+#[test]
+fn row_iter_rev_test() {
+    let m = Matrix::<i32>::from_rows(&[
+        [2, 3],
+        [4, 5],
+    ]);
+    let mut r = m.rows();
+    assert_eq!(r.next_back().unwrap(), &[4, 5][..]);
+    assert_eq!(r.next_back().unwrap(), &[2, 3]);
+    assert!(r.next_back().is_none());
 }

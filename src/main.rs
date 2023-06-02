@@ -52,7 +52,7 @@ fn rewrite(
     let cols = ops.len();
 
     let mut a = Matrix::zero(rows, cols);
-    let mut b = Vector::zero(rows);
+    let mut b = OwnedVector::zero(rows);
 
     // Build up the matrix.
     for i in 0..rows {
@@ -339,7 +339,7 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
 
     // If I did everything correctly, this system should always have a solution.
     assert!(!l.is_empty());
-    assert!(l.offset.dim == ops.len());
+    assert!(l.offset.dim() == ops.len());
 
     let complexity: Vec<_> = ops.iter()
         .map(|e| e.complexity())
@@ -369,7 +369,7 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
 
     let mut solution = l.offset.clone();
     println!("Solver solution norm: {}", solution.norm());
-    solution -= &l.lattice.cvp_rounding(&l.offset);
+    solution -= &l.lattice.cvp_rounding_f64(l.offset.view());
     println!("CVP norm: {}", solution.norm());
 
     for (e, c) in solution.iter_mut().zip(&complexity) {
@@ -627,7 +627,7 @@ impl ExampleObfuscation {
     }
 }
 
-/// Hacky function to convert a rug::Integer to a bitvector.
+/// Hacky function to convert a rug::Integer to a z3 bitvector.
 #[cfg(feature = "z3")]
 pub(crate) fn int_to_bv<'ctx>(
     ctx: &'ctx z3::Context, width: u32, i: &Integer
@@ -644,3 +644,44 @@ pub(crate) fn int_to_bv<'ctx>(
     };
     z3::ast::BV::new(ctx, ast)
 }
+
+/// Very hacky macro that acts as a match statement for types.
+/// ```
+/// use crate::select;
+/// let i = select!(f32,
+///     f32 => { 1 },
+///     f64 => { 2 },
+///     default => { 3 },
+/// );
+/// assert_eq!(i, 1);
+/// ```
+/// This is used to generate different code for different types.
+/// Ideally we would use traits, but I felt I would run into too many
+/// problems. We want to support `Copy` types, like `f32`, and types
+/// like `rug::Float` which own memory.
+/// That means we want to use Copy for f64 where possible
+/// instead of passing around references, but for rug::Float
+/// we want to avoid copying at all costs.
+/// In addition operations like &rug::Float + &rug::Float
+/// return "Incomplete computation-values",
+/// which you have to `.complete` or assign in some way.
+/// I felt like doing all this with traits would be
+/// challenging, but obviously the superior solution.
+/// Instead we use this very hacky macro.
+/// A proc macro would be preferable, but this does
+/// the job for now.
+macro_rules! select {
+    (f32, f32 => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
+    (f64, f64 => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
+    (Float, Float => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
+    (Integer, Integer => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
+    (Rational, Rational => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
+    ($t:tt, default => {$($b:tt)* }, $($o:tt)*) => {
+        $($b)*
+    };
+    ($t:tt, $n:ty => { $($nb:tt)* }, $($o:tt)*) => {
+        select!($t, $($o)*)
+    };
+}
+
+pub(crate) use select;
