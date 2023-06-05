@@ -283,10 +283,10 @@ impl_cvp_rounding!(Float, cvp_rounding_float, cvp_rounding_float_coeff);
 /// The rows of the result are not normalized.
 /// Call `gram_schmidt_orthonormal` if you want that.
 pub fn gram_schmidt<T>(mut a: Matrix<T>) -> Matrix<T>
-    where
-        T: InnerProduct + Div<T, Output = T>,
-        for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
-        VectorView<T>: for<'a> SubAssign<&'a OwnedVector<T>>,
+where
+    T: InnerProduct + Div<T, Output = T>,
+    for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
+    VectorView<T>: for<'a> SubAssign<&'a OwnedVector<T>>,
 {
     for i in 0..a.rows {
         for j in 0..i {
@@ -305,10 +305,10 @@ pub fn gram_schmidt<T>(mut a: Matrix<T>) -> Matrix<T>
 /// This functions requires that the rows are linearly independent
 /// (unlike `gram_schmidt`).
 pub fn gram_schmidt_orthonormal<T>(mut a: Matrix<T>) -> Matrix<T>
-    where
-        T: InnerProduct + VectorNorm<Scalar = T> + Div<T, Output = T>,
-        for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
-        for<'a> VectorView<T>: SubAssign<&'a OwnedVector<T>> + DivAssign<&'a T>,
+where
+    T: InnerProduct + VectorNorm<Scalar = T> + Div<T, Output = T>,
+    for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
+    for<'a> VectorView<T>: SubAssign<&'a OwnedVector<T>> + DivAssign<&'a T>,
 {
     a = gram_schmidt(a);
     for i in 0..a.rows {
@@ -320,7 +320,13 @@ pub fn gram_schmidt_orthonormal<T>(mut a: Matrix<T>) -> Matrix<T>
 /// Computes the RQ-decomposition (row QR-decomposition) of a matrix.
 /// Returns a lower triangular matrix `R` and an orthogonal matrix `Q`,
 /// such that `R * Q = A`.
-pub fn rq_decomposition(a: &FMatrix) -> (FMatrix, FMatrix) {
+pub fn rq_decomposition<T>(a: &Matrix<T>) -> (Matrix<T>, Matrix<T>)
+where
+    T: Clone + InnerProduct + VectorNorm<Scalar = T> + Div<T, Output = T>,
+    for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
+    for<'a> VectorView<T>: SubAssign<&'a OwnedVector<T>> + DivAssign<&'a T>,
+    Matrix<T>: MulTranspose,
+{
     let q = gram_schmidt_orthonormal(a.clone());
     let r = a.mul_transpose(&q);
     (r, q)
@@ -355,168 +361,261 @@ pub fn cvp_nearest_plane_float(
 /// This algorithm is a generalization Babai's nearest plane algorithm
 /// that searches all planes that could contain the closest vector.
 /// It is the simplest one I could think of.
-pub fn cvp_planes(
-    basis: &IMatrix, t: &IVectorView, prec: u32, mut rad: Option<Float>
-) -> Option<IOwnedVector> {
-    assert!(basis.cols == t.dim(), "Mismatch of basis/target vector dimension.");
-    assert!(rad.as_ref().map_or(true, |rad| rad.prec() == prec),
-        "rad needs to have the given precision.");
-    let bf = basis.to_float(prec);
+macro_rules! impl_cvp_planes {
+    (body, $ty:tt, $basis:expr, $t:expr, $rad:expr, $prec:expr) => {
+    {
+        let basis = $basis;
+        let t = $t;
+        let mut rad = $rad;
+        let prec = $prec;
+        assert!(basis.cols == t.dim(), "Mismatch of basis/target vector dimension.");
+        select!($ty,
+            Float => {
+                assert!(rad.as_ref().map_or(true, |rad| rad.prec() == prec),
+                    "rad needs to have the given precision.");
+                let bf = basis.to_float(prec);
+            },
+            f64 => {
+                let bf = basis.map(|i| i.to_f64());
+            },
+            f32 => {
+                let bf = basis.map(|i| i.to_f32());
+            },
+        );
 
-    // Q is the Gram-Schmidt orthonormalization and
-    // R is the basis matrix with respect to the Gram-Schmidt basis.
-    let (r, q) = rq_decomposition(&bf);
-    assert!(r.cols == r.rows);
+        // Q is the Gram-Schmidt orthonormalization and
+        // R is the basis matrix with respect to the Gram-Schmidt basis.
+        let (r, q) = rq_decomposition(&bf);
+        assert!(r.cols == r.rows);
 
-    // Write the target vector in that basis.
-    // If the vector not in the span of the basis,
-    // then this will project it into the span.
-    let qt = &q * &t.to_float(prec);
-    //println!("Lattice in the new basis: {:?}", r);
-    //println!("Target vector in the new basis: {:?}", qt);
+        // Write the target vector in that basis.
+        // If the vector not in the span of the basis,
+        // then this will project it into the span.
+        let qt = &q * &select!($ty,
+            Float => { t.to_float(prec) },
+            f64 => { t.transform(|i| i.to_f64()) },
+            f32 => { t.transform(|i| i.to_f32()) },
+        );
+        //println!("Lattice in the new basis: {:?}", r);
+        //println!("Target vector in the new basis: {:?}", qt);
 
-    rad = rad.map(|f| f.square());
+        rad = select!($ty,
+            Float => { rad.map(|f| f.square()) },
+            default => { rad.map(|f| f * f) },
+        );
 
-    /// Utility function for comparing a distance with the radius.
-    /// If the radius is None, then this always accepts.
-    fn in_radius(d: &Float, rad: &Option<Float>) -> bool {
-        rad.as_ref().map_or(true, |rad| d.partial_cmp(rad).unwrap().is_le())
-    }
-
-    /// This actually finds the closest point.
-    /// `rad` is the squared norm.
-    fn cvp_impl(
-        i: usize, r: &FMatrix, qt: &FVectorView, prec: u32, rad: &Option<Float>
-    ) -> Option<IOwnedVector> {
-        // One dimensional lattice.
-        if i == 0 {
-            let qt = &qt[0];
-            let r = &r[(0, 0)];
-            // Index of the closest point.
-            let m = Float::with_val(prec, qt / r).round();
-            let d = Float::with_val(prec, &m * r - qt);
-            let d = d.square();
-            return in_radius(&d, rad)
-                .then(|| IOwnedVector::from_array([m.to_integer().unwrap()]));
+        /// Utility function for comparing a distance with the radius.
+        /// If the radius is None, then this always accepts.
+        fn in_radius(d: &$ty, rad: &Option<$ty>) -> bool {
+            rad.as_ref().map_or(true, |rad| d.partial_cmp(rad).unwrap().is_le())
         }
 
-        let qtc = &qt[i];
-        let rc = &r[(i, i)];
-
-        // Index of the closest plane before rounding.
-        let start_index_fl = Float::with_val(prec, qtc / rc);
-        let start_index = Float::with_val(prec, start_index_fl.round_ref());
-        //println!("Start index: {start_index} ({start_index_fl})");
-
-        // Suppose the start index was -0.4.
-        // We would want to check the planes in the order
-        // 0, -1, 1, -2, 2.
-        // But if the start index was 0.4, we would want
-        // 0, 1, -1, 2, -2
-        // So depending on whether we round up or down
-        // to the integer start index, we will negate
-        // the offset from the start index.
-        let negate_offset = (start_index_fl - &start_index).is_sign_negative();
-
-        // The current plane's offset.
-        let mut offset = 0isize;
-
-        let mut min_dist = rad.clone();
-        let mut min = None;
-
-        // Iterate over all possible planes.
-        loop {
-            // Index of the plane we are considering.
-            let index = Float::with_val(prec, &start_index + offset);
-
-            // Compute the index offset of the next plane.
-            // Negate the offset first.
-            offset.neg_assign();
-
-            // If we negate the offsets, i.e. 0, -1, 1, -2, ...,
-            // then if we are <= 0, we need to subtract 1.
-            // E.g. if the offset was 1, then we negated it to -1
-            // and subtract 1.
-            if negate_offset && offset <= 0 {
-                offset -= 1;
+        /// This actually finds the closest point.
+        /// `rad` is the squared norm.
+        fn cvp_impl(
+            i: usize, r: &Matrix<$ty>, qt: &VectorView<$ty>, prec: u32, rad: &Option<$ty>
+        ) -> Option<IOwnedVector> {
+            // One dimensional lattice.
+            if i == 0 {
+                let qt = &qt[0];
+                let r = &r[(0, 0)];
+                // `m` is the index of the closest point.
+                // `d` is the distance to it.
+                select!($ty,
+                    Float => {
+                        let m = Float::with_val(prec, qt / r).round();
+                        let d = Float::with_val(prec, &m * r - qt);
+                        let d = d.square();
+                    },
+                    default => {
+                        let m = (qt / r).round();
+                        let d = m * r - qt;
+                        let d = d * d;
+                    },
+                );
+                return in_radius(&d, rad).then(|| IOwnedVector::from_array([
+                    select!($ty,
+                        Float => { m.to_integer().unwrap() },
+                        f32 => { Integer::from_f32(m).unwrap() },
+                        f64 => { Integer::from_f64(m).unwrap() },
+                    )
+                ]));
             }
 
-            // In the 0, 1, -1, 2, ... case,
-            // if the offset is >= 0, we need to add 1.
-            // E.g. if the offset was -1, then we negated it to 1
-            // and add 1.
-            else if !negate_offset && offset >= 0 {
-                offset += 1;
-            }
+            let qtc = &qt[i];
+            let rc = &r[(i, i)];
 
-            // If this overflows, you probably would have
-            // ctrl-c'd before we got here.
-            // debug_assert!(offset != 0);
-
-            // Distance to the plane.
-            // This is the distance of the target to
-            // its orthogonal projection in the plane.
-            let d = index.clone() * rc - qtc;
-            let d = d.square();
-            //println!("Index: {index} Distance: {d}");
-
-            // If the plane is not in the radius,
-            // then the next one in the loop definitely is not
-            // either, by the way we iterate over the planes.
-            if !in_radius(&d, &min_dist) {
-                break;
-            }
-
-            // We can use a smaller radius inside the plane.
-            // The target to its projection to any point
-            // in the plane form a right triangle.
-            // So by Pythagoras the squared distance in the
-            // plane can only be <= rad - d.
-            // rad and d are already the square of the distance.
-            let plane_dist = min_dist.as_ref().map(|f| f - d);
-
-            // Compute the point in the plane we need to be close to now.
-            let point_in_plane = qt - &index * &r[i];
-
-            // Recursively find the closest point.
-            let v = cvp_impl(i - 1, r, point_in_plane.view(), prec, &plane_dist);
-            let Some(mut v) = v else {
-                continue
-            };
-            assert!(v.dim() == i);
-
-            // v is the new index vector of the point.
-            // It is the index of the closest point of the previous call,
-            // plus the index of the plane.
-            v.append(index.to_integer().unwrap());
-
-            // Compute the actual vector of the index vector,
-            // i.e. v * r[:i+1, :i+1]. Since there is currently no
-            // way to multiply by a submatrix, just do it manually.
-            let iter = (0..v.dim()).map(|i| v.iter().zip(r.column(i))
-                .map(|(l, r)| Float::with_val(prec, l) * r)
-                .fold(Float::with_val(prec, 0), |acc, f| acc + f)
+            // Index of the closest plane before rounding.
+            select!($ty,
+                Float => {
+                    let start_index_fl = Float::with_val(prec, qtc / rc);
+                    let start_index = Float::with_val(prec, start_index_fl.round_ref());
+                },
+                default => {
+                    let start_index_fl = qtc / rc;
+                    let start_index = start_index_fl.round();
+                },
             );
-            let vv = FOwnedVector::from_iter(v.dim(), iter);
+            //println!("Start index: {start_index} ({start_index_fl})");
 
-            // Compute the distance to the point.
-            let d = (&vv - &qt[0..i+1]).norm_sqr();
+            // Suppose the start index was -0.4.
+            // We would want to check the planes in the order
+            // 0, -1, 1, -2, 2.
+            // But if the start index was 0.4, we would want
+            // 0, 1, -1, 2, -2
+            // So depending on whether we round up or down
+            // to the integer start index, we will negate
+            // the offset from the start index.
+            let negate_offset = select!($ty,
+                Float => { (start_index_fl - &start_index).is_sign_negative() },
+                default => { start_index_fl - start_index < 0. },
+            );
 
-            // If the distance is smaller than the current minimal dist,
-            // then we have found the new best point.
-            if in_radius(&d, &min_dist) {
-                min = Some(v);
-                min_dist = Some(d);
+            // The current plane's offset.
+            let mut offset = 0isize;
+
+            let mut min_dist = rad.clone();
+            let mut min = None;
+
+            // Iterate over all possible planes.
+            loop {
+                // Index of the plane we are considering.
+                let index = select!($ty,
+                    Float => { Float::with_val(prec, &start_index + offset) },
+                    default => { start_index + offset as $ty },
+                );
+
+                // Compute the index offset of the next plane.
+                // Negate the offset first.
+                offset.neg_assign();
+
+                // If we negate the offsets, i.e. 0, -1, 1, -2, ...,
+                // then if we are <= 0, we need to subtract 1.
+                // E.g. if the offset was 1, then we negated it to -1
+                // and subtract 1.
+                if negate_offset && offset <= 0 {
+                    offset -= 1;
+                }
+
+                // In the 0, 1, -1, 2, ... case,
+                // if the offset is >= 0, we need to add 1.
+                // E.g. if the offset was -1, then we negated it to 1
+                // and add 1.
+                else if !negate_offset && offset >= 0 {
+                    offset += 1;
+                }
+
+                // If this overflows, you probably would have
+                // ctrl-c'd before we got here.
+                // debug_assert!(offset != 0);
+
+                // Distance to the plane.
+                // This is the distance of the target to
+                // its orthogonal projection in the plane.
+                let d = index.clone() * rc - qtc;
+                let d = select!($ty,
+                    Float => { d.square() },
+                    default => { d * d },
+                );
+                //println!("Index: {index} Distance: {d}");
+
+                // If the plane is not in the radius,
+                // then the next one in the loop definitely is not
+                // either, by the way we iterate over the planes.
+                if !in_radius(&d, &min_dist) {
+                    break;
+                }
+
+                // We can use a smaller radius inside the plane.
+                // The target to its projection to any point
+                // in the plane form a right triangle.
+                // So by Pythagoras the squared distance in the
+                // plane can only be <= rad - d.
+                // rad and d are already the square of the distance.
+                let plane_dist = min_dist.as_ref().map(|f| f - d);
+
+                // Compute the point in the plane we need to be close to now.
+                let point_in_plane = qt - &index * &r[i];
+
+                // Recursively find the closest point.
+                let v = cvp_impl(i - 1, r, point_in_plane.view(), prec, &plane_dist);
+                let Some(mut v) = v else {
+                    continue
+                };
+                assert!(v.dim() == i);
+
+                // v is the new index vector of the point.
+                // It is the index of the closest point of the previous call,
+                // plus the index of the plane.
+                v.append(select!($ty,
+                    Float => { index.to_integer().unwrap() },
+                    f32 => { Integer::from_f32(index.round()).unwrap() },
+                    f64 => { Integer::from_f64(index.round()).unwrap() },
+                ));
+
+                // Compute the actual vector of the index vector,
+                // i.e. v * r[:i+1, :i+1]. Since there is currently no
+                // way to multiply by a submatrix, just do it manually.
+                let iter = select!($ty,
+                    Float => {
+                        (0..v.dim()).map(|i| v.iter().zip(r.column(i))
+                            .map(|(l, r)| Float::with_val(prec, l) * r)
+                            .fold(Float::with_val(prec, 0), |acc, f| acc + f)
+                        )
+                    },
+                    f32 => {
+                        (0..v.dim()).map(|i| v.iter().zip(r.column(i))
+                            .map(|(l, r)| l.to_f32() * r)
+                            .sum()
+                        )
+                    },
+                    f64 => {
+                        (0..v.dim()).map(|i| v.iter().zip(r.column(i))
+                            .map(|(l, r)| l.to_f64() * r)
+                            .sum()
+                        )
+                    },
+                );
+                let vv = OwnedVector::from_iter(v.dim(), iter);
+
+                // Compute the distance to the point.
+                let d = (&vv - &qt[0..i+1]).norm_sqr();
+
+                // If the distance is smaller than the current minimal dist,
+                // then we have found the new best point.
+                if in_radius(&d, &min_dist) {
+                    min = Some(v);
+                    min_dist = Some(d);
+                }
             }
+
+            min
         }
 
-        min
+        // Multiply the coefficients by the basis.
+        cvp_impl(r.cols - 1, &r, qt.view(), prec, &rad)
+            .map(|v| v.view() * basis)
     }
-
-    // Multiply the coefficients by the basis.
-    cvp_impl(r.cols - 1, &r, qt.view(), prec, &rad)
-        .map(|v| v.view() * basis)
+    };
+    (Float, $n:ident) => {
+        pub fn $n(
+            basis: &IMatrix, t: &IVectorView, mut rad: Option<Float>, prec: u32
+        ) -> Option<IOwnedVector> {
+            impl_cvp_planes!(body, Float, basis, t, rad, prec)
+        }
+    };
+    ($t:tt, $n:ident) => {
+        pub fn $n(
+            basis: &IMatrix, t: &IVectorView, mut rad: Option<$t>
+        ) -> Option<IOwnedVector> {
+            impl_cvp_planes!(body, $t, basis, t, rad, 0)
+        }
+    };
 }
+
+impl_cvp_planes!(Float, cvp_planes_float);
+impl_cvp_planes!(f32, cvp_planes_f32);
+impl_cvp_planes!(f64, cvp_planes_f64);
 
 macro_rules! impl_solve_linear {
     ($t:tt, $n:ident) => {
@@ -659,11 +758,13 @@ fn cvp_temp_test() {
         }
         let time = now.elapsed().as_secs_f64() * 1000.;
         let d = (&v - t).norm();
-        println!("{name}: {d:.3} in {time:.3}ms");
+        println!("{name}: {d:.3} in {time:.3}ms ({v:?})");
     }
 
     let now = std::time::Instant::now();
-    bench("exact solution", || cvp_planes(&b, t.view(), 53, None).unwrap(), &t);
+    bench("exact solution float", || cvp_planes_float(&b, t.view(), None, 53).unwrap(), &t);
+    bench("exact solution f64", || cvp_planes_f64(&b, t.view(), None).unwrap(), &t);
+    bench("exact solution f32", || cvp_planes_f32(&b, t.view(), None).unwrap(), &t);
     //bench("nearest plane", || cvp_nearest_plane_float(&b, &t, 53), &t);
     //bench("rounding", || cvp_rounding_f64(&b, &t), &t);
 }
@@ -714,7 +815,7 @@ fn cvp_exact_dim20() {
     ]);
     let t = IOwnedVector::from_entries([-48, 69, -76, 36, -72, 31, -53,
         -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
-    assert_eq!(cvp_planes(&b, t.view(), 53, None).unwrap(), [-30i32, 35, -98,
+    assert_eq!(cvp_planes_float(&b, t.view(), None, 53).unwrap(), [-30i32, 35, -98,
         61, -27, 75, -32, -3, 70, 8, 3, -77, -29, -103, 61, 58, -71, 41, 37, -40]);
 }
 
@@ -816,84 +917,4 @@ fn babai_rounding_linear_dim_3() {
         Vector::from_entries([2, 2, 2]).view()), [1]);
     assert_eq!(lattice.cvp_rounding_f64_coeff(
         Vector::from_entries([2, -2, 0]).view()), [0]);
-}
-
-/// Not used at the moment.
-/// A trait for types that are used internally by lattice algorithms.
-pub trait WorkingType
-    where
-        Self: Copy,
-        Self::Scalar: Clone,
-        //for<'a> &'a VV<Self::Scalar>:
-        //    Add<&'a VV<Self::Scalar>, Output=Vector<Self::Scalar>> +
-        //    Sub<&'a VV<Self::Scalar>, Output=Vector<Self::Scalar>> +
-        //    Mul<&'a Self::Scalar, Output=Vector<Self::Scalar>> +
-        //    Div<&'a Self::Scalar, Output=Vector<Self::Scalar>>,
-{
-    /// The actual type.
-    type Scalar;
-
-    /// Converts an integer to the working type.
-    #[allow(clippy::wrong_self_convention)]
-    fn from_int(self, i: &Integer) -> Self::Scalar;
-
-    /// Converts a working type to an integer.
-    fn to_int(self, v: &Self::Scalar) -> Integer;
-}
-
-#[derive(Clone, Copy)]
-pub struct F64;
-impl WorkingType for F64 {
-    type Scalar = f64;
-
-    fn from_int(self, i: &Integer) -> Self::Scalar {
-        i.to_f64()
-    }
-
-    fn to_int(self, v: &Self::Scalar) -> Integer {
-        Integer::from_f64(*v).unwrap()
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct F32;
-impl WorkingType for F32 {
-    type Scalar = f32;
-
-    fn from_int(self, i: &Integer) -> Self::Scalar {
-        i.to_f32()
-    }
-
-    fn to_int(self, v: &Self::Scalar) -> Integer {
-        Integer::from_f32(*v).unwrap()
-    }
-}
-
-/// Floating point type with fixed precision.
-#[derive(Clone, Copy)]
-pub struct FP(u32);
-impl WorkingType for FP {
-    type Scalar = Float;
-
-    fn from_int(self, i: &Integer) -> Self::Scalar {
-        Float::with_val(self.0, i)
-    }
-
-    fn to_int(self, v: &Self::Scalar) -> Integer {
-        v.to_integer().unwrap()
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct Rat;
-impl WorkingType for Rat {
-    type Scalar = Rational;
-
-    fn from_int(self, i: &Integer) -> Self::Scalar {
-        Rational::from(i)
-    }
-
-    fn to_int(self, v: &Self::Scalar) -> Integer {
-        v.round_ref().into()
-    }
 }

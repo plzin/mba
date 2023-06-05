@@ -258,7 +258,7 @@ impl<T> Matrix<T> {
             }
         }
 
-        let esize = core::mem::size_of::<Integer>(); 
+        let esize = core::mem::size_of::<Integer>();
         let layout = std::alloc::Layout::from_size_align(
             self.rows * self.cols * esize,
             core::mem::align_of::<Integer>()
@@ -395,11 +395,16 @@ impl FMatrix {
 
 }
 
+pub trait MulTranspose {
+    /// Multiply the matrix by the transpose of another matrix.
+    fn mul_transpose(&self, rhs: &Self) -> Self;
+}
+
 macro_rules! impl_mul_transpose {
     ($t:tt) => {
-        impl Matrix<$t> {
+        impl MulTranspose for Matrix<$t> {
             /// Multiply the matrix by the transpose of another matrix.
-            pub fn mul_transpose(&self, rhs: &Self) -> Self {
+            fn mul_transpose(&self, rhs: &Self) -> Self {
                 assert!(self.cols == rhs.cols,
                     "Invalid dimensions for multiplication.");
                 select!($t,
@@ -428,7 +433,7 @@ macro_rules! impl_mul_transpose {
     }
 }
 
-impl_mul_transpose!(Integer, Float, f32, f64);
+impl_mul_transpose!(Integer, Rational, Float, f32, f64);
 
 impl<T> std::ops::Index<usize> for Matrix<T> {
     type Output = VectorView<T>;
