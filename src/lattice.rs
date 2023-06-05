@@ -58,7 +58,7 @@ impl Lattice {
     pub fn ambient_dim(&self) -> usize {
         self.basis.cols
     }
-    
+
     /// Returns the vector on the lattice that is the linear
     /// combination of the basis vectors with the given coefficients.
     pub fn at<T: AsRef<[Integer]>>(&self, coefficients: T) -> IOwnedVector {
@@ -183,7 +183,7 @@ impl AffineLattice {
 /// In practice, it is a good idea to reduce the basis (e.g. using LLL)
 /// so that the approximation is good.
 macro_rules! impl_cvp_rounding {
-    (body, $t:tt, $basis:expr, $v:ident, $prec:ident) => { 
+    (body, $t:tt, $basis:expr, $v:ident, $prec:ident) => {
         {
             let mut a = select!($t,
                 Float => { FMatrix::zero_prec($basis.cols, $basis.rows, $prec) },
@@ -284,10 +284,9 @@ impl_cvp_rounding!(Float, cvp_rounding_float, cvp_rounding_float_coeff);
 /// Call `gram_schmidt_orthonormal` if you want that.
 pub fn gram_schmidt<T>(mut a: Matrix<T>) -> Matrix<T>
     where
-        T: Div<T, Output = T>,
+        T: InnerProduct + Div<T, Output = T>,
         for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
-        VectorView<T>: InnerProductSpace<Scalar = T>
-            + for<'a> SubAssign<&'a OwnedVector<T>>,
+        VectorView<T>: for<'a> SubAssign<&'a OwnedVector<T>>,
 {
     for i in 0..a.rows {
         for j in 0..i {
@@ -307,10 +306,9 @@ pub fn gram_schmidt<T>(mut a: Matrix<T>) -> Matrix<T>
 /// (unlike `gram_schmidt`).
 pub fn gram_schmidt_orthonormal<T>(mut a: Matrix<T>) -> Matrix<T>
     where
-        T: Div<T, Output = T>,
+        T: InnerProduct + VectorNorm<Scalar = T> + Div<T, Output = T>,
         for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
-        VectorView<T>: InnerProductSpace<Scalar = T> + NormedSpace<Scalar = T>
-            + for<'a> SubAssign<&'a OwnedVector<T>>,
+        for<'a> VectorView<T>: SubAssign<&'a OwnedVector<T>> + DivAssign<&'a T>,
 {
     a = gram_schmidt(a);
     for i in 0..a.rows {
@@ -558,7 +556,7 @@ macro_rules! impl_solve_linear {
                     let fac = select!($t,
                         Rational => { (&a[(r, i)] / &pivot).complete() },
                         Float => { Float::with_val(prec, &a[(r, i)] / &pivot) },
-                        default => { a[(r, i)] / pivot }, 
+                        default => { a[(r, i)] / pivot },
                     );
                     for c in i+1..a.cols {
                         let s = select!($t,
@@ -572,7 +570,7 @@ macro_rules! impl_solve_linear {
                     b[r] -= s;
                 }
             }
-        
+
             let mut result = select!($t,
                 Float => { FOwnedVector::zero_prec(a.cols, prec) },
                 default => { OwnedVector::<$t>::zero(a.cols) },

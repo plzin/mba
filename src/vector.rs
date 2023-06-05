@@ -8,7 +8,9 @@ use std::ops::{
 use std::fmt::Debug;
 use num_traits::Zero;
 use rug::{Integer, Complete, Float, Rational, ops::NegAssign};
+use crate::select;
 
+/// How are the entries of a vector stored?
 pub trait VectorStorage<T> {
     type Iter<'a>: Iterator<Item = &'a T> where Self: 'a, T: 'a;
     type IterMut<'a>: Iterator<Item = &'a mut T> where Self: 'a, T: 'a;
@@ -42,12 +44,6 @@ pub struct Vector<T, S>
 {
     phantom: std::marker::PhantomData<T>,
     storage: S,
-}
-
-impl<T: std::fmt::Debug, S: VectorStorage<T> + ?Sized> std::fmt::Debug for Vector<T, S> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
-    }
 }
 
 impl<T, S: VectorStorage<T> + ?Sized> Vector<T, S> {
@@ -160,6 +156,8 @@ impl<T, S: VectorStorage<T>> Vector<T, S> {
 
 impl<S: VectorStorage<Float> + ?Sized> Vector<Float, S> {
     pub fn precision(&self) -> u32 {
+        assert!(self.dim() > 0,
+            "Cannot get precision of an empty vector");
         if cfg!(debug_assert) {
             self.assert_precision();
         }
@@ -228,6 +226,12 @@ impl<T, S, I: ?Sized, U> PartialEq<I> for Vector<T, S> where
 {
     fn eq(&self, other: &I) -> bool {
         self.iter().eq(other)
+    }
+}
+
+impl<T: std::fmt::Debug, S: VectorStorage<T> + ?Sized> std::fmt::Debug for Vector<T, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
     }
 }
 
@@ -320,11 +324,15 @@ pub type ROwnedVector = OwnedVector<Rational>;
 
 impl<T> OwnedVector<T> {
     /// Returns a view of the owned vector.
+    /// Currently, this has the same layout as the owned vector,
+    /// so this is pretty much a no-op.
     pub fn view(&self) -> &VectorView<T> {
         VectorView::from_slice(self.as_slice())
     }
 
     /// Returns a mutable view of the owned vector.
+    /// Currently, this has the same layout as the owned vector,
+    /// so this is pretty much a no-op.
     pub fn view_mut(&mut self) -> &mut VectorView<T> {
         VectorView::from_slice_mut(self.as_slice_mut())
     }
@@ -539,137 +547,194 @@ impl<T> Drop for OwnedVectorStorage<T> {
     }
 }
 
-pub trait InnerProductSpace {
-    /// The result type of the inner product.
-    type Scalar;
-
+pub trait InnerProduct: Sized {
     /// Computes the inner product of two vectors.
-    fn dot(&self, other: &Self) -> Self::Scalar;
+    fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
+    where
+        R: VectorStorage<Self> + ?Sized,
+        S: VectorStorage<Self> + ?Sized;
 
     /// Computes the inner product of a vector with itself.
-    fn norm_sqr(&self) -> Self::Scalar {
-        self.dot(self)
+    fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        Self::dot(v, v)
     }
 }
 
-pub trait VectorNorm {
-    /// The result type of the norm.
+pub trait VectorNorm: Sized {
     type Scalar;
 
-    /// Computes the norm of a vector.
-    fn norm(&self) -> Self::Scalar;
+    /// Computes the norm of the vector.
+    fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
+        where S: VectorStorage<Self> + ?Sized;
 }
 
-pub trait NormedSpace: VectorNorm {
-    /// Normalize a vector.
-    fn normalize(&mut self);
-}
-
-impl<T, S: VectorStorage<T> + ?Sized> NormedSpace for Vector<T, S>
-    where Vector<T, S>: VectorNorm<Scalar = T> + for<'a> DivAssign<&'a T>,
+impl<S, T> Vector<T, S>
+where
+    S: VectorStorage<T> + ?Sized,
+    T: InnerProduct,
 {
-    fn normalize(&mut self) {
-        *self /= &self.norm();
+    /// Computes the inner product of two vectors.
+    pub fn dot<R>(&self, v: &Vector<T, R>) -> T
+        where R: VectorStorage<T> + ?Sized,
+    {
+        T::dot(self, v)
+    }
+
+    /// Computes the inner product of a vector with itself.
+    pub fn norm_sqr(&self) -> T {
+        T::norm_sqr(self)
     }
 }
 
-impl<S: VectorStorage<Integer> + ?Sized> InnerProductSpace for Vector<Integer, S> {
-    type Scalar = Integer;
+impl<S, T> Vector<T, S>
+where
+    S: VectorStorage<T> + ?Sized,
+    T: VectorNorm,
+{
+    /// Returns the norm of the vector.
+    pub fn norm(&self) -> T::Scalar {
+        T::norm(self)
+    }
+}
 
-    fn dot(&self, other: &Self) -> Self::Scalar {
-        assert!(self.dim() == other.dim());
-        self.iter().zip(other.iter())
+impl<S, T> Vector<T, S>
+where
+    S: VectorStorage<T> + ?Sized,
+    T: VectorNorm<Scalar = T>,
+    for<'a> Vector<T, S>: DivAssign<&'a T>,
+{
+    pub fn normalize(&mut self) {
+        *self /= &T::norm(self);
+    }
+}
+
+impl InnerProduct for Integer {
+    fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
+    where
+        R: VectorStorage<Self> + ?Sized,
+        S: VectorStorage<Self> + ?Sized
+    {
+        assert!(v.dim() == w.dim());
+        v.iter().zip(w.iter())
             .map(|(c, d)| c * d)
             .sum()
     }
 
-    fn norm_sqr(&self) -> Self::Scalar {
-        self.iter().map(|i| i.square_ref()).sum()
+    fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        v.iter().map(|x| x.square_ref()).sum()
     }
 }
 
-impl<S: VectorStorage<Integer> + ?Sized> VectorNorm for Vector<Integer, S> {
+impl VectorNorm for Integer {
     type Scalar = Float;
 
-    fn norm(&self) -> Self::Scalar {
-        let ns = self.norm_sqr();
+    fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        let ns = v.norm_sqr();
         Float::with_val(ns.signed_bits(), ns).sqrt()
     }
 }
 
-impl<S: VectorStorage<Rational> + ?Sized> InnerProductSpace for Vector<Rational, S> {
-    type Scalar = Rational;
-
-    fn dot(&self, other: &Self) -> Self::Scalar {
-        assert!(self.dim() == other.dim());
-        self.iter().zip(other.iter())
+impl InnerProduct for Rational {
+    fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
+    where
+        R: VectorStorage<Self> + ?Sized,
+        S: VectorStorage<Self> + ?Sized
+    {
+        assert!(v.dim() == w.dim());
+        v.iter().zip(w.iter())
             .map(|(c, d)| (c * d).complete())
             .sum()
     }
 
-    fn norm_sqr(&self) -> Self::Scalar {
-        self.iter().map(|i| i.square_ref().complete()).sum()
+    fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        v.iter().map(|x| x.square_ref().complete()).sum()
     }
 }
 
-impl<S: VectorStorage<Rational> + ?Sized> VectorNorm for Vector<Rational, S> {
+impl VectorNorm for Rational {
     type Scalar = Float;
-
-    fn norm(&self) -> Self::Scalar {
-        let ns = self.norm_sqr();
+    fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
+        where S: VectorStorage<Self> + ?Sized
+    {
+        let ns = v.norm_sqr();
         Float::with_val(ns.numer().signed_bits(), ns).sqrt()
     }
 }
 
-impl<S: VectorStorage<Float> + ?Sized> InnerProductSpace for Vector<Float, S> {
-    type Scalar = Float;
-
-    fn dot(&self, other: &Self) -> Self::Scalar {
-        assert!(self.dim() == other.dim());
-        self.iter().zip(other.iter())
-            .map(|(c, d)| c * d)
-            .fold(Float::with_val(self.precision(), 0), |acc, f| acc + f)
+impl InnerProduct for Float {
+    fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
+    where
+        R: VectorStorage<Self> + ?Sized,
+        S: VectorStorage<Self> + ?Sized,
+    {
+        assert!(v.dim() == w.dim());
+        let prec = v.precision();
+        assert_eq!(prec, w.precision(), "Cannot compute the \
+            inner product of two vectors of different precision.");
+        v.iter().zip(w.iter())
+            .map(|(a, b)| a * b)
+            .fold(Float::with_val(prec, 0), |acc, x| acc + x)
     }
 
-    fn norm_sqr(&self) -> Self::Scalar {
-        self.iter().map(|i| i * i)
-            .fold(Float::with_val(self.precision(), 0), |acc, f| acc + f)
+    fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        let prec = v.precision();
+        v.iter()
+            .map(|x| x * x)
+            .fold(Float::with_val(prec, 0), |acc, x| acc + x)
     }
 }
 
-impl<S: VectorStorage<Float> + ?Sized> VectorNorm for Vector<Float, S> {
+impl VectorNorm for Float {
     type Scalar = Float;
 
-    fn norm(&self) -> Self::Scalar {
-        self.norm_sqr().sqrt()
+    fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        v.norm_sqr().sqrt()
     }
 }
 
 macro_rules! impl_innerproduct_norm {
     ($t:ty) => {
-        impl<S: VectorStorage<$t> + ?Sized> InnerProductSpace for Vector<$t, S> {
-            type Scalar = $t;
-
-            fn dot(&self, other: &Self) -> Self::Scalar {
-                assert!(self.dim() == other.dim());
-                self.iter().zip(other.iter())
+        impl InnerProduct for $t {
+            fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
+            where
+                R: VectorStorage<Self> + ?Sized,
+                S: VectorStorage<Self> + ?Sized
+            {
+                assert!(v.dim() == w.dim());
+                v.iter().zip(w.iter())
                     .map(|(c, d)| c * d)
                     .sum()
             }
 
-            fn norm_sqr(&self) -> Self::Scalar {
-                self.iter().map(|e| e * e).sum()
+            fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
+                where S: VectorStorage<Self> + ?Sized,
+            {
+                v.iter().map(|x| x * x).sum()
             }
         }
 
-        impl<S: VectorStorage<$t> + ?Sized> VectorNorm for Vector<$t, S> {
-            type Scalar = $t;
+        impl VectorNorm for $t {
+            type Scalar = Self;
 
-            fn norm(&self) -> Self::Scalar {
-                self.norm_sqr().sqrt()
+            fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
+                where S: VectorStorage<Self> + ?Sized,
+            {
+                v.norm_sqr().sqrt()
             }
         }
-    };
+    }
 }
 
 impl_innerproduct_norm!(f32);
@@ -690,36 +755,22 @@ macro_rules! impl_addsub {
             fn $op(self, rhs: &Vector<$t, R>) -> Self::Output {
                 assert!(self.dim() == rhs.dim(), "Can not perform operation \
                     for vectors of incompatible sizes");
-                macro_rules! prec {
-                    (Float) => {
-                        {
-                            let prec = self.precision();
-                            assert!(prec == rhs.precision(),
-                                "Can not add vectors of different precision.");
-                            prec
-                        }
-                    };
-                    ($_:tt) => { 0u32 };
-                };
-                let prec = prec!($t);
-                macro_rules! op_impl {
-                    ($x:tt, $opa:tt) => { op_impl!($x, $x, $opa) };
-                    (default_big, $x:ty, $opa:tt) => {
-                        |(a, b): (&$x, &$x)| <&$x>::$opa(a, b).complete()
-                    };
-                    (default, $x:ty, $opa:tt) => {
-                        |(a, b): (&$x, &$x)| <&$x>::$opa(a, b)
-                    };
-                    (f32, $x:ty, $opa:tt) => { op_impl!(default, $x, $opa) };
-                    (f64, $x:ty, $opa:tt) => { op_impl!(default, $x, $opa) };
-                    (Integer, $x:ty, $opa:tt) => { op_impl!(default_big, $x, $opa) };
-                    (Rational, $x:ty, $opa:tt) => { op_impl!(default_big, $x, $opa) };
-                    (Float, $x:ty, $opa:tt) => {
-                        |(a, b): (&$x, &$x)| Float::with_val(prec, <&$x>::$opa(a, b))
-                    };
-                }
+                select!($t,
+                    Float => {
+                        let prec = self.precision();
+                        assert!(prec == rhs.precision(),
+                            "Can not add vectors of different precision.");
+                    },
+                    default => {},
+                );
                 OwnedVector::from_iter(self.dim(),
-                    self.iter().zip(rhs.iter()).map(op_impl!($t, $op)))
+                    self.iter().zip(rhs.iter()).map(|(a, b)| select!($t,
+                        Float => { Float::with_val(prec, <&$t>::$op(a, b)) },
+                        Integer => { <&$t>::$op(a, b).complete() },
+                        Rational => { <&$t>::$op(a, b).complete() },
+                        default => { <&$t>::$op(a, b) },
+                    ))
+                )
             }
         }
     };
@@ -760,11 +811,15 @@ macro_rules! impl_addsub_reuse {
         impl<S: VectorStorage<$t> + ?Sized> Sub<OwnedVector<$t>> for &Vector<$t, S> {
             type Output = OwnedVector<$t>;
             fn sub(self, mut rhs: OwnedVector<$t>) -> Self::Output {
-                // If we were to do this in one step,
-                // we would need to allocate a temporary object.
-                // Might be worth it, not too sure.
-                rhs = -rhs;
-                rhs + self
+                for i in 0..self.dim() {
+                    let ptr = &mut rhs[i] as *mut $t;
+                    unsafe {
+                        let r = ptr.read();
+                        let v = &self[i] - r;
+                        ptr.write(v);
+                    }
+                }
+                rhs
             }
         }
     };
@@ -794,37 +849,23 @@ macro_rules! impl_muldiv {
         impl<S: VectorStorage<$t> + ?Sized> $class<&$t> for &Vector<$t, S> {
             type Output = OwnedVector<$t>;
             fn $op(self, rhs: &$t) -> Self::Output {
-                macro_rules! prec {
-                    (Float) => {
-                        {
-                            let prec = self.precision();
+                select!($t,
+                    Float => {
+                        let prec = self.precision();
                             assert!(prec == rhs.prec(), "Can not \
                                 multiply/divide vectors with float of \
                                 different precision of different precision.");
-                            prec
-                        }
-                    };
-                    ($_:tt) => { 0u32 };
-                };
-                let prec = prec!($t);
-                macro_rules! op_impl {
-                    ($x:tt, $opa:tt) => { op_impl!($x, $x, $opa) };
-                    (default_big, $x:ty, $opa:tt) => {
-                        |i: &$x| <&$x>::$opa(i, rhs).complete()
-                    };
-                    (default, $x:ty, $opa:tt) => {
-                        |i: &$x| <&$x>::$opa(i, rhs)
-                    };
-                    (f32, $x:ty, $opa:tt) => { op_impl!(default, $x, $opa) };
-                    (f64, $x:ty, $opa:tt) => { op_impl!(default, $x, $opa) };
-                    (Integer, $x:ty, $opa:tt) => { op_impl!(default_big, $x, $opa) };
-                    (Rational, $x:ty, $opa:tt) => { op_impl!(default_big, $x, $opa) };
-                    (Float, $x:ty, $opa:tt) => {
-                        |i: &$x| Float::with_val(prec, <&$x>::$opa(i, rhs))
-                    };
-                }
-                Vector::from_iter(self.dim(),
-                    self.iter().map(op_impl!($t, $op)))
+                    },
+                    default => {},
+                );
+                OwnedVector::from_iter(self.dim(),
+                    self.iter().map(|a| select!($t,
+                        Float => { Float::with_val(prec, <&$t>::$op(a, rhs)) },
+                        Integer => { <&$t>::$op(a, rhs).complete() },
+                        Rational => { <&$t>::$op(a, rhs).complete() },
+                        default => { <&$t>::$op(a, rhs) },
+                    ))
+                )
             }
         }
     };
@@ -921,3 +962,70 @@ macro_rules! impl_neg {
 }
 
 impl_neg!(Integer, Rational, Float, f32, f64);
+
+/// This is implemented by types which allow the usual vector space operations.
+/// This isn't meant in the strict mathematical sense. (In that sense it would
+/// be more like a module.)
+/// Basically if T: VectorSpace then you can add, subtract, ..., vectors with
+/// entries of type T.
+pub trait VectorSpace
+where
+    Self: Sized,
+
+    // Reuse one operand of the operation.
+    for<'a> OwnedVector<Self>:
+        Add<&'a OwnedVector<Self>, Output = OwnedVector<Self>> +
+        Add<&'a VectorView<Self>, Output = OwnedVector<Self>> +
+        Sub<&'a OwnedVector<Self>, Output = OwnedVector<Self>> +
+        Sub<&'a VectorView<Self>, Output = OwnedVector<Self>> +
+        ,
+
+    // Assign operations.
+    for<'a> OwnedVector<Self>:
+        AddAssign<&'a OwnedVector<Self>> +
+        SubAssign<&'a OwnedVector<Self>> +
+        MulAssign<&'a Self> +
+        DivAssign<&'a Self> +
+        ,
+
+    for<'a> VectorView<Self>:
+        AddAssign<&'a OwnedVector<Self>> +
+        SubAssign<&'a OwnedVector<Self>> +
+        MulAssign<&'a Self> +
+        DivAssign<&'a Self> +
+        ,
+
+    // Binary operations.
+    for<'a> &'a OwnedVector<Self>:
+        Add<&'a OwnedVector<Self>, Output = OwnedVector<Self>> +
+        Add<&'a VectorView<Self>, Output = OwnedVector<Self>> +
+        Sub<&'a OwnedVector<Self>, Output = OwnedVector<Self>> +
+        Sub<&'a VectorView<Self>, Output = OwnedVector<Self>> +
+        Mul<&'a Self, Output = OwnedVector<Self>> +
+        Div<&'a Self, Output = OwnedVector<Self>> +
+        Add<OwnedVector<Self>, Output = OwnedVector<Self>> +
+        Sub<OwnedVector<Self>, Output = OwnedVector<Self>> +
+        ,
+
+    for<'a> &'a VectorView<Self>:
+        Add<&'a OwnedVector<Self>, Output = OwnedVector<Self>> +
+        Add<&'a VectorView<Self>, Output = OwnedVector<Self>> +
+        Sub<&'a OwnedVector<Self>, Output = OwnedVector<Self>> +
+        Sub<&'a VectorView<Self>, Output = OwnedVector<Self>> +
+        Mul<&'a Self, Output = OwnedVector<Self>> +
+        Div<&'a Self, Output = OwnedVector<Self>> +
+        Add<OwnedVector<Self>, Output = OwnedVector<Self>> +
+        Sub<OwnedVector<Self>, Output = OwnedVector<Self>> +
+        ,
+
+    // Negation.
+    OwnedVector<Self>:
+        Neg<Output = OwnedVector<Self>> +
+        ,
+{}
+
+impl VectorSpace for Integer {}
+impl VectorSpace for Rational {}
+impl VectorSpace for Float {}
+impl VectorSpace for f32 {}
+impl VectorSpace for f64 {}
