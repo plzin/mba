@@ -412,9 +412,11 @@ macro_rules! impl_cvp_planes {
 
         /// This actually finds the closest point.
         /// `rad` is the squared norm.
+        /// This returns the coordinates of the closest point in the basis
+        /// as the first entry and the actual point as the second entry.
         fn cvp_impl(
             i: usize, r: &Matrix<$ty>, qt: &VectorView<$ty>, prec: u32, rad: &Option<$ty>
-        ) -> Option<IOwnedVector> {
+        ) -> Option<(IOwnedVector, OwnedVector<$ty>)> {
             // One dimensional lattice.
             if i == 0 {
                 let qt = &qt[0];
@@ -424,22 +426,24 @@ macro_rules! impl_cvp_planes {
                 select!($ty,
                     Float => {
                         let m = Float::with_val(prec, qt / r).round();
-                        let d = Float::with_val(prec, &m * r - qt);
+                        let plane = Float::with_val(prec, r * &m);
+                        let d = Float::with_val(prec, &plane - qt);
                         let d = d.square();
                     },
                     default => {
                         let m = (qt / r).round();
-                        let d = m * r - qt;
+                        let plane = r * m;
+                        let d = plane - qt;
                         let d = d * d;
                     },
                 );
-                return in_radius(&d, rad).then(|| IOwnedVector::from_array([
+                return in_radius(&d, rad).then(|| (IOwnedVector::from_array([
                     select!($ty,
                         Float => { m.to_integer().unwrap() },
                         f32 => { Integer::from_f32(m).unwrap() },
                         f64 => { Integer::from_f64(m).unwrap() },
                     )
-                ]));
+                ]), OwnedVector::from_array([plane])));
             }
 
             let qtc = &qt[i];
@@ -539,44 +543,29 @@ macro_rules! impl_cvp_planes {
 
                 // Recursively find the closest point.
                 let v = cvp_impl(i - 1, r, point_in_plane.view(), prec, &plane_dist);
-                let Some(mut v) = v else {
+                let Some((mut v, mut vv)) = v else {
                     continue
                 };
                 assert!(v.dim() == i);
 
-                // v is the new index vector of the point.
-                // It is the index of the closest point of the previous call,
-                // plus the index of the plane.
+                // v is the new coordinate vector of the point.
+                // It is the coordinates of the closest point of
+                // the previous call, concat the index of the plane.
                 v.append(select!($ty,
                     Float => { index.to_integer().unwrap() },
                     f32 => { Integer::from_f32(index.round()).unwrap() },
                     f64 => { Integer::from_f64(index.round()).unwrap() },
                 ));
 
-                // Compute the actual vector of the index vector,
-                // i.e. v * r[:i+1, :i+1]. Since there is currently no
-                // way to multiply by a submatrix, just do it manually.
-                let iter = select!($ty,
-                    Float => {
-                        (0..v.dim()).map(|i| v.iter().zip(r.column(i))
-                            .map(|(l, r)| Float::with_val(prec, l) * r)
-                            .fold(Float::with_val(prec, 0), |acc, f| acc + f)
-                        )
-                    },
-                    f32 => {
-                        (0..v.dim()).map(|i| v.iter().zip(r.column(i))
-                            .map(|(l, r)| l.to_f32() * r)
-                            .sum()
-                        )
-                    },
-                    f64 => {
-                        (0..v.dim()).map(|i| v.iter().zip(r.column(i))
-                            .map(|(l, r)| l.to_f64() * r)
-                            .sum()
-                        )
-                    },
+                // vv is the closest point.
+                // It is the closest point of the previous call,
+                // plus the index of the plane times the basis vector
+                // of the current iteration.
+                vv += &(&index * &r[i][0..i]);
+                select!($ty,
+                    Float => { vv.append(Float::with_val(prec, &index * rc)) },
+                    default => { vv.append(index * rc) },
                 );
-                let vv = OwnedVector::from_iter(v.dim(), iter);
 
                 // Compute the distance to the point.
                 let d = (&vv - &qt[0..i+1]).norm_sqr();
@@ -584,7 +573,7 @@ macro_rules! impl_cvp_planes {
                 // If the distance is smaller than the current minimal dist,
                 // then we have found the new best point.
                 if in_radius(&d, &min_dist) {
-                    min = Some(v);
+                    min = Some((v, vv));
                     min_dist = Some(d);
                 }
             }
@@ -594,7 +583,7 @@ macro_rules! impl_cvp_planes {
 
         // Multiply the coefficients by the basis.
         cvp_impl(r.cols - 1, &r, qt.view(), prec, &rad)
-            .map(|v| v.view() * basis)
+            .map(|v| v.0.view() * basis)
     }
     };
     (Float, $n:ident) => {
