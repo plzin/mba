@@ -332,25 +332,77 @@ where
     (r, q)
 }
 
-/// Approximates the CVP using Babai's nearest plane algorithm.
-pub fn cvp_nearest_plane_float(
-    basis: &IOwnedMatrix, v: &IVectorView, prec: u32
-) -> IOwnedVector {
-    let q = gram_schmidt(basis.to_float(prec));
-    let mut b = v.to_owned();
-    for i in (0..basis.nrows()).rev() {
-        let a = &q[i];
-        // c = round(⟨a, b⟩ / ⟨a, a⟩)
-        let c = b.iter().zip(a.iter())
-            .map(|(i, f)| Float::with_val(prec, i) * f)
-            .fold(Float::with_val(prec, 0), |acc, f| acc + f);
-        let c = c / a.norm_sqr();
-        let c = c.to_integer().unwrap();
-        b -= &(&c * &basis[i]);
-    }
+macro_rules! impl_cvp_nearest_plane {
+    (body, $ty:tt, $basis:expr, $t:expr, $prec:expr) => {
+    {
+        let basis = $basis;
+        let t = $t;
+        let prec = $prec;
+        let q = gram_schmidt(select!($ty,
+            Float => { basis.to_float(prec) },
+            Rational => { basis.transform(|i| Rational::from(i)) },
+            f32 => { basis.transform(|i| i.to_f32()) },
+            f64 => { basis.transform(|i| i.to_f64()) },
+        ));
+        let mut b = t.to_owned();
+        for i in (0..basis.nrows()).rev() {
+            let a = &q[i];
+            // c = round(⟨a, b⟩ / ⟨a, a⟩)
+            let c = select!($ty,
+                Float => {
+                    b.iter().zip(a.iter())
+                        .map(|(i, f)| Float::with_val(prec, i) * f)
+                        .fold(Float::with_val(prec, 0), |acc, f| acc + f)
+                },
+                Rational => {
+                    b.iter().zip(a.iter())
+                        .map(|(i, f)| i * f)
+                        .fold(Rational::new(), |acc, f| acc + f.complete())
+                },
+                f32 => {
+                    b.iter().zip(a.iter())
+                        .map(|(i, f)| i.to_f32() * f)
+                        .fold(0., |acc, f| acc + f)
+                },
+                f64 => {
+                    b.iter().zip(a.iter())
+                        .map(|(i, f)| i.to_f64() * f)
+                        .fold(0., |acc, f| acc + f)
+                },
+            );
+            let c = c / a.norm_sqr();
+            let c = select!($ty,
+                Float => { c.to_integer().unwrap() },
+                Rational => { Integer::from(c.round_ref()) },
+                f32 => { Integer::from_f32(c.round()).unwrap() },
+                f64 => { Integer::from_f64(c.round()).unwrap() },
+            );
+            b -= &(&c * &basis[i]);
+        }
 
-    v - b
+        t - b
+    }
+    };
+    (Float, $n:ident) => {
+        impl Lattice {
+            pub fn $n(&self, v: &IVectorView, prec: u32) -> IOwnedVector {
+                impl_cvp_nearest_plane!(body, Float, &self.basis, v, prec)
+            }
+        }
+    };
+    ($ty:tt, $n:ident) => {
+        impl Lattice {
+            pub fn $n(&self, v: &IVectorView) -> IOwnedVector {
+                impl_cvp_nearest_plane!(body, $ty, &self.basis, v, 0)
+            }
+        }
+    };
 }
+
+impl_cvp_nearest_plane!(Float, cvp_nearest_plane_float);
+impl_cvp_nearest_plane!(Rational, cvp_nearest_plane_rat);
+impl_cvp_nearest_plane!(f32, cvp_nearest_plane_f32);
+impl_cvp_nearest_plane!(f64, cvp_nearest_plane_f64);
 
 /// Solves the CVP exactly.
 /// - `basis` is the matrix that contains the basis as rows.
@@ -587,17 +639,21 @@ macro_rules! impl_cvp_planes {
     }
     };
     (Float, $n:ident) => {
-        pub fn $n(
-            basis: &IOwnedMatrix, t: &IVectorView, mut rad: Option<Float>, prec: u32
-        ) -> Option<IOwnedVector> {
-            impl_cvp_planes!(body, Float, basis, t, rad, prec)
+        impl Lattice {
+            pub fn $n(
+                &self, t: &IVectorView, mut rad: Option<Float>, prec: u32
+            ) -> Option<IOwnedVector> {
+                impl_cvp_planes!(body, Float, &self.basis, t, rad, prec)
+            }
         }
     };
     ($t:tt, $n:ident) => {
-        pub fn $n(
-            basis: &IOwnedMatrix, t: &IVectorView, mut rad: Option<$t>
-        ) -> Option<IOwnedVector> {
-            impl_cvp_planes!(body, $t, basis, t, rad, 0)
+        impl Lattice {
+            pub fn $n(
+                &self, t: &IVectorView, mut rad: Option<$t>
+            ) -> Option<IOwnedVector> {
+                impl_cvp_planes!(body, $t, &self.basis, t, rad, 0)
+            }
         }
     };
 }
@@ -690,7 +746,7 @@ impl_solve_linear!(f64, solve_linear_f64);
 
 #[test]
 fn cvp_temp_test() {
-    let b = IOwnedMatrix::from_rows(&[
+    let l = Lattice::from_basis(IOwnedMatrix::from_rows(&[
         [  1,  -74,   20,   19,   -5,   21,  -19,   18,  -54,  -56,  -40,
           -38,  -58,   54,  -34,   -1,   -3,    0,  -27,    8],
         [-44,   19,  -20,   14,  -34,  -61,   53,  -31,   42,   42,   27,
@@ -731,7 +787,7 @@ fn cvp_temp_test() {
            31,   77,   18,   45,   57,   46,   52,  -21,  -51],
         [-57,   49,   26,   10,  -22,   32,  -52,  -71,   -9,   31,   45,
            28,  -28,  -30,   24,   44,   88,    2,  -63, -105],
-    ]);
+    ]));
     let t = IOwnedVector::from_entries([-48, 69, -76, 36, -72, 31, -53,
         -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
     //let now = std::time::Instant::now();
@@ -752,16 +808,16 @@ fn cvp_temp_test() {
     }
 
     let now = std::time::Instant::now();
-    bench("exact solution float", || cvp_planes_float(&b, t.view(), None, 53).unwrap(), &t);
-    bench("exact solution f64", || cvp_planes_f64(&b, t.view(), None).unwrap(), &t);
-    bench("exact solution f32", || cvp_planes_f32(&b, t.view(), None).unwrap(), &t);
+    bench("exact solution float", || l.cvp_planes_float(t.view(), None, 53).unwrap(), &t);
+    bench("exact solution f64", || l.cvp_planes_f64(t.view(), None).unwrap(), &t);
+    bench("exact solution f32", || l.cvp_planes_f32(t.view(), None).unwrap(), &t);
     //bench("nearest plane", || cvp_nearest_plane_float(&b, &t, 53), &t);
     //bench("rounding", || cvp_rounding_f64(&b, &t), &t);
 }
 
 #[test]
 fn cvp_exact_dim20() {
-    let b = IOwnedMatrix::from_rows(&[
+    let l = Lattice::from_basis(IOwnedMatrix::from_rows(&[
         [  1,  -74,   20,   19,   -5,   21,  -19,   18,  -54,  -56,  -40,
           -38,  -58,   54,  -34,   -1,   -3,    0,  -27,    8],
         [-44,   19,  -20,   14,  -34,  -61,   53,  -31,   42,   42,   27,
@@ -802,10 +858,10 @@ fn cvp_exact_dim20() {
            31,   77,   18,   45,   57,   46,   52,  -21,  -51],
         [-57,   49,   26,   10,  -22,   32,  -52,  -71,   -9,   31,   45,
            28,  -28,  -30,   24,   44,   88,    2,  -63, -105],
-    ]);
+    ]));
     let t = IOwnedVector::from_entries([-48, 69, -76, 36, -72, 31, -53,
         -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
-    assert_eq!(cvp_planes_float(&b, t.view(), None, 53).unwrap(), [-30i32, 35, -98,
+    assert_eq!(l.cvp_planes_float(t.view(), None, 53).unwrap(), [-30i32, 35, -98,
         61, -27, 75, -32, -3, 70, 8, 3, -77, -29, -103, 61, 58, -71, 41, 37, -40]);
 }
 
@@ -826,14 +882,14 @@ fn gram_schmidt_test() {
 
 #[test]
 fn nearest_plane_example() {
-    let a = IOwnedMatrix::from_rows(&[
+    let l = Lattice::from_basis(IOwnedMatrix::from_rows(&[
         [2, 3, 1],
         [4, 1, -3],
         [2, 2, 2],
-    ]);
+    ]));
 
     let t = IOwnedVector::from_entries([4, 2, 7]);
-    let c = cvp_nearest_plane_float(&a, t.view(), 53);
+    let c = l.cvp_nearest_plane_float(t.view(), 53);
     println!("{:?}", c);
 }
 

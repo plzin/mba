@@ -47,6 +47,16 @@ pub struct Vector<T, S: VectorStorage<T> + ?Sized> {
 }
 
 impl<T, S: VectorStorage<T> + ?Sized> Vector<T, S> {
+    /// Creates a vector reference from a storage reference.
+    pub fn from_storage_ref(storage: &S) -> &Self {
+        unsafe { &*(storage as *const _ as *const _) }
+    }
+
+    /// Creates a mutable vector reference from a mutable storage reference.
+    pub fn from_storage_ref_mut(storage: &mut S) -> &mut Self {
+        unsafe { &mut *(storage as *mut _ as *mut _) }
+    }
+
     /// Returns the dimension of the vector.
     pub fn dim(&self) -> usize {
         self.storage.dim()
@@ -75,6 +85,30 @@ impl<T, S: VectorStorage<T> + ?Sized> Vector<T, S> {
     /// Is the vector empty, i.e. dimension zero?
     pub fn is_empty(&self) -> bool {
         self.dim() == 0
+    }
+
+    /// Converts the vector into a row vector view, i.e.
+    /// a matrix with one row.
+    pub fn row_vector(&self) -> &RowVector<T, S> {
+        unsafe { &*(self as *const _ as *const _) }
+    }
+
+    /// Converts the vector into a mutable row vector view, i.e.
+    /// a matrix with one row.
+    pub fn row_vector_mut(&mut self) -> &mut RowVector<T, S> {
+        unsafe { &mut *(self as *mut _ as *mut _) }
+    }
+
+    /// Converts the vector into a column vector view, i.e.
+    /// a matrix with one column.
+    pub fn column_vector(&self) -> &ColumnVector<T, S> {
+        unsafe { &*(self as *const _ as *const _) }
+    }
+
+    /// Converts the vector into a mutable column vector view, i.e.
+    /// a matrix with one column.
+    pub fn column_vector_mut(&mut self) -> &mut ColumnVector<T, S> {
+        unsafe { &mut *(self as *mut _ as *mut _) }
     }
 
     /// Apply a function to each entry.
@@ -129,30 +163,6 @@ impl<T, S: ContiguousVectorStorage<T> + ?Sized> Vector<T, S> {
     /// Returns a mutable slice of the vector.
     pub fn as_slice_mut(&mut self) -> &mut [T] {
         self.storage.as_slice_mut()
-    }
-
-    /// Converts the vector into a row vector view, i.e.
-    /// a matrix with one row.
-    pub fn row_vector(&self) -> &RowVector<T> {
-        unsafe { &*(self.as_slice() as *const _ as *const _) }
-    }
-
-    /// Converts the vector into a mutable row vector view, i.e.
-    /// a matrix with one row.
-    pub fn row_vector_mut(&mut self) -> &mut RowVector<T> {
-        unsafe { &mut *(self.as_slice_mut() as *mut _ as *mut _) }
-    }
-
-    /// Converts the vector into a column vector view, i.e.
-    /// a matrix with one column.
-    pub fn column_vector(&self) -> &ColumnVector<T> {
-        unsafe { &*(self.as_slice() as *const _ as *const _) }
-    }
-
-    /// Converts the vector into a mutable column vector view, i.e.
-    /// a matrix with one column.
-    pub fn column_vector_mut(&mut self) -> &mut ColumnVector<T> {
-        unsafe { &mut *(self.as_slice_mut() as *mut _ as *mut _) }
     }
 }
 
@@ -418,7 +428,7 @@ impl<T> OwnedVector<T> {
     }
 
     /// Returns an owned vector from a pointer and dimension.
-    pub(self) fn from_raw_parts(entries: *mut T, dim: usize) -> Self {
+    pub(crate) fn from_raw_parts(entries: *mut T, dim: usize) -> Self {
         Self::from_storage(OwnedVectorStorage { entries, dim })
     }
 

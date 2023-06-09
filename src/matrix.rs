@@ -319,6 +319,19 @@ impl<T> OwnedMatrix<T> {
         )
     }
 
+    /// Turns this matrix into a vector of dimension r*c.
+    pub fn into_vector(self) -> Vector<T, OwnedVectorStorage<T>> {
+        let entries = self.storage.entries;
+        let dim = self.nrows() * self.ncols();
+
+        // Don't call the destructor on self.
+        std::mem::forget(self);
+
+        // Transfer the memory to the vector.
+        // It has a matching destructor.
+        OwnedVector::from_raw_parts(entries, dim)
+    }
+
     fn from_raw_parts(entries: *mut T, rows: usize, cols: usize) -> Self {
         Self::from_storage(OwnedMatrixStorage {
             entries,
@@ -772,12 +785,13 @@ impl<T> MatrixStorage<T> for TransposedMatrixStorage<T> {
 }
 
 /// A matrix with a single row.
-pub type RowVector<T> = Matrix<T, RowVectorStorage<T>>;
+pub type RowVector<T, S> = Matrix<T, RowVectorStorage<T, S>>;
 
-pub struct RowVectorStorage<T>([T]);
+#[repr(transparent)]
+pub struct RowVectorStorage<T, S: VectorStorage<T> + ?Sized>(PhantomData<T>, S);
 
-impl<T> MatrixStorage<T> for RowVectorStorage<T> {
-    type RowVecStorage = SliceVectorStorage<T>;
+impl<T, S: VectorStorage<T> + ?Sized> MatrixStorage<T> for RowVectorStorage<T, S> {
+    type RowVecStorage = S;
     type ColVecStorage = SliceVectorStorage<T>;
 
     fn rows(&self) -> usize {
@@ -785,41 +799,42 @@ impl<T> MatrixStorage<T> for RowVectorStorage<T> {
     }
 
     fn cols(&self) -> usize {
-        self.0.len()
+        self.1.dim()
     }
 
     fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
         assert!(r < self.rows());
-        VectorView::from_slice(&self.0)
+        Vector::from_storage_ref(&self.1)
     }
 
     fn row_mut(&mut self, r: usize) -> &mut Vector<T, Self::RowVecStorage> {
         assert!(r < self.rows());
-        VectorView::from_slice_mut(&mut self.0)
+        Vector::from_storage_ref_mut(&mut self.1)
     }
 
     fn col(&self, c: usize) -> &Vector<T, Self::ColVecStorage> {
         assert!(c < self.cols());
-        VectorView::from_slice(&self.0[c..c+1])
+        VectorView::from_slice(std::slice::from_ref(self.1.entry(c)))
     }
 
     fn col_mut(&mut self, c: usize) -> &mut Vector<T, Self::ColVecStorage> {
         assert!(c < self.cols());
-        VectorView::from_slice_mut(&mut self.0[c..c+1])
+        VectorView::from_slice_mut(std::slice::from_mut(self.1.entry_mut(c)))
     }
 }
 
 /// A matrix with a single column.
-pub type ColumnVector<T> = Matrix<T, ColumnVectorStorage<T>>;
+pub type ColumnVector<T, S> = Matrix<T, ColumnVectorStorage<T, S>>;
 
-pub struct ColumnVectorStorage<T>([T]);
+#[repr(transparent)]
+pub struct ColumnVectorStorage<T, S: VectorStorage<T> + ?Sized>(PhantomData<T>, S);
 
-impl<T> MatrixStorage<T> for ColumnVectorStorage<T> {
+impl<T, S: VectorStorage<T> + ?Sized> MatrixStorage<T> for ColumnVectorStorage<T, S> {
     type RowVecStorage = SliceVectorStorage<T>;
-    type ColVecStorage = SliceVectorStorage<T>;
+    type ColVecStorage = S;
 
     fn rows(&self) -> usize {
-        self.0.len()
+        self.1.dim()
     }
 
     fn cols(&self) -> usize {
@@ -828,27 +843,27 @@ impl<T> MatrixStorage<T> for ColumnVectorStorage<T> {
 
     fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
         assert!(r < self.rows());
-        VectorView::from_slice(&self.0[r..r+1])
+        VectorView::from_slice(std::slice::from_ref(self.1.entry(r)))
     }
 
     fn row_mut(&mut self, r: usize) -> &mut Vector<T, Self::RowVecStorage> {
         assert!(r < self.rows());
-        VectorView::from_slice_mut(&mut self.0[r..r+1])
+        VectorView::from_slice_mut(std::slice::from_mut(self.1.entry_mut(r)))
     }
 
     fn col(&self, c: usize) -> &Vector<T, Self::ColVecStorage> {
         assert!(c < self.cols());
-        VectorView::from_slice(&self.0)
+        Vector::from_storage_ref(&self.1)
     }
 
     fn col_mut(&mut self, c: usize) -> &mut Vector<T, Self::ColVecStorage> {
         assert!(c < self.cols());
-        VectorView::from_slice_mut(&mut self.0)
+        Vector::from_storage_ref_mut(&mut self.1)
     }
 }
 
 macro_rules! impl_mul {
-    ($t:ty, {$($sum:tt)*}) => {
+    ($t:tt) => {
         impl<S, R> Mul<&Matrix<$t, R>> for &Matrix<$t, S>
         where
             S: MatrixStorage<$t> + ?Sized,
@@ -859,136 +874,86 @@ macro_rules! impl_mul {
                 assert!(self.ncols() == rhs.nrows(), "Can't multiply matrices \
                     because of incompatible dimensions");
 
-                let mut m = Matrix::zero(self.nrows(), rhs.ncols());
+                select!($t,
+                    Float => {
+                        let prec = self.precision();
+                        assert!(prec == rhs.precision(),
+                            "Can't multiply matrices of different precision.\
+                            This can be relaxed in the future.");
+                        let mut m = Matrix::zero_prec(
+                            self.nrows(), rhs.ncols(), prec
+                        );
+                    },
+                    default => {
+                        let mut m = Matrix::zero(self.nrows(), rhs.ncols());
+                    },
+                );
 
                 for i in 0..m.nrows() {
                     for j in 0..m.ncols() {
-                        m[(i, j)] = self.row(i).iter()
-                            .zip(rhs.col(j))
-                            $($sum)*
+                        let iter = self.row(i).iter()
+                            .zip(rhs.col(j));
+                        m[(i, j)] = select!($t,
+                            Float => {
+                                iter.map(|(l, r)| l * r)
+                                    .fold(
+                                        Float::with_val(prec, 0),
+                                        |acc, f| acc + f
+                                    )
+                            },
+                            Integer => {
+                                iter.map(|(l, r)| l * r)
+                                    .fold(Integer::new(), |acc, f| acc + f)
+                            },
+                            Rational => {
+                                iter.map(|(l, r)| (l * r).complete())
+                                    .sum()
+                            },
+                            default => {
+                                iter.map(|(l, r)| l * r)
+                                    .sum()
+                            },
+                        );
                     }
                 }
 
                 m
             }
         }
-
-        impl<S, R> Mul<&Vector<$t, R>> for &Matrix<$t, S>
-        where
-            S: MatrixStorage<$t> + ?Sized,
-            R: VectorStorage<$t> + ?Sized,
-        {
-            type Output = OwnedVector<$t>;
-
-            fn mul(self, rhs: &Vector<$t, R>) -> Self::Output {
-                assert!(self.ncols() == rhs.dim(), "Can't multiply matrix and \
-                    vector because of incompatible dimensions");
-
-                let iter = self.rows()
-                    .map(|r| r.iter().zip(rhs.iter())$($sum)*);
-                Vector::from_iter(self.nrows(), iter)
-            }
-        }
-
-        impl<S, R> Mul<&Matrix<$t, R>> for &Vector<$t, S>
-        where
-            S: VectorStorage<$t> + ?Sized,
-            R: MatrixStorage<$t> + ?Sized,
-        {
-            type Output = OwnedVector<$t>;
-
-            fn mul(self, rhs: &Matrix<$t, R>) -> Self::Output {
-                assert!(self.dim() == rhs.nrows(), "Can't multiply matrix and \
-                    vector because of incompatible dimensions");
-                let iter = (0..rhs.ncols())
-                    .map(|i| self.iter().zip(rhs.col(i))$($sum)*);
-                Vector::from_iter(rhs.ncols(), iter)
-            }
-        }
     }
 }
 
-impl_mul!(Integer, { .map(|(l, r)| l * r).fold(Integer::new(), |acc, f| acc + f) });
-impl_mul!(Rational, { .map(|(l, r)| (l * r).complete()).sum() });
-impl_mul!(f64, { .map(|(l, r)| l * r).sum() });
-impl_mul!(f32, { .map(|(l, r)| l * r).sum() });
+impl_mul!(Float);
+impl_mul!(Integer);
+impl_mul!(Rational);
+impl_mul!(f64);
+impl_mul!(f32);
 
-impl<S, R> Mul<&Matrix<Float, R>> for &Matrix<Float, S>
+impl<T, S, R> Mul<&Vector<T, R>> for &Matrix<T, S>
 where
-    S: MatrixStorage<Float> + ?Sized,
-    R: MatrixStorage<Float> + ?Sized,
+    S: MatrixStorage<T> + ?Sized,
+    R: VectorStorage<T> + ?Sized,
+    for<'a> &'a Matrix<T, S>: Mul<&'a ColumnVector<T, R>, Output = OwnedMatrix<T>>
 {
-    type Output = FOwnedMatrix;
+    type Output = OwnedVector<T>;
 
-    fn mul(self, rhs: &Matrix<Float, R>) -> Self::Output {
-        assert!(self.ncols() == rhs.nrows(), "Can't multiply matrices \
-            because of incompatible dimensions");
-        let prec = self.precision();
-        assert!(prec == rhs.precision(),
-            "Can't multiply matrices of different precision.\
-            This can be relaxed in the future.");
-
-        let mut m = Matrix::zero_prec(self.nrows(), rhs.ncols(), prec);
-
-        for i in 0..m.nrows() {
-            for j in 0..m.ncols() {
-                m[(i, j)] = self.row(i).iter()
-                    .zip(rhs.col(j))
-                    .map(|(l, r)| l * r)
-                    .fold(Float::with_val(prec, 0), |acc, f| acc + f)
-            }
-        }
-
-        m
+    fn mul(self, rhs: &Vector<T, R>) -> Self::Output {
+        let r = self * rhs.column_vector();
+        r.into_vector()
     }
 }
 
-impl<S, R> Mul<&Vector<Float, R>> for &Matrix<Float, S>
+impl<T, S, R> Mul<&Matrix<T, R>> for &Vector<T, S>
 where
-    S: MatrixStorage<Float> + ?Sized,
-    R: VectorStorage<Float> + ?Sized,
+    S: VectorStorage<T> + ?Sized,
+    R: MatrixStorage<T> + ?Sized,
+    for<'a> &'a RowVector<T, S>: Mul<&'a Matrix<T, R>, Output = OwnedMatrix<T>>
 {
-    type Output = FOwnedVector;
+    type Output = OwnedVector<T>;
 
-    fn mul(self, rhs: &Vector<Float, R>) -> Self::Output {
-        assert!(self.ncols() == rhs.dim(), "Can't multiply matrix and \
-            vector because of incompatible dimensions");
-
-        let prec = self.precision();
-        assert!(prec == rhs.precision(),
-            "Can't multiply matrix and vector of different precision.\
-            This can be relaxed in the future.");
-
-        let iter = self.rows()
-            .map(|r| r.iter()
-                .zip(rhs.iter())
-                .map(|(l, r)| l * r)
-                .fold(Float::with_val(prec, 0), |acc, f| acc + f)
-            );
-        Vector::from_iter(self.nrows(), iter)
-    }
-}
-
-impl<S, R> Mul<&Matrix<Float, R>> for &Vector<Float, S>
-where
-    S: VectorStorage<Float> + ?Sized,
-    R: MatrixStorage<Float> + ?Sized,
-{
-    type Output = FOwnedVector;
-
-    fn mul(self, rhs: &Matrix<Float, R>) -> Self::Output {
-        assert!(self.dim() == rhs.nrows(), "Can't multiply matrix and \
-            vector because of incompatible dimensions");
-        let prec = self.precision();
-        assert!(prec == rhs.precision(),
-            "Can't multiply matrix and vector of different precision.\
-            This can be relaxed in the future.");
-        let iter = (0..rhs.ncols())
-            .map(|i| self.iter().zip(rhs.col(i))
-                .map(|(l, r)| l * r)
-                .fold(Float::with_val(prec, 0), |l, r| l + r)
-            );
-        Vector::from_iter(rhs.ncols(), iter)
+    fn mul(self, rhs: &Matrix<T, R>) -> Self::Output {
+        let r = self.row_vector() * rhs;
+        r.into_vector()
     }
 }
 

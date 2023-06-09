@@ -19,7 +19,7 @@ use z3::{self, ast::Ast};
 use std::rc::Rc;
 
 mod matrix;
-use matrix::Matrix;
+use matrix::*;
 
 mod vector;
 use vector::*;
@@ -376,7 +376,7 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
 
     let mut solution = l.offset.clone();
     println!("Solver solution norm: {}", solution.norm());
-    solution -= &l.lattice.cvp_rounding_f64(l.offset.view());
+    solution -= &l.lattice.cvp_planes_f64(l.offset.view(), None).unwrap();
     println!("CVP norm: {}", solution.norm());
 
     for (e, c) in solution.iter_mut().zip(&complexity) {
