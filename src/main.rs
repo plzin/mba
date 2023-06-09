@@ -1,6 +1,13 @@
 #![allow(unused)]
 #![feature(ptr_metadata)]
 
+// You can only compile this for 64-bits because I use some hacky stuff
+// with vector views. This can be removed once rust allows supports
+// custom dynamically sized types.
+#[cfg(not(target_pointer_width = "64"))]
+compile_error!("This crate only works on 64-bit systems.");
+
+
 use rug::{Integer, Complete};
 use rand::{
     Rng, distributions::Uniform,

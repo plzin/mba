@@ -9,15 +9,16 @@ use crate::lattice::{AffineLattice, Lattice};
 
 /// Computes the (row-style) hermite normal form of a matrix in place
 /// and returns the transformation matrix.
-pub fn hermite_normal_form(a: &mut IMatrix) -> IMatrix {
+pub fn hermite_normal_form(a: &mut IOwnedMatrix) -> IOwnedMatrix {
     // The transformation matrix.
-    let mut u = Matrix::identity(a.rows);
+    let mut u = Matrix::identity(a.nrows());
 
     let mut r = 0;
     let mut c = 0;
-    while r < a.rows && c < a.cols {
+    while r < a.nrows() && c < a.ncols() {
         // Choose a pivot in the jth column.
-        let pivot = a.column(c)
+        let pivot = a.col(c)
+            .iter()
             .enumerate()
             .skip(r)
             .filter(|e| !e.1.is_zero())
@@ -40,7 +41,7 @@ pub fn hermite_normal_form(a: &mut IMatrix) -> IMatrix {
         // This might not work instantly.
         // If there remain non-zero entries in this column,
         // then we will go over this column again.
-        for k in r+1..a.rows {
+        for k in r+1..a.nrows() {
             if a[(k, c)] != 0 {
                 let m = -(&a[(k, c)] / &a[(r, c)]).complete();
 
@@ -50,7 +51,7 @@ pub fn hermite_normal_form(a: &mut IMatrix) -> IMatrix {
         }
 
         // If there is any non-zero element then we need to continue in the same column.
-        if a.column(c).skip(r + 1).any(|e| *e != 0) {
+        if a.col(c).iter().skip(r + 1).any(|e| *e != 0) {
             continue;
         }
 
@@ -85,24 +86,24 @@ pub fn hermite_normal_form(a: &mut IMatrix) -> IMatrix {
 }
 
 /// Solves a system of linear diophantine equations.
-pub fn solve(a: &IMatrix, b: &IOwnedVector) -> AffineLattice {
-    assert!(a.rows == b.dim(),
+pub fn solve(a: &IOwnedMatrix, b: &IOwnedVector) -> AffineLattice {
+    assert!(a.nrows() == b.dim(),
         "Vector must have an entry for each row in the matrix.");
 
-    let mut m = Matrix::zero(a.cols + 1, a.rows + 1);
+    let mut m = Matrix::zero(a.ncols() + 1, a.nrows() + 1);
 
     // Initialize the matrix m.
-    for i in 0..a.rows {
+    for i in 0..a.nrows() {
         for (j, e) in a.row(i).iter().enumerate() {
             m[(j, i)] = e.clone();
         }
     }
 
     for i in 0..b.dim() {
-        m[(a.cols, i)] = b[i].clone();
+        m[(a.ncols(), i)] = b[i].clone();
     }
 
-    m[(a.cols, a.rows)] = Integer::from(1);
+    m[(a.ncols(), a.nrows())] = Integer::from(1);
 
     // Transform it into hermite normal form.
     let u = hermite_normal_form(&mut m);
@@ -116,41 +117,41 @@ pub fn solve(a: &IMatrix, b: &IOwnedVector) -> AffineLattice {
     // Make sure the hermite normal form has the correct form,
     // because only then does it have a solution.
     let r = rank - 1;
-    let has_solution = m[(r, m.cols - 1)] == 1
-        && m.row(r).iter().take(m.cols - 1).all(|e| *e == 0);
+    let has_solution = m[(r, m.ncols() - 1)] == 1
+        && m.row(r).iter().take(m.ncols() - 1).all(|e| *e == 0);
 
     if !has_solution {
         return AffineLattice::empty();
     }
 
     let offset = -IOwnedVector::from_entries(
-        &u.row(r).as_slice()[..u.rows-1]
+        &u.row(r).as_slice()[..u.nrows()-1]
     );
 
-    let basis = Matrix::from_iter(u.rows - rank, u.rows - 1,
-        u.rows().skip(rank).flat_map(|r| r.iter().take(u.rows - 1).cloned()) 
+    let basis = Matrix::from_iter(u.nrows() - rank, u.nrows() - 1,
+        u.rows().skip(rank).flat_map(|r| r.iter().take(u.nrows() - 1).cloned())
     );
 
     AffineLattice::from_offset_basis(offset, basis)
 }
 
 /// Solves a linear system of equations Ax=b mod n.
-pub fn solve_modular(a: &IMatrix, b: &IOwnedVector, n: &Integer) -> AffineLattice {
+pub fn solve_modular(a: &IOwnedMatrix, b: &IOwnedVector, n: &Integer) -> AffineLattice {
     //
     // Concatenate an n times the identity matrix to the right of A.
     //
-    let mut m = Matrix::zero(a.rows, a.cols + a.rows);
+    let mut m = Matrix::zero(a.nrows(), a.ncols() + a.nrows());
 
     // Copy the old matrix.
-    for i in 0..a.rows {
-        for j in 0..a.cols {
+    for i in 0..a.nrows() {
+        for j in 0..a.ncols() {
             m[(i, j)] = a[(i, j)].clone();
         }
     }
 
     // Set the identity matrix.
-    for i in 0..a.rows {
-        m[(i, a.cols + i)] = n.clone();
+    for i in 0..a.nrows() {
+        m[(i, a.ncols() + i)] = n.clone();
     }
 
     // Solve the diophantine system.
@@ -163,15 +164,15 @@ pub fn solve_modular(a: &IMatrix, b: &IOwnedVector, n: &Integer) -> AffineLattic
     // removing the last components that correspond to the multipliers
     // of the n's and then removing (now) linearly dependent basis vectors.
 
-    let offset = IOwnedVector::from_entries(&l.offset.as_slice()[..a.cols])
+    let offset = IOwnedVector::from_entries(&l.offset.as_slice()[..a.ncols()])
         .map(|i| i.div_rem_euc_ref(n).complete().1);
 
     let iter = l.lattice.basis.rows()
-        .flat_map(|e| e.iter().take(a.cols).map(|i| i.clone() % n))
-        .chain((0..a.cols).flat_map(|i| (0..a.cols).map(
+        .flat_map(|e| e.iter().take(a.ncols()).map(|i| i.clone() % n))
+        .chain((0..a.ncols()).flat_map(|i| (0..a.ncols()).map(
             move |j| if j == i { n.clone() } else { Integer::new() }))
         );
-    let mut bm = Matrix::from_iter(l.lattice.rank() + a.cols, a.cols,
+    let mut bm = Matrix::from_iter(l.lattice.rank() + a.ncols(), a.ncols(),
         iter
     );
 

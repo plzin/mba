@@ -13,14 +13,14 @@ use std::cmp::Ordering;
 pub struct Lattice {
     /// The basis matrix of the lattice.
     /// The basis vectors are the rows of the matrix.
-    pub basis: IMatrix,
+    pub basis: IOwnedMatrix,
 }
 
 impl Lattice {
     /// Creates an empty lattice.
     pub fn empty() -> Self {
         Self {
-            basis: Matrix::empty()
+            basis: OwnedMatrix::empty()
         }
     }
 
@@ -30,7 +30,7 @@ impl Lattice {
     }
 
     /// The lattice basis are the rows of the matrix.
-    pub fn from_basis(basis: IMatrix) -> Self {
+    pub fn from_basis(basis: IOwnedMatrix) -> Self {
         Self { basis }
     }
 
@@ -38,9 +38,9 @@ impl Lattice {
     /// but are potentially linearly dependent.
     /// This function will compute the Hermite normal form
     /// and remove zero rows.
-    pub fn from_generating_set(mut generating_set: IMatrix) -> Self {
+    pub fn from_generating_set(mut generating_set: IOwnedMatrix) -> Self {
         hermite_normal_form(&mut generating_set);
-        let rank = generating_set.rows - generating_set.rows().rev()
+        let rank = generating_set.nrows() - generating_set.rows().rev()
             .take_while(|r| r.iter().all(|i| i.is_zero()))
             .count();
         generating_set.shrink(rank);
@@ -51,12 +51,12 @@ impl Lattice {
 
     /// Returns the rank of the lattice, i.e. the number if basis vectors.
     pub fn rank(&self) -> usize {
-        self.basis.rows
+        self.basis.nrows()
     }
 
     /// Returns the dimension of the ambient space.
     pub fn ambient_dim(&self) -> usize {
-        self.basis.cols
+        self.basis.ncols()
     }
 
     /// Returns the vector on the lattice that is the linear
@@ -98,7 +98,7 @@ impl Lattice {
     /// This essentially is Gram-Schmidt
     /// but rounding the coefficients to integers.
     fn size_reduce(&mut self) {
-        for i in 0..self.basis.rows {
+        for i in 0..self.basis.nrows() {
             for j in 0..i {
                 let b_i = &self.basis[i];
                 let b_j = &self.basis[j];
@@ -111,7 +111,7 @@ impl Lattice {
 
     /// Performs LLL basis reduction using rational numbers.
     pub fn lll(&mut self, delta: &Rational) {
-        let n = self.basis.rows;
+        let n = self.basis.nrows();
         let mut swap_condition = true;
 
         while swap_condition {
@@ -157,7 +157,7 @@ impl AffineLattice {
     }
 
     /// Creates an affine lattice from an offset and a basis.
-    pub fn from_offset_basis(offset: IOwnedVector, basis: IMatrix) -> Self {
+    pub fn from_offset_basis(offset: IOwnedVector, basis: IOwnedMatrix) -> Self {
         Self {
             offset,
             lattice: Lattice::from_basis(basis),
@@ -186,8 +186,8 @@ macro_rules! impl_cvp_rounding {
     (body, $t:tt, $basis:expr, $v:ident, $prec:ident) => {
         {
             let mut a = select!($t,
-                Float => { FMatrix::zero_prec($basis.cols, $basis.rows, $prec) },
-                default => { Matrix::<$t>::zero($basis.cols, $basis.rows) },
+                Float => { FOwnedMatrix::zero_prec($basis.ncols(), $basis.nrows(), $prec) },
+                default => { OwnedMatrix::<$t>::zero($basis.ncols(), $basis.nrows()) },
             );
 
             let from_int = |i: &Integer| select!($t,
@@ -197,8 +197,8 @@ macro_rules! impl_cvp_rounding {
                 f64 => { i.to_f64() },
             );
 
-            for r in 0..a.rows {
-                for c in 0..a.cols {
+            for r in 0..a.nrows() {
+                for c in 0..a.ncols() {
                     a[(r, c)] = from_int(&$basis[(c, r)]);
                 }
             }
@@ -214,7 +214,7 @@ macro_rules! impl_cvp_rounding {
 
             // If the system has full rank,
             // then we can just use an exact solution.
-            let x = if $v.dim() == $basis.rows {
+            let x = if $v.dim() == $basis.nrows() {
                 solve_linear(a, b)
             }
 
@@ -282,13 +282,13 @@ impl_cvp_rounding!(Float, cvp_rounding_float, cvp_rounding_float_coeff);
 /// even if they are not linearly independent.
 /// The rows of the result are not normalized.
 /// Call `gram_schmidt_orthonormal` if you want that.
-pub fn gram_schmidt<T>(mut a: Matrix<T>) -> Matrix<T>
+pub fn gram_schmidt<T>(mut a: OwnedMatrix<T>) -> OwnedMatrix<T>
 where
     T: InnerProduct + Div<T, Output = T>,
     for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
     VectorView<T>: for<'a> SubAssign<&'a OwnedVector<T>>,
 {
-    for i in 0..a.rows {
+    for i in 0..a.nrows() {
         for j in 0..i {
             let f = a[j].dot(&a[i]) / a[j].norm_sqr();
             let p = &f * &a[j];
@@ -304,14 +304,14 @@ where
 /// Call `gram_schmidt` if you don't want that.
 /// This functions requires that the rows are linearly independent
 /// (unlike `gram_schmidt`).
-pub fn gram_schmidt_orthonormal<T>(mut a: Matrix<T>) -> Matrix<T>
+pub fn gram_schmidt_orthonormal<T>(mut a: OwnedMatrix<T>) -> OwnedMatrix<T>
 where
     T: InnerProduct + VectorNorm<Scalar = T> + Div<T, Output = T>,
     for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
     for<'a> VectorView<T>: SubAssign<&'a OwnedVector<T>> + DivAssign<&'a T>,
 {
     a = gram_schmidt(a);
-    for i in 0..a.rows {
+    for i in 0..a.nrows() {
         a[i].normalize();
     }
     a
@@ -320,25 +320,25 @@ where
 /// Computes the RQ-decomposition (row QR-decomposition) of a matrix.
 /// Returns a lower triangular matrix `R` and an orthogonal matrix `Q`,
 /// such that `R * Q = A`.
-pub fn rq_decomposition<T>(a: &Matrix<T>) -> (Matrix<T>, Matrix<T>)
+pub fn rq_decomposition<T>(a: &OwnedMatrix<T>) -> (OwnedMatrix<T>, OwnedMatrix<T>)
 where
     T: Clone + InnerProduct + VectorNorm<Scalar = T> + Div<T, Output = T>,
     for<'a> &'a T: Mul<&'a VectorView<T>, Output = OwnedVector<T>>,
     for<'a> VectorView<T>: SubAssign<&'a OwnedVector<T>> + DivAssign<&'a T>,
-    Matrix<T>: MulTranspose,
+    for<'a> &'a OwnedMatrix<T>: Mul<&'a TransposedMatrixView<T>, Output = OwnedMatrix<T>>,
 {
     let q = gram_schmidt_orthonormal(a.clone());
-    let r = a.mul_transpose(&q);
+    let r = a * q.transpose();
     (r, q)
 }
 
 /// Approximates the CVP using Babai's nearest plane algorithm.
 pub fn cvp_nearest_plane_float(
-    basis: &IMatrix, v: &IVectorView, prec: u32
+    basis: &IOwnedMatrix, v: &IVectorView, prec: u32
 ) -> IOwnedVector {
     let q = gram_schmidt(basis.to_float(prec));
     let mut b = v.to_owned();
-    for i in (0..basis.rows).rev() {
+    for i in (0..basis.nrows()).rev() {
         let a = &q[i];
         // c = round(⟨a, b⟩ / ⟨a, a⟩)
         let c = b.iter().zip(a.iter())
@@ -368,7 +368,7 @@ macro_rules! impl_cvp_planes {
         let t = $t;
         let mut rad = $rad;
         let prec = $prec;
-        assert!(basis.cols == t.dim(), "Mismatch of basis/target vector dimension.");
+        assert!(basis.ncols() == t.dim(), "Mismatch of basis/target vector dimension.");
         select!($ty,
             Float => {
                 assert!(rad.as_ref().map_or(true, |rad| rad.prec() == prec),
@@ -376,17 +376,17 @@ macro_rules! impl_cvp_planes {
                 let bf = basis.to_float(prec);
             },
             f64 => {
-                let bf = basis.map(|i| i.to_f64());
+                let bf = basis.transform(|i| i.to_f64());
             },
             f32 => {
-                let bf = basis.map(|i| i.to_f32());
+                let bf = basis.transform(|i| i.to_f32());
             },
         );
 
         // Q is the Gram-Schmidt orthonormalization and
         // R is the basis matrix with respect to the Gram-Schmidt basis.
         let (r, q) = rq_decomposition(&bf);
-        assert!(r.cols == r.rows);
+        assert!(r.ncols() == r.nrows());
 
         // Write the target vector in that basis.
         // If the vector not in the span of the basis,
@@ -415,7 +415,7 @@ macro_rules! impl_cvp_planes {
         /// This returns the coordinates of the closest point in the basis
         /// as the first entry and the actual point as the second entry.
         fn cvp_impl(
-            i: usize, r: &Matrix<$ty>, qt: &VectorView<$ty>, prec: u32, rad: &Option<$ty>
+            i: usize, r: &OwnedMatrix<$ty>, qt: &VectorView<$ty>, prec: u32, rad: &Option<$ty>
         ) -> Option<(IOwnedVector, OwnedVector<$ty>)> {
             // One dimensional lattice.
             if i == 0 {
@@ -460,7 +460,6 @@ macro_rules! impl_cvp_planes {
                     let start_index = start_index_fl.round();
                 },
             );
-            //println!("Start index: {start_index} ({start_index_fl})");
 
             // Suppose the start index was -0.4.
             // We would want to check the planes in the order
@@ -542,8 +541,9 @@ macro_rules! impl_cvp_planes {
                 let point_in_plane = qt - &index * &r[i];
 
                 // Recursively find the closest point.
-                let v = cvp_impl(i - 1, r, point_in_plane.view(), prec, &plane_dist);
-                let Some((mut v, mut vv)) = v else {
+                let Some((mut v, mut w)) = cvp_impl(
+                    i - 1, r, point_in_plane.view(), prec, &plane_dist
+                ) else {
                     continue
                 };
                 assert!(v.dim() == i);
@@ -557,23 +557,23 @@ macro_rules! impl_cvp_planes {
                     f64 => { Integer::from_f64(index.round()).unwrap() },
                 ));
 
-                // vv is the closest point.
+                // w is the closest point.
                 // It is the closest point of the previous call,
                 // plus the index of the plane times the basis vector
                 // of the current iteration.
-                vv += &(&index * &r[i][0..i]);
+                w += &(&index * &r[i][0..i]);
                 select!($ty,
-                    Float => { vv.append(Float::with_val(prec, &index * rc)) },
-                    default => { vv.append(index * rc) },
+                    Float => { w.append(Float::with_val(prec, &index * rc)) },
+                    default => { w.append(index * rc) },
                 );
 
                 // Compute the distance to the point.
-                let d = (&vv - &qt[0..i+1]).norm_sqr();
+                let d = (&w - &qt[0..i+1]).norm_sqr();
 
                 // If the distance is smaller than the current minimal dist,
                 // then we have found the new best point.
                 if in_radius(&d, &min_dist) {
-                    min = Some((v, vv));
+                    min = Some((v, w));
                     min_dist = Some(d);
                 }
             }
@@ -582,20 +582,20 @@ macro_rules! impl_cvp_planes {
         }
 
         // Multiply the coefficients by the basis.
-        cvp_impl(r.cols - 1, &r, qt.view(), prec, &rad)
-            .map(|v| v.0.view() * basis)
+        cvp_impl(r.ncols() - 1, &r, qt.view(), prec, &rad)
+            .map(|v| &v.0 * basis)
     }
     };
     (Float, $n:ident) => {
         pub fn $n(
-            basis: &IMatrix, t: &IVectorView, mut rad: Option<Float>, prec: u32
+            basis: &IOwnedMatrix, t: &IVectorView, mut rad: Option<Float>, prec: u32
         ) -> Option<IOwnedVector> {
             impl_cvp_planes!(body, Float, basis, t, rad, prec)
         }
     };
     ($t:tt, $n:ident) => {
         pub fn $n(
-            basis: &IMatrix, t: &IVectorView, mut rad: Option<$t>
+            basis: &IOwnedMatrix, t: &IVectorView, mut rad: Option<$t>
         ) -> Option<IOwnedVector> {
             impl_cvp_planes!(body, $t, basis, t, rad, 0)
         }
@@ -608,12 +608,12 @@ impl_cvp_planes!(f64, cvp_planes_f64);
 
 macro_rules! impl_solve_linear {
     ($t:tt, $n:ident) => {
-        /// PartialOrd should not return None for any of the elements in the matrix.
-        /// We can't use Ord because of the floating point types.
+        /// PartialOrd should not return None for any of the elements in
+        /// the matrix. We can't use Ord because of the floating point types.
         fn $n(
-            mut a: Matrix<$t>, mut b: OwnedVector<$t>
+            mut a: OwnedMatrix<$t>, mut b: OwnedVector<$t>
         ) -> Option<OwnedVector<$t>> {
-            assert!(a.rows == a.cols,
+            assert!(a.nrows() == a.ncols(),
                 "This function only supports non-singular square systems.");
             select!($t,
                 Float => {
@@ -623,9 +623,10 @@ macro_rules! impl_solve_linear {
                 },
                 default => {},
             );
-            for i in 0..a.cols {
+            for i in 0..a.ncols() {
                 // Choose a pivot in the c-th column.
-                let pivot = a.column(i)
+                let pivot = a.col(i)
+                    .iter()
                     .enumerate()
                     .skip(i)
                     .filter(select!($t,
@@ -640,13 +641,13 @@ macro_rules! impl_solve_linear {
                     ))?.0;
                 a.swap_rows(pivot, i);
                 let pivot = a[(i, i)].clone();
-                for r in i+1..a.rows {
+                for r in i+1..a.nrows() {
                     let fac = select!($t,
                         Rational => { (&a[(r, i)] / &pivot).complete() },
                         Float => { Float::with_val(prec, &a[(r, i)] / &pivot) },
                         default => { a[(r, i)] / pivot },
                     );
-                    for c in i+1..a.cols {
+                    for c in i+1..a.ncols() {
                         let s = select!($t,
                             Rational => { (&fac * &a[(i, c)]).complete() },
                             Float => { Float::with_val(prec, &fac * &a[(i, c)]) },
@@ -660,12 +661,12 @@ macro_rules! impl_solve_linear {
             }
 
             let mut result = select!($t,
-                Float => { FOwnedVector::zero_prec(a.cols, prec) },
-                default => { OwnedVector::<$t>::zero(a.cols) },
+                Float => { FOwnedVector::zero_prec(a.ncols(), prec) },
+                default => { OwnedVector::<$t>::zero(a.ncols()) },
             );
-            for i in (0..a.cols).rev() {
+            for i in (0..a.ncols()).rev() {
                 let mut sum = b[i].clone();
-                for j in i+1..a.cols {
+                for j in i+1..a.ncols() {
                     sum -= select!($t,
                         Rational => { (&a[(i, j)] * &result[j]).complete() },
                         Float => { Float::with_val(prec, &a[(i, j)] * &result[j]) },
@@ -689,7 +690,7 @@ impl_solve_linear!(f64, solve_linear_f64);
 
 #[test]
 fn cvp_temp_test() {
-    let b = IMatrix::from_rows(&[
+    let b = IOwnedMatrix::from_rows(&[
         [  1,  -74,   20,   19,   -5,   21,  -19,   18,  -54,  -56,  -40,
           -38,  -58,   54,  -34,   -1,   -3,    0,  -27,    8],
         [-44,   19,  -20,   14,  -34,  -61,   53,  -31,   42,   42,   27,
@@ -760,7 +761,7 @@ fn cvp_temp_test() {
 
 #[test]
 fn cvp_exact_dim20() {
-    let b = IMatrix::from_rows(&[
+    let b = IOwnedMatrix::from_rows(&[
         [  1,  -74,   20,   19,   -5,   21,  -19,   18,  -54,  -56,  -40,
           -38,  -58,   54,  -34,   -1,   -3,    0,  -27,    8],
         [-44,   19,  -20,   14,  -34,  -61,   53,  -31,   42,   42,   27,
@@ -810,7 +811,7 @@ fn cvp_exact_dim20() {
 
 #[test]
 fn gram_schmidt_test() {
-    let a = Matrix::<i32>::from_rows(&[
+    let a = OwnedMatrix::<i32>::from_rows(&[
         [1, 2, 3],
         [3, 4, 5],
     ]);
@@ -825,7 +826,7 @@ fn gram_schmidt_test() {
 
 #[test]
 fn nearest_plane_example() {
-    let a = IMatrix::from_rows(&[
+    let a = IOwnedMatrix::from_rows(&[
         [2, 3, 1],
         [4, 1, -3],
         [2, 2, 2],

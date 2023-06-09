@@ -1,6 +1,7 @@
 //! Owned and non-owned vectors constant runtime dimension.
 
 use std::borrow::{Borrow, BorrowMut};
+use std::marker::PhantomData;
 use std::ops::{
     Deref, DerefMut, Neg, Add, Sub, Mul, Div,
     AddAssign, SubAssign, MulAssign, DivAssign, Index, Range, IndexMut
@@ -8,6 +9,7 @@ use std::ops::{
 use std::fmt::Debug;
 use num_traits::Zero;
 use rug::{Integer, Complete, Float, Rational, ops::NegAssign};
+use crate::matrix::{RowVector, ColumnVector};
 use crate::select;
 
 /// How are the entries of a vector stored?
@@ -39,10 +41,8 @@ pub trait ContiguousVectorStorage<T>: VectorStorage<T> {
     fn as_slice_mut(&mut self) -> &mut [T];
 }
 
-pub struct Vector<T, S>
-    where S: VectorStorage<T> + ?Sized
-{
-    phantom: std::marker::PhantomData<T>,
+pub struct Vector<T, S: VectorStorage<T> + ?Sized> {
+    phantom: PhantomData<T>,
     storage: S,
 }
 
@@ -129,6 +129,30 @@ impl<T, S: ContiguousVectorStorage<T> + ?Sized> Vector<T, S> {
     /// Returns a mutable slice of the vector.
     pub fn as_slice_mut(&mut self) -> &mut [T] {
         self.storage.as_slice_mut()
+    }
+
+    /// Converts the vector into a row vector view, i.e.
+    /// a matrix with one row.
+    pub fn row_vector(&self) -> &RowVector<T> {
+        unsafe { &*(self.as_slice() as *const _ as *const _) }
+    }
+
+    /// Converts the vector into a mutable row vector view, i.e.
+    /// a matrix with one row.
+    pub fn row_vector_mut(&mut self) -> &mut RowVector<T> {
+        unsafe { &mut *(self.as_slice_mut() as *mut _ as *mut _) }
+    }
+
+    /// Converts the vector into a column vector view, i.e.
+    /// a matrix with one column.
+    pub fn column_vector(&self) -> &ColumnVector<T> {
+        unsafe { &*(self.as_slice() as *const _ as *const _) }
+    }
+
+    /// Converts the vector into a mutable column vector view, i.e.
+    /// a matrix with one column.
+    pub fn column_vector_mut(&mut self) -> &mut ColumnVector<T> {
+        unsafe { &mut *(self.as_slice_mut() as *mut _ as *mut _) }
     }
 }
 
@@ -237,7 +261,10 @@ impl<T: std::fmt::Debug, S: VectorStorage<T> + ?Sized> std::fmt::Debug for Vecto
 
 impl<T: Eq, S: VectorStorage<T> + ?Sized> Eq for Vector<T, S> {}
 
-pub type VectorView<T> = Vector<T, ContiguousView<T>>;
+/// Technically this is not a vector view, because it owns
+/// the elements. However, you can only get references
+/// to this type, which are the views.
+pub type VectorView<T> = Vector<T, SliceVectorStorage<T>>;
 pub type FVectorView = VectorView<Float>;
 pub type IVectorView = VectorView<Integer>;
 pub type RVectorView = VectorView<Rational>;
@@ -280,9 +307,9 @@ impl<T: Clone> ToOwned for VectorView<T> {
 
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct ContiguousView<T>([T]);
+pub struct SliceVectorStorage<T>([T]);
 
-impl<T> VectorStorage<T> for ContiguousView<T> {
+impl<T> VectorStorage<T> for SliceVectorStorage<T> {
     type Iter<'a> = std::slice::Iter<'a, T> where T: 'a;
     type IterMut<'a> = std::slice::IterMut<'a, T> where T: 'a;
 
@@ -307,7 +334,7 @@ impl<T> VectorStorage<T> for ContiguousView<T> {
     }
 }
 
-impl<T> ContiguousVectorStorage<T> for ContiguousView<T> {
+impl<T> ContiguousVectorStorage<T> for SliceVectorStorage<T> {
     fn as_slice(&self) -> &[T] {
         &self.0
     }
@@ -447,24 +474,13 @@ impl<T: Clone> Clone for OwnedVector<T> {
 
 pub struct OwnedVectorStorage<T> {
     /// Memory that holds the entries.
-    pub(self) entries: *mut T,
+    pub entries: *mut T,
 
     /// The dimension (number of entries) of the vector.
     pub dim: usize,
 }
 
 impl<T> OwnedVectorStorage<T> {
-    /// Free the entries.
-    pub(self) unsafe fn free(&mut self) {
-        let layout = std::alloc::Layout::from_size_align(
-            self.dim * core::mem::size_of::<T>(),
-            core::mem::align_of::<T>()
-        ).unwrap();
-
-        // Free the memory.
-        std::alloc::dealloc(self.entries as _, layout);
-    }
-
     /// Appends an element to the end.
     pub fn append(&mut self, e: T) {
         let layout = std::alloc::Layout::from_size_align(
@@ -542,7 +558,184 @@ impl<T> Drop for OwnedVectorStorage<T> {
                 core::ptr::drop_in_place(self.entries.add(i));
             }
 
-            self.free();
+            let layout = std::alloc::Layout::from_size_align(
+                self.dim * core::mem::size_of::<T>(),
+                core::mem::align_of::<T>()
+            ).unwrap();
+
+            // Free the memory.
+            std::alloc::dealloc(self.entries as _, layout);
+        }
+    }
+}
+
+/// A vector view where elements are skipped.
+/// The stride is the amount of elements to skip
+/// not the number of bytes to skip.
+pub type StrideVectorView<T> = Vector<T, StrideStorage<T>>;
+pub type FStrideVectorView = StrideVectorView<Float>;
+pub type IStrideVectorView = StrideVectorView<Integer>;
+pub type RStrideVectorView = StrideVectorView<Rational>;
+
+impl<T> StrideVectorView<T> {
+    /// Returns a vector view with stride from a raw pointer and dimension.
+    pub fn from_raw_parts<'a>(ptr: *const T, dim: usize, stride: usize) -> &'a Self {
+        unsafe {
+            &*std::ptr::from_raw_parts(
+                ptr as _,
+                Self::metadata(dim, stride)
+            )
+        }
+    }
+
+    /// Returns a mutable vector view with stride from a raw pointer and dimension.
+    pub fn from_raw_parts_mut<'a>(ptr: *mut T, dim: usize, stride: usize) -> &'a mut Self {
+        unsafe {
+            &mut *std::ptr::from_raw_parts_mut(
+                ptr as _,
+                Self::metadata(dim, stride)
+            )
+        }
+    }
+
+    /// Returns a vector view with stride from a slice.
+    /// The vector view will have the maximum possible dimension
+    /// that fits into the slice.
+    pub fn from_stride_slice(s: &[T], stride: usize) -> &Self {
+        assert!(stride > 0);
+        let dim = (s.len() + (stride - 1)) / stride;
+        unsafe {
+            &*std::ptr::from_raw_parts(
+                s.as_ptr() as _,
+                Self::metadata(dim, stride)
+            )
+        }
+    }
+
+    /// Returns a vector view with stride from a slice.
+    /// The vector view will have the maximum possible dimension
+    /// that fits into the slice.
+    pub fn from_stride_slice_mut(s: &mut [T], stride: usize) -> &mut Self {
+        assert!(stride > 0);
+        let dim = s.len() + (stride - 1) / stride;
+        unsafe {
+            &mut *std::ptr::from_raw_parts_mut(
+                s.as_mut_ptr() as _,
+                Self::metadata(dim, stride)
+            )
+        }
+    }
+
+    /// Returns the pointer metadata for the given dimension and stride.
+    fn metadata(dim: usize, stride: usize) -> usize {
+        assert!(dim <= u32::MAX as usize);
+        assert!(stride <= u32::MAX as usize);
+        dim | stride << 32
+    }
+
+}
+
+/// This is extremely hacky, because rust currently does not support
+/// custom dynamically sized types (DST). We make this a DST by having
+/// a slice as the member, just as for `ContiguousStorage`.
+/// We abuse the metadata of the slice to store the dimension and stride!
+/// (See https://doc.rust-lang.org/std/ptr/trait.Pointee.html, for what
+/// metadata is). Since we cannot implement `Pointee` ourselves, we
+/// have to use the usize metadata of the slice.
+/// The first 32 bits are the dimension, the second 32 bits are the stride.
+/// As I said, very hacky, but in practice the both the dimension and
+/// stride should fit into 32 bits.
+#[repr(transparent)]
+pub struct StrideStorage<T>([T]);
+
+impl<T> StrideStorage<T> {
+    /// The stride of the vector.
+    pub fn stride(&self) -> usize {
+        unsafe {
+            self.0.len() >> 32
+        }
+    }
+}
+
+impl<T> VectorStorage<T> for StrideStorage<T> {
+    type Iter<'a> = StrideStorageIter<'a, T> where T: 'a;
+    type IterMut<'a> = StrideStorageIterMut<'a, T> where T: 'a;
+
+    fn dim(&self) -> usize {
+        self.0.len() & 0xffff_ffff
+    }
+
+    fn entry(&self, idx: usize) -> &T {
+        assert!(idx < self.dim());
+        unsafe {
+            self.0.get_unchecked(idx * self.stride())
+        }
+    }
+
+    fn entry_mut(&mut self, idx: usize) -> &mut T {
+        assert!(idx < self.dim());
+        unsafe {
+            self.0.get_unchecked_mut(idx * self.stride())
+        }
+    }
+
+    fn iter(&self) -> Self::Iter<'_> {
+        StrideStorageIter {
+            ptr: self.0.as_ptr(),
+            end: unsafe { self.0.as_ptr().add(self.dim() * self.stride()) },
+            stride: self.stride(),
+            marker: PhantomData,
+        }
+    }
+
+    fn iter_mut(&mut self) -> Self::IterMut<'_> {
+        StrideStorageIterMut {
+            ptr: self.0.as_mut_ptr(),
+            end: unsafe { self.0.as_mut_ptr().add(self.dim() * self.stride()) },
+            stride: self.stride(),
+            marker: PhantomData,
+        }
+    }
+}
+
+pub struct StrideStorageIter<'a, T> {
+    pub(self) ptr: *const T,
+    pub(self) end: *const T,
+    pub(self) stride: usize,
+    pub(self) marker: PhantomData<&'a T>,
+}
+
+impl<'a, T> Iterator for StrideStorageIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.ptr >= self.end {
+            None
+        } else {
+            let ptr = self.ptr;
+            self.ptr = unsafe { ptr.add(self.stride) };
+            Some(unsafe { &*ptr })
+        }
+    }
+}
+
+pub struct StrideStorageIterMut<'a, T> {
+    pub(self) ptr: *mut T,
+    pub(self) end: *mut T,
+    pub(self) stride: usize,
+    pub(self) marker: PhantomData<&'a mut T>,
+}
+
+impl<'a, T> Iterator for StrideStorageIterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.ptr >= self.end {
+            None
+        } else {
+            let ptr = self.ptr;
+            self.ptr = unsafe { ptr.add(self.stride) };
+            Some(unsafe { &mut *ptr })
         }
     }
 }

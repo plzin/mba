@@ -1,5 +1,7 @@
 //! Owned matrix with constant runtime dimension.
 
+use std::borrow::Borrow;
+use std::ops::{Index, IndexMut};
 use std::{marker::PhantomData, fmt::Debug, ops::Mul};
 use num_traits::{Zero, One};
 use rug::ops::NegAssign;
@@ -7,46 +9,333 @@ use rug::{Integer, Complete, Float, Rational};
 use crate::vector::*;
 use crate::select;
 
-/// Matrix.
-pub struct Matrix<T> {
-    /// Memory that holds the entries.
-    pub(self) entries: *mut T,
+/// How are the entries of a matrix stored?
+pub trait MatrixStorage<T> {
+    /// Row/Column vector type.
+    type RowVecStorage: VectorStorage<T> + ?Sized;
+    type ColVecStorage: VectorStorage<T> + ?Sized;
 
-    /// The number of rows.
-    pub rows: usize,
+    /// Returns the number of rows.
+    fn rows(&self) -> usize;
 
-    /// The number of columns.
-    pub cols: usize,
+    /// Returns the number of columns.
+    fn cols(&self) -> usize;
+
+    /// Returns a view of the row `r`.
+    fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage>;
+
+    /// Returns a mutable view of the row `r`.
+    fn row_mut(&mut self, r: usize) -> &mut Vector<T, Self::RowVecStorage>;
+
+    /// Returns a view of the column `c`.
+    fn col(&self, c: usize) -> &Vector<T, Self::ColVecStorage>;
+
+    /// Returns a mutable view of the column `c`.
+    fn col_mut(&mut self, c: usize) -> &mut Vector<T, Self::ColVecStorage>;
+
+    /// Returns a reference to the entry at row `r` and column `c`.
+    fn entry(&self, r: usize, c: usize) -> &T {
+        self.row(r).entry(c)
+    }
+
+    /// Returns a mutable reference to the entry at row `r` and column `c`.
+    fn entry_mut(&mut self, r: usize, c: usize) -> &mut T {
+        self.row_mut(r).entry_mut(c)
+    }
 }
 
-pub type IMatrix = Matrix<Integer>;
-pub type QMatrix = Matrix<Rational>;
-pub type FMatrix = Matrix<Float>;
+/// A matrix.
+pub struct Matrix<T, S: MatrixStorage<T> + ?Sized> {
+    marker: PhantomData<T>,
+    storage: S,
+}
 
-impl<T> Matrix<T> {
-    /// Return an empty matrix.
-    pub fn empty() -> Self {
+impl<T, S: MatrixStorage<T> + ?Sized> Matrix<T, S> {
+    /// The number of rows of the matrix.
+    pub fn nrows(&self) -> usize {
+        self.storage.rows()
+    }
+
+    /// The number of columns of the matrix.
+    pub fn ncols(&self) -> usize {
+        self.storage.cols()
+    }
+
+    /// Is the matrix empty, i.e. has it zero rows or columns?
+    pub fn is_empty(&self) -> bool {
+        self.nrows() == 0 || self.ncols() == 0
+    }
+
+    /// Returns a view of the row `r`.
+    pub fn row(&self, r: usize) -> &Vector<T, S::RowVecStorage> {
+        self.storage.row(r)
+    }
+
+    /// Returns a mutable view of the row `r`.
+    pub fn row_mut(&mut self, r: usize) -> &mut Vector<T, S::RowVecStorage> {
+        self.storage.row_mut(r)
+    }
+
+    /// Returns a view of the column `c`.
+    pub fn col(&self, c: usize) -> &Vector<T, S::ColVecStorage> {
+        self.storage.col(c)
+    }
+
+    /// Returns a mutable view of the column `c`.
+    pub fn col_mut(&mut self, c: usize) -> &mut Vector<T, S::ColVecStorage> {
+        self.storage.col_mut(c)
+    }
+
+    /// Returns a reference to the entry at row `r` and column `c`.
+    pub fn entry(&self, r: usize, c: usize) -> &T {
+        self.storage.entry(r, c)
+    }
+
+    /// Returns a mutable reference to the entry at row `r` and column `c`.
+    pub fn entry_mut(&mut self, r: usize, c: usize) -> &mut T {
+        self.storage.entry_mut(r, c)
+    }
+
+    /// Returns an iterator over the rows.
+    pub fn rows(&self) -> impl Iterator<Item = &Vector<T, S::RowVecStorage>> + DoubleEndedIterator {
+        (0..self.nrows()).map(|r| self.row(r))
+    }
+
+    /// Returns an iterator over the mutable rows.
+    pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Vector<T, S::RowVecStorage>> + DoubleEndedIterator {
+        (0..self.nrows()).map(|r| unsafe { &mut *(self as *mut Self) }.row_mut(r))
+    }
+
+    /// Returns an iterator over the columns.
+    pub fn cols(&self) -> impl Iterator<Item = &Vector<T, S::ColVecStorage>> + DoubleEndedIterator {
+        (0..self.ncols()).map(|c| self.col(c))
+    }
+
+    /// Returns an iterator over the mutable columns.
+    pub fn cols_mut(&mut self) -> impl Iterator<Item = &mut Vector<T, S::ColVecStorage>> + DoubleEndedIterator {
+        (0..self.ncols()).map(|c| unsafe { &mut *(self as *mut Self) }.col_mut(c))
+    }
+
+    /// Returns an iterator over the entries in row-major order.
+    pub fn entries_row_major(&self) -> impl Iterator<Item = &T> {
+        self.rows().flat_map(|r| r.iter())
+    }
+
+    /// Returns an iterator over the mutable entries in row-major order.
+    pub fn entries_row_major_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.rows_mut().flat_map(|r| r.iter_mut())
+    }
+
+
+    /// Returns an iterator over the entries in column-major order.
+    pub fn entries_col_major(&self) -> impl Iterator<Item = &T> {
+        self.cols().flat_map(|c| c.iter())
+    }
+
+    /// Returns an iterator over the mutable entries in column-major order.
+    pub fn entries_col_major_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.cols_mut().flat_map(|c| c.iter_mut())
+    }
+
+    /// Call a function on each entry and return the resulting matrix.
+    pub fn transform<U, F: FnMut(&T) -> U>(&self, f: F) -> OwnedMatrix<U> {
+        OwnedMatrix::from_iter(
+            self.nrows(),
+            self.ncols(),
+            self.entries_row_major().map(f),
+        )
+    }
+
+    pub fn to_float(&self, prec: u32) -> OwnedMatrix<Float>
+        where for<'a> Float: rug::Assign<&'a T>
+    {
+        self.transform(|e| Float::with_val(prec, e))
+    }
+}
+
+impl<T, S: MatrixStorage<T>> Matrix<T, S> {
+    fn from_storage(s: S) -> Self {
         Self {
-            rows: 0,
-            cols: 0,
-            entries: core::ptr::null_mut(),
+            marker: PhantomData,
+            storage: s,
+        }
+    }
+}
+
+impl<T: Clone, S: MatrixStorage<T> + ?Sized> Matrix<T, S> {
+    /// Returns a copy of the matrix.
+    fn to_owned(&self) -> OwnedMatrix<T> {
+        OwnedMatrix::from_iter(
+            self.nrows(),
+            self.ncols(),
+            self.entries_row_major().cloned()
+        )
+    }
+
+    /// Creates an owned matrix that is the transpose of the current matrix.
+    pub fn transposed(&self) -> OwnedMatrix<T> {
+        OwnedMatrix::from_iter(
+            self.ncols(),
+            self.nrows(),
+            self.entries_col_major().cloned()
+        )
+    }
+}
+
+impl<S: MatrixStorage<Integer> + ?Sized> Matrix<Integer, S> {
+    /// Flip the sign of a row.
+    pub fn flip_sign_row(&mut self, row: usize) {
+        for e in self.row_mut(row) {
+            e.neg_assign();
         }
     }
 
-    /// Is the matrix empty.
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_null()
+    /// Flip the sign of a column.
+    pub fn flip_sign_column(&mut self, col: usize) {
+        for e in self.col_mut(col) {
+            e.neg_assign();
+        }
     }
 
-    /// Returns an uninitialized mxn matrix.
-    pub(self) fn uninit(m: usize, n: usize) -> Self {
-        if m == 0 || n == 0 {
+    /// Add a scaled row to another row. N = c * M.
+    pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
+        debug_assert!(n < self.nrows() && m < self.nrows());
+        for i in 0..self.ncols() {
+            let c = (&self[(n, i)] * c).complete();
+            self[(m, i)] += c;
+        }
+    }
+
+    /// Add a scaled column to another column. N = c * M.
+    pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
+        debug_assert!(n < self.ncols() && m < self.ncols());
+        for i in 0..self.nrows() {
+            let c = (&self[(i, n)] * c).complete();
+            self[(i, m)] += c;
+        }
+    }
+}
+
+impl<S: MatrixStorage<Float> + ?Sized> Matrix<Float, S> {
+    /// Returns the precision of the entries of the matrix.
+    pub fn precision(&self) -> u32 {
+        assert!(!self.is_empty(), "Can't get precision of empty matrix.");
+        if cfg!(debug_assert) {
+            self.assert_precision();
+        }
+
+        self.entry(0, 0).prec()
+    }
+
+    /// Asserts that all entries have the same precision.
+    pub fn assert_precision(&self) {
+        let mut iter = self.entries_row_major();
+        let Some(prec) = iter.next().map(|f| f.prec()) else {
+            return
+        };
+        assert!(iter.all(|f| f.prec() == prec),
+            "Matrix contains entries of different precision.");
+    }
+}
+
+impl FOwnedMatrix {
+    /// Zero matrix with a certain precision.
+    pub fn zero_prec(r: usize, c: usize, prec: u32) -> Self {
+        OwnedMatrix::from_iter(r, c, std::iter::repeat(Float::with_val(prec, 0)))
+    }
+
+    /// Returns an nxn identity matrix.
+    pub fn identity_prec(n: usize, prec: u32) -> Self {
+        let mut m = Self::zero_prec(n, n, prec);
+        for i in 0..n {
+            m[(i, i)] = Float::with_val(prec, 1);
+        }
+        m
+    }
+
+}
+
+impl<T, S: MatrixStorage<T> + ?Sized> Index<usize> for Matrix<T, S> {
+    type Output = Vector<T, S::RowVecStorage>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.row(index)
+    }
+}
+
+impl<T, S: MatrixStorage<T> + ?Sized> IndexMut<usize> for Matrix<T, S> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        self.row_mut(index)
+    }
+}
+
+impl<T, S: MatrixStorage<T> + ?Sized> Index<(usize, usize)> for Matrix<T, S> {
+    type Output = T;
+
+    fn index(&self, index: (usize, usize)) -> &Self::Output {
+        self.entry(index.0, index.1)
+    }
+
+}
+
+impl<T, S: MatrixStorage<T> + ?Sized> IndexMut<(usize, usize)> for Matrix<T, S> {
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
+        self.entry_mut(index.0, index.1)
+    }
+}
+
+pub type OwnedMatrix<T> = Matrix<T, OwnedMatrixStorage<T>>;
+pub type IOwnedMatrix = OwnedMatrix<Integer>;
+pub type QOwnedMatrix = OwnedMatrix<Rational>;
+pub type FOwnedMatrix = OwnedMatrix<Float>;
+
+impl<T> OwnedMatrix<T> {
+    /// Return an empty matrix.
+    pub fn empty() -> Self {
+        Self::from_raw_parts(core::ptr::null_mut(), 0, 0)
+    }
+
+    /// Returns a slice containing all elements.
+    pub fn as_slice(&self) -> &[T] {
+        self.storage.as_slice()
+    }
+
+    /// Returns a slice containing all elements.
+    pub fn as_slice_mut(&mut self) -> &mut [T] {
+        self.storage.as_slice_mut()
+    }
+
+    /// Returns a view of this matrix.
+    pub fn view(&self) -> &MatrixView<T> {
+        MatrixView::from_raw_parts(
+            self.storage.entries, self.nrows(), self.ncols()
+        )
+    }
+
+    /// Returns a mutable view of this matrix.
+    pub fn view_mut(&mut self) -> &mut MatrixView<T> {
+        MatrixView::from_raw_parts_mut(
+            self.storage.entries, self.nrows(), self.ncols()
+        )
+    }
+
+    fn from_raw_parts(entries: *mut T, rows: usize, cols: usize) -> Self {
+        Self::from_storage(OwnedMatrixStorage {
+            entries,
+            rows,
+            cols,
+        })
+    }
+
+    /// Returns an uninitialized r×c matrix.
+    pub(self) fn uninit(r: usize, c: usize) -> Self {
+        if r == 0 || c == 0 {
             return Self::empty();
         }
 
         // The memory layout of the elements.
         let layout = std::alloc::Layout::from_size_align(
-            m * n * core::mem::size_of::<T>(),
+            r * c * core::mem::size_of::<T>(),
             core::mem::align_of::<T>()
         ).unwrap();
 
@@ -55,11 +344,7 @@ impl<T> Matrix<T> {
             std::alloc::alloc(layout) as *mut T
         };
 
-        Self {
-            rows: m,
-            cols: n,
-            entries
-        }
+        Self::from_raw_parts(entries, r, c)
     }
 
     /// Creates a matrix from an array of rows.
@@ -69,7 +354,7 @@ impl<T> Matrix<T> {
         let m = Self::uninit(R, C);
 
         // Copy the entries.
-        let mut ptr = m.entries;
+        let mut ptr = m.storage.entries;
         for row in a {
             for e in row {
                 unsafe {
@@ -82,7 +367,7 @@ impl<T> Matrix<T> {
         m
     }
 
-    /// Creates a matrix from an iterator.
+    /// Creates a matrix from an iterator in row-major order.
     pub fn from_iter<I: Iterator<Item = T>>(
         r: usize, c: usize, mut iter: I
     ) -> Self {
@@ -91,7 +376,7 @@ impl<T> Matrix<T> {
             let e = iter.next()
                 .expect("The iterator needs to return at least r * c items.");
             unsafe {
-                m.entries.add(i).write(e);
+                m.storage.entries.add(i).write(e);
             }
         }
 
@@ -114,6 +399,80 @@ impl<T> Matrix<T> {
         )
     }
 
+    /// View of the transpose.
+    pub fn transpose(&self) -> &TransposedMatrixView<T> {
+        self.view().transpose()
+    }
+
+    /// Mutable view of the transpose.
+    pub fn transpose_mut(&mut self) -> &mut TransposedMatrixView<T> {
+        self.view_mut().transpose_mut()
+    }
+
+    /// Swap two rows.
+    pub fn swap_rows(&mut self, i: usize, j: usize) {
+        if i == j {
+            return;
+        }
+
+        unsafe {
+            core::ptr::swap_nonoverlapping(
+                self.entry_mut(i, 0),
+                self.entry_mut(j, 0),
+                self.ncols()
+            )
+        }
+    }
+
+    /// Swap two columns.
+    pub fn swap_columns(&mut self, i: usize, j: usize) {
+        if i == j {
+            return;
+        }
+
+        for k in 0..self.ncols() {
+            unsafe {
+                core::ptr::swap_nonoverlapping(
+                    self.entry_mut(i, k), self.entry_mut(j, k), 1
+                );
+            }
+        }
+    }
+
+    /// Removes rows at the end of the matrix.
+    pub fn shrink(&mut self, new_nrows: usize) {
+        self.storage.shrink(new_nrows);
+    }
+}
+
+impl<T: Zero + One> OwnedMatrix<T> {
+    /// Returns an r×c zero matrix.
+    pub fn zero(r: usize, c: usize) -> Self {
+        Self::from_iter(r, c, std::iter::repeat_with(|| T::zero()))
+    }
+
+    /// Returns an nxn identity matrix.
+    pub fn identity(n: usize) -> Self {
+        let mut m = Self::zero(n, n);
+        for i in 0..n {
+            m[(i, i)] = T::one();
+        }
+        m
+    }
+}
+
+pub struct OwnedMatrixStorage<T> {
+    /// Memory that holds the entries.
+    pub(self) entries: *mut T,
+
+    /// The number of rows.
+    pub(self) rows: usize,
+
+    /// The number of columns.
+    pub(self) cols: usize,
+}
+
+impl<T> OwnedMatrixStorage<T> {
     /// Returns a slice containing all elements.
     pub fn as_slice(&self) -> &[T] {
         unsafe {
@@ -126,122 +485,6 @@ impl<T> Matrix<T> {
         unsafe {
             std::slice::from_raw_parts_mut(self.entries, self.rows*self.cols)
         }
-    }
-
-    /// Returns an iterator over all elements.
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.as_slice().iter()
-    }
-
-    /// Returns an iterator over all mutable elements.
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
-        self.as_slice_mut().iter_mut()
-    }
-
-    /// Returns an iterator over the rows as Integer slices.
-    pub fn rows(&self) -> RowIter<T> {
-        RowIter::from_matrix(self)
-    }
-
-    /// Returns an iterator over the rows as mutable Integer slices.
-    pub fn rows_mut(&mut self) -> RowIterMut<T> {
-        RowIterMut::from_matrix(self)
-    }
-
-    /// Returns a slice of a row.
-    pub fn row(&self, r: usize) -> &VectorView<T> {
-        debug_assert!(r < self.rows);
-        unsafe {
-            VectorView::from_slice(core::slice::from_raw_parts(
-                self.entries.add(r * self.cols),
-                self.cols
-            ))
-        }
-    }
-
-    /// Returns a mutable slice of a row.
-    pub fn row_mut(&mut self, r: usize) -> &mut VectorView<T> {
-        debug_assert!(r < self.rows);
-        unsafe {
-            VectorView::from_slice_mut(core::slice::from_raw_parts_mut(
-                self.entries.add(r * self.cols),
-                self.cols
-            ))
-        }
-    }
-
-    /// Returns an iterator over the column.
-    pub fn column(&self, c: usize) -> Column<T> {
-        Column::from_matrix(self, c)
-    }
-
-    /// Returns an iterator over the column.
-    pub fn column_mut(&mut self, c: usize) -> ColumnMut<T> {
-        ColumnMut::from_matrix(self, c)
-    }
-
-    /// Returns an immutable reference to an element.
-    pub fn entry(&self, r: usize, c: usize) -> &T {
-        debug_assert!(r < self.rows && c < self.cols,
-            "Matrix index out of range");
-
-        unsafe {
-            &*self.entries.add(r * self.cols + c)
-        }
-    }
-
-    /// Returns a mutable reference to an element.
-    pub fn entry_mut(&mut self, r: usize, c: usize) -> &mut T {
-        debug_assert!(r < self.rows && c < self.cols,
-            "Matrix index out of range");
-
-        unsafe {
-            &mut *self.entries.add(r * self.cols + c)
-        }
-    }
-
-    /// Returns a pointer to an entry.
-    pub fn entry_ptr(&mut self, r: usize, c: usize) -> *mut T {
-        debug_assert!(r < self.rows && c < self.cols,
-            "Matrix index out of range");
-        unsafe {
-            self.entries.add(r * self.cols + c)
-        }
-    }
-
-    /// Swap two rows.
-    pub fn swap_rows(&mut self, i: usize, j: usize) {
-        if i == j {
-            return;
-        }
-
-        unsafe {
-            core::ptr::swap_nonoverlapping(
-                self.entry_ptr(i, 0),
-                self.entry_ptr(j, 0),
-                self.cols
-            )
-        }
-    }
-
-    /// Swap two columns.
-    pub fn swap_columns(&mut self, i: usize, j: usize) {
-        if i == j {
-            return;
-        }
-
-        for k in 0..self.cols {
-            unsafe {
-                core::ptr::swap_nonoverlapping(
-                    self.entry_ptr(i, k), self.entry_ptr(j, k), 1
-                );
-            }
-        }
-    }
-
-    /// Map the entries of the matrix with a function.
-    pub fn map<U, F: FnMut(&T) -> U>(&self, f: F) -> Matrix<U> {
-        Matrix::from_iter(self.rows, self.cols, self.iter().map(f))
     }
 
     /// Removes rows at the end of the matrix.
@@ -277,336 +520,7 @@ impl<T> Matrix<T> {
     }
 }
 
-impl<T: Clone> Matrix<T> {
-    /// Transpose the matrix.
-    pub fn transposed(&self) -> Matrix<T> {
-        let mut a = Matrix::<T>::uninit(self.cols, self.rows);
-        for r in 0..self.rows {
-            for c in 0..self.cols {
-                unsafe {
-                    a.entry_ptr(c, r).write(self[(r, c)].clone());
-                }
-            }
-        }
-        a
-    }
-
-}
-
-impl<T: Zero + One> Matrix<T> {
-    /// Returns an rxc zero matrix.
-    pub fn zero(r: usize, c: usize) -> Self {
-        let a = Self::uninit(r, c);
-        for i in 0..r*c {
-            unsafe {
-                a.entries.add(i).write(T::zero());
-            }
-        }
-        a
-    }
-
-    /// Returns an nxn identity matrix.
-    pub fn identity(n: usize) -> Self {
-        let mut m = Self::zero(n, n);
-        for i in 0..n {
-            m[(i, i)] = T::one();
-        }
-        m
-    }
-}
-
-impl<T> Matrix<T>
-    where for<'a> Float: rug::Assign<&'a T>
-{
-    pub fn to_float(&self, prec: u32) -> Matrix<Float> {
-        self.map(|e| Float::with_val(prec, e))
-    }
-}
-
-
-impl IMatrix {
-    /// Flip the sign of a row.
-    pub fn flip_sign_row(&mut self, row: usize) {
-        for e in self.row_mut(row) {
-            e.neg_assign();
-        }
-    }
-
-    /// Flip the sign of a column.
-    pub fn flip_sign_column(&mut self, col: usize) {
-        for e in self.column_mut(col) {
-            e.neg_assign();
-        }
-    }
-
-    /// Add a scaled row to another row. N = c * M.
-    pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
-        debug_assert!(n < self.rows && m < self.rows);
-        for i in 0..self.cols {
-            let c = (&self[(n, i)] * c).complete();
-            self[(m, i)] += c;
-        }
-    }
-
-    /// Add a scaled column to another column. N = c * M.
-    pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
-        debug_assert!(n < self.cols && m < self.cols);
-        for i in 0..self.rows {
-            let c = (&self[(i, n)] * c).complete();
-            self[(i, m)] += c;
-        }
-    }
-}
-
-impl FMatrix {
-    /// Returns the precision of the entries of the matrix.
-    pub fn precision(&self) -> u32 {
-        assert!(!self.is_empty(), "Can't get precision of empty matrix.");
-        if cfg!(debug_assert) {
-            self.assert_precision();
-        }
-
-        self.entry(0, 0).prec()
-    }
-
-    /// Asserts that all entries have the same precision.
-    pub fn assert_precision(&self) {
-        let mut iter = self.iter();
-        let Some(prec) = iter.next().map(|f| f.prec()) else {
-            return
-        };
-        assert!(iter.all(|f| f.prec() == prec),
-            "Matrix contains entries of different precision.");
-    }
-
-    /// Zero matrix with a certain precision.
-    pub fn zero_prec(r: usize, c: usize, prec: u32) -> Self {
-        Self::from_iter(r, c, std::iter::repeat(Float::with_val(prec, 0)))
-    }
-
-    /// Returns an nxn identity matrix.
-    pub fn identity_prec(n: usize, prec: u32) -> Self {
-        let mut m = Self::zero_prec(n, n, prec);
-        for i in 0..n {
-            m[(i, i)] = Float::with_val(prec, 1);
-        }
-        m
-    }
-
-}
-
-pub trait MulTranspose {
-    /// Multiply the matrix by the transpose of another matrix.
-    fn mul_transpose(&self, rhs: &Self) -> Self;
-}
-
-macro_rules! impl_mul_transpose {
-    ($t:tt) => {
-        impl MulTranspose for Matrix<$t> {
-            /// Multiply the matrix by the transpose of another matrix.
-            fn mul_transpose(&self, rhs: &Self) -> Self {
-                assert!(self.cols == rhs.cols,
-                    "Invalid dimensions for multiplication.");
-                select!($t,
-                    Float => {
-                        let prec = self.precision();
-                        assert!(prec == rhs.precision(),
-                            "Can only multiply matrices of equal precision.");
-                        let mut r = Self::zero_prec(self.rows, rhs.rows, prec);
-                    },
-                    default => {
-                        let mut r = Self::zero(self.rows, rhs.rows);
-                    },
-                );
-                for i in 0..self.rows {
-                    for j in 0..rhs.rows {
-                        r[(i, j)] = self.row(i).dot(rhs.row(j));
-                    }
-                }
-                r
-            }
-        }
-    };
-    ($t:tt, $($o:tt),+) => {
-        impl_mul_transpose!($t);
-        impl_mul_transpose!($($o),+);
-    }
-}
-
-impl_mul_transpose!(Integer, Rational, Float, f32, f64);
-
-impl<T> std::ops::Index<usize> for Matrix<T> {
-    type Output = VectorView<T>;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        self.row(index)
-    }
-}
-
-impl<T> std::ops::IndexMut<usize> for Matrix<T> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.row_mut(index)
-    }
-}
-
-impl<T> std::ops::Index<(usize, usize)> for Matrix<T> {
-    type Output = T;
-
-    fn index(&self, index: (usize, usize)) -> &Self::Output {
-        self.entry(index.0, index.1)
-    }
-
-}
-
-impl<T> std::ops::IndexMut<(usize, usize)> for Matrix<T> {
-    fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
-        self.entry_mut(index.0, index.1)
-    }
-}
-
-macro_rules! impl_mul {
-    ($t:ty, {$($sum:tt)*}) => {
-        impl Mul<&Matrix<$t>> for &Matrix<$t> {
-            type Output = Matrix<$t>;
-            fn mul(self, rhs: &Matrix<$t>) -> Self::Output {
-                assert!(self.cols == rhs.rows, "Can't multiply matrices \
-                    because of incompatible dimensions");
-
-                let mut m = Matrix::zero(self.rows, rhs.cols);
-
-                for i in 0..m.rows {
-                    for j in 0..m.cols {
-                        m[(i, j)] = self.row(i).iter()
-                            .zip(rhs.column(j))
-                            $($sum)*
-                    }
-                }
-
-                m
-            }
-        }
-
-        impl<S: VectorStorage<$t> + ?Sized> Mul<&Vector<$t, S>> for &Matrix<$t> {
-            type Output = OwnedVector<$t>;
-
-            fn mul(self, rhs: &Vector<$t, S>) -> Self::Output {
-                assert!(self.cols == rhs.dim(), "Can't multiply matrix and \
-                    vector because of incompatible dimensions");
-
-                let iter = self.rows()
-                    .map(|r| r.iter().zip(rhs.iter())$($sum)*);
-                Vector::from_iter(self.rows, iter)
-            }
-        }
-
-        impl<S: VectorStorage<$t> + ?Sized> Mul<&Matrix<$t>> for &Vector<$t, S> {
-            type Output = OwnedVector<$t>;
-
-            fn mul(self, rhs: &Matrix<$t>) -> Self::Output {
-                assert!(self.dim() == rhs.rows, "Can't multiply matrix and \
-                    vector because of incompatible dimensions");
-                let iter = (0..rhs.cols)
-                    .map(|i| self.iter().zip(rhs.column(i))$($sum)*);
-                Vector::from_iter(rhs.cols, iter)
-            }
-        }
-    }
-}
-
-impl_mul!(Integer, { .map(|(l, r)| l * r).fold(Integer::new(), |acc, f| acc + f) });
-impl_mul!(Rational, { .map(|(l, r)| (l * r).complete()).sum() });
-impl_mul!(f64, { .map(|(l, r)| l * r).sum() });
-impl_mul!(f32, { .map(|(l, r)| l * r).sum() });
-
-impl Mul for &FMatrix {
-    type Output = FMatrix;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        assert!(self.cols == rhs.rows, "Can't multiply matrices \
-            because of incompatible dimensions");
-        let prec = self.precision();
-        assert!(prec == rhs.precision(),
-            "Can't multiply matrices of different precision.\
-            This can be relaxed in the future.");
-
-        let mut m = Matrix::zero_prec(self.rows, rhs.cols, prec);
-
-        for i in 0..m.rows {
-            for j in 0..m.cols {
-                m[(i, j)] = self.row(i).iter()
-                    .zip(rhs.column(j))
-                    .map(|(l, r)| l * r)
-                    .fold(Float::with_val(prec, 0), |acc, f| acc + f)
-            }
-        }
-
-        m
-    }
-}
-
-impl<S: VectorStorage<Float> + ?Sized> Mul<&Vector<Float, S>> for &FMatrix {
-    type Output = FOwnedVector;
-
-    fn mul(self, rhs: &Vector<Float, S>) -> Self::Output {
-        assert!(self.cols == rhs.dim(), "Can't multiply matrix and \
-            vector because of incompatible dimensions");
-
-        let prec = self.precision();
-        assert!(prec == rhs.precision(),
-            "Can't multiply matrix and vector of different precision.\
-            This can be relaxed in the future.");
-
-        let iter = self.rows()
-            .map(|r| r.iter()
-                .zip(rhs.iter())
-                .map(|(l, r)| l * r)
-                .fold(Float::with_val(prec, 0), |acc, f| acc + f)
-            );
-        Vector::from_iter(self.rows, iter)
-    }
-}
-
-impl<S: VectorStorage<Float> + ?Sized> Mul<&FMatrix> for &Vector<Float, S> {
-    type Output = FOwnedVector;
-
-    fn mul(self, rhs: &FMatrix) -> Self::Output {
-        assert!(self.dim() == rhs.rows, "Can't multiply matrix and \
-            vector because of incompatible dimensions");
-        let prec = self.precision();
-        assert!(prec == rhs.precision(),
-            "Can't multiply matrix and vector of different precision.\
-            This can be relaxed in the future.");
-        let iter = (0..rhs.cols)
-            .map(|i| self.iter().zip(rhs.column(i))
-                .map(|(l, r)| l * r)
-                .fold(Float::with_val(prec, 0), |l, r| l + r)
-            );
-        Vector::from_iter(rhs.cols, iter)
-    }
-}
-
-impl<T: PartialEq> PartialEq for Matrix<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.rows == other.rows && self.cols == other.cols
-            && self.iter().eq(other.iter())
-    }
-}
-
-impl<T: Debug> Debug for Matrix<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list()
-            .entries(self.rows().map(|r| r.as_slice()))
-            .finish()
-    }
-}
-
-impl<T: Clone> Clone for Matrix<T> {
-    fn clone(&self) -> Self {
-        Matrix::from_iter(self.rows, self.cols, self.iter().cloned())
-    }
-}
-
-impl<T> Drop for Matrix<T> {
+impl<T> Drop for OwnedMatrixStorage<T> {
     fn drop(&mut self) {
         if self.entries.is_null() {
             return;
@@ -629,199 +543,504 @@ impl<T> Drop for Matrix<T> {
     }
 }
 
-pub struct RowIter<'a, T> {
-    /// Front iterator.
-    front: *mut T,
+impl<T> MatrixStorage<T> for OwnedMatrixStorage<T> {
+    type RowVecStorage = SliceVectorStorage<T>;
+    type ColVecStorage = StrideStorage<T>;
 
-    /// Back iterator.
-    back: *mut T,
-
-    /// The number of elements in a column.
-    count: usize,
-    lifetime: PhantomData<&'a T>,
-}
-
-impl<'a, T> RowIter<'a, T> {
-    pub fn from_matrix(a: &'a Matrix<T>) -> Self {
-        Self {
-            front: a.entries,
-            count: a.cols,
-            back: unsafe { a.entries.add(a.cols * a.rows).sub(a.cols) },
-            lifetime: PhantomData,
-        }
+    fn rows(&self) -> usize {
+        self.rows
     }
-}
 
-impl<'a, T> Iterator for RowIter<'a, T> {
-    type Item = &'a VectorView<T>;
+    fn cols(&self) -> usize {
+        self.cols
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.front as usize > self.back as usize {
-            return None;
-        }
-
+    fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows);
         unsafe {
-            let row = std::slice::from_raw_parts(self.front, self.count);
-            self.front = self.front.add(self.count);
-            Some(VectorView::from_slice(row))
+            VectorView::from_slice(std::slice::from_raw_parts(
+                self.entries.add(r * self.cols),
+                self.cols
+            ))
         }
     }
-}
 
-impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.front as usize > self.back as usize {
-            return None;
-        }
-
+    fn row_mut(&mut self, r: usize) -> &mut Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows);
         unsafe {
-            let row = std::slice::from_raw_parts(self.back, self.count);
-            self.back = self.back.sub(self.count);
-            Some(VectorView::from_slice(row))
+            VectorView::from_slice_mut(std::slice::from_raw_parts_mut(
+                self.entries.add(r * self.cols),
+                self.cols
+            ))
         }
+    }
+
+    fn col(&self, c: usize) -> &Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols);
+        StrideVectorView::from_raw_parts(
+            unsafe { self.entries.add(c) },
+            self.rows,
+            self.cols
+        )
+    }
+
+    fn col_mut(&mut self, c: usize) -> &mut Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols);
+        StrideVectorView::from_raw_parts_mut(
+            unsafe { self.entries.add(c) },
+            self.rows,
+            self.cols
+        )
     }
 }
 
-pub struct RowIterMut<'a, T> {
-    /// Front iterator.
-    front: *mut T,
+pub type MatrixView<T> = Matrix<T, SliceMatrixStorage<T>>;
+pub type IMatrixView = MatrixView<Integer>;
+pub type RMatrixView = MatrixView<Rational>;
+pub type FMatrixView = MatrixView<Float>;
 
-    /// Back iterator.
-    back: *mut T,
-
-    /// The number of elements in a column.
-    count: usize,
-    lifetime: PhantomData<&'a T>,
-}
-
-impl<'a, T> RowIterMut<'a, T> {
-    pub fn from_matrix(a: &'a mut Matrix<T>) -> Self {
-        Self {
-            front: a.entries,
-            count: a.cols,
-            back: unsafe { a.entries.add(a.cols * a.rows).sub(a.cols) },
-            lifetime: PhantomData,
-        }
-    }
-}
-
-impl<'a, T> Iterator for RowIterMut<'a, T> {
-    type Item = &'a mut VectorView<T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.front as usize > self.back as usize {
-            return None;
-        }
-
+impl<T> MatrixView<T> {
+    /// Returns a view of the matrix transposed.
+    pub fn transpose(&self) -> &TransposedMatrixView<T> {
         unsafe {
-            let row = std::slice::from_raw_parts_mut(self.front, self.count);
-            self.front = self.front.add(self.count);
-            Some(VectorView::from_slice_mut(row))
+            &*(self as *const _ as *const _)
         }
     }
-}
 
-impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.front as usize > self.back as usize {
-            return None;
-        }
-
+    /// Returns a mutable view of the matrix transposed.
+    pub fn transpose_mut(&mut self) -> &mut TransposedMatrixView<T> {
         unsafe {
-            let row = std::slice::from_raw_parts_mut(self.back, self.count);
-            self.back = self.back.sub(self.count);
-            Some(VectorView::from_slice_mut(row))
+            &mut *(self as *mut _ as *mut _)
+        }
+    }
+
+    pub fn from_raw_parts<'a>(entries: *const T, rows: usize, cols: usize) -> &'a Self {
+        unsafe {
+            &*std::ptr::from_raw_parts(
+                entries as _,
+                Self::metadata(rows, cols)
+            )
+        }
+    }
+
+    pub fn from_raw_parts_mut<'a>(entries: *mut T, rows: usize, cols: usize) -> &'a mut Self {
+        unsafe {
+            &mut *std::ptr::from_raw_parts_mut(
+                entries as _,
+                Self::metadata(rows, cols)
+            )
+        }
+    }
+
+    /// The pointer metadata.
+    fn metadata(rows: usize, cols: usize) -> usize {
+        assert!(rows <= u32::MAX as usize);
+        assert!(cols <= u32::MAX as usize);
+        rows | cols << 32
+    }
+}
+
+/// Very hacky, see [StrideStorage] for explanation.
+/// Metadata stores the number of rows (in the least significant 4 bytes)
+/// and columns (in the most significant 4 bytes).
+pub struct SliceMatrixStorage<T>([T]);
+
+impl<T> MatrixStorage<T> for SliceMatrixStorage<T> {
+    type RowVecStorage = SliceVectorStorage<T>;
+    type ColVecStorage = StrideStorage<T>;
+
+    fn rows(&self) -> usize {
+        self.0.len() & 0xffff_ffff
+    }
+
+    fn cols(&self) -> usize {
+        self.0.len() >> 32
+    }
+
+    fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows());
+        unsafe {
+            VectorView::from_slice(std::slice::from_raw_parts(
+                self.0.as_ptr().add(r * self.cols()),
+                self.cols()
+            ))
+        }
+    }
+
+    fn row_mut(&mut self, r: usize) -> &mut Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows());
+        unsafe {
+            VectorView::from_slice_mut(std::slice::from_raw_parts_mut(
+                self.0.as_mut_ptr().add(r * self.cols()),
+                self.cols()
+            ))
+        }
+    }
+
+    fn col(&self, c: usize) -> &Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols());
+        StrideVectorView::from_raw_parts(
+            unsafe { self.0.as_ptr().add(c) },
+            self.rows(),
+            self.cols()
+        )
+    }
+
+    fn col_mut(&mut self, c: usize) -> &mut Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols());
+        StrideVectorView::from_raw_parts_mut(
+            unsafe { self.0.as_mut_ptr().add(c) },
+            self.rows(),
+            self.cols()
+        )
+    }
+}
+
+pub type TransposedMatrixView<T> = Matrix<T, TransposedMatrixStorage<T>>;
+
+impl<T> TransposedMatrixView<T> {
+    /// Returns a view of the matrix transposed.
+    pub fn transpose(&self) -> &MatrixView<T> {
+        unsafe {
+            &*(self as *const _ as *const _)
+        }
+    }
+
+    /// Returns a mutable view of the matrix transposed.
+    pub fn transpose_mut(&mut self) -> &mut MatrixView<T> {
+        unsafe {
+            &mut *(self as *mut _ as *mut _)
         }
     }
 }
 
-pub struct Column<'a, T> {
-    ptr: *mut T,
-    off: usize,
-    last: *mut T,
-    lifetime: PhantomData<&'a T>,
-}
+/// Very hacky, see [StrideStorage] for explanation.
+/// Metadata stores the number of columns (in the least significant 4 bytes)
+/// and rows (in the most significant 4 bytes).
+/// This allows you to transmute a [ContiguousMatrixStorage] reference into a
+/// [TransposedMatrixStorage] reference while transposing the view.
+pub struct TransposedMatrixStorage<T>([T]);
 
-impl<'a, T> Column<'a, T> {
-    pub fn from_matrix(a: &'a Matrix<T>, col: usize) -> Self {
-        debug_assert!(col < a.cols);
-        Self {
-            ptr: unsafe { a.entries.add(col) },
-            off: a.cols,
-            last: unsafe { a.entries.add(col + (a.rows - 1) * a.cols) },
-            lifetime: PhantomData,
+impl<T> MatrixStorage<T> for TransposedMatrixStorage<T> {
+    type RowVecStorage = StrideStorage<T>;
+    type ColVecStorage = SliceVectorStorage<T>;
+    fn rows(&self) -> usize {
+        self.0.len() >> 32
+    }
+
+    fn cols(&self) -> usize {
+        self.0.len() & 0xffff_ffff
+    }
+
+    fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows());
+        StrideVectorView::from_raw_parts(
+            unsafe { self.0.as_ptr().add(r) },
+            self.cols(),
+            self.rows()
+        )
+    }
+
+    fn row_mut(&mut self, r: usize) -> &mut Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows());
+        StrideVectorView::from_raw_parts_mut(
+            unsafe { self.0.as_mut_ptr().add(r) },
+            self.cols(),
+            self.rows()
+        )
+    }
+
+    fn col(&self, c: usize) -> &Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols());
+        unsafe {
+            VectorView::from_slice(std::slice::from_raw_parts(
+                self.0.as_ptr().add(c * self.cols()),
+                self.rows()
+            ))
+        }
+    }
+
+    fn col_mut(&mut self, c: usize) -> &mut Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols());
+        unsafe {
+            VectorView::from_slice_mut(std::slice::from_raw_parts_mut(
+                self.0.as_mut_ptr().add(c * self.cols()),
+                self.rows()
+            ))
         }
     }
 }
 
-impl<'a, T> Iterator for Column<'a, T> {
-    type Item = &'a T;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.ptr > self.last {
-            None
-        } else {
-            unsafe {
-                let v = &*self.ptr;
-                self.ptr = self.ptr.add(self.off);
-                Some(v)
+/// A matrix with a single row.
+pub type RowVector<T> = Matrix<T, RowVectorStorage<T>>;
+
+pub struct RowVectorStorage<T>([T]);
+
+impl<T> MatrixStorage<T> for RowVectorStorage<T> {
+    type RowVecStorage = SliceVectorStorage<T>;
+    type ColVecStorage = SliceVectorStorage<T>;
+
+    fn rows(&self) -> usize {
+        1
+    }
+
+    fn cols(&self) -> usize {
+        self.0.len()
+    }
+
+    fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows());
+        VectorView::from_slice(&self.0)
+    }
+
+    fn row_mut(&mut self, r: usize) -> &mut Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows());
+        VectorView::from_slice_mut(&mut self.0)
+    }
+
+    fn col(&self, c: usize) -> &Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols());
+        VectorView::from_slice(&self.0[c..c+1])
+    }
+
+    fn col_mut(&mut self, c: usize) -> &mut Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols());
+        VectorView::from_slice_mut(&mut self.0[c..c+1])
+    }
+}
+
+/// A matrix with a single column.
+pub type ColumnVector<T> = Matrix<T, ColumnVectorStorage<T>>;
+
+pub struct ColumnVectorStorage<T>([T]);
+
+impl<T> MatrixStorage<T> for ColumnVectorStorage<T> {
+    type RowVecStorage = SliceVectorStorage<T>;
+    type ColVecStorage = SliceVectorStorage<T>;
+
+    fn rows(&self) -> usize {
+        self.0.len()
+    }
+
+    fn cols(&self) -> usize {
+        1
+    }
+
+    fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows());
+        VectorView::from_slice(&self.0[r..r+1])
+    }
+
+    fn row_mut(&mut self, r: usize) -> &mut Vector<T, Self::RowVecStorage> {
+        assert!(r < self.rows());
+        VectorView::from_slice_mut(&mut self.0[r..r+1])
+    }
+
+    fn col(&self, c: usize) -> &Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols());
+        VectorView::from_slice(&self.0)
+    }
+
+    fn col_mut(&mut self, c: usize) -> &mut Vector<T, Self::ColVecStorage> {
+        assert!(c < self.cols());
+        VectorView::from_slice_mut(&mut self.0)
+    }
+}
+
+macro_rules! impl_mul {
+    ($t:ty, {$($sum:tt)*}) => {
+        impl<S, R> Mul<&Matrix<$t, R>> for &Matrix<$t, S>
+        where
+            S: MatrixStorage<$t> + ?Sized,
+            R: MatrixStorage<$t> + ?Sized,
+        {
+            type Output = OwnedMatrix<$t>;
+            fn mul(self, rhs: &Matrix<$t, R>) -> Self::Output {
+                assert!(self.ncols() == rhs.nrows(), "Can't multiply matrices \
+                    because of incompatible dimensions");
+
+                let mut m = Matrix::zero(self.nrows(), rhs.ncols());
+
+                for i in 0..m.nrows() {
+                    for j in 0..m.ncols() {
+                        m[(i, j)] = self.row(i).iter()
+                            .zip(rhs.col(j))
+                            $($sum)*
+                    }
+                }
+
+                m
+            }
+        }
+
+        impl<S, R> Mul<&Vector<$t, R>> for &Matrix<$t, S>
+        where
+            S: MatrixStorage<$t> + ?Sized,
+            R: VectorStorage<$t> + ?Sized,
+        {
+            type Output = OwnedVector<$t>;
+
+            fn mul(self, rhs: &Vector<$t, R>) -> Self::Output {
+                assert!(self.ncols() == rhs.dim(), "Can't multiply matrix and \
+                    vector because of incompatible dimensions");
+
+                let iter = self.rows()
+                    .map(|r| r.iter().zip(rhs.iter())$($sum)*);
+                Vector::from_iter(self.nrows(), iter)
+            }
+        }
+
+        impl<S, R> Mul<&Matrix<$t, R>> for &Vector<$t, S>
+        where
+            S: VectorStorage<$t> + ?Sized,
+            R: MatrixStorage<$t> + ?Sized,
+        {
+            type Output = OwnedVector<$t>;
+
+            fn mul(self, rhs: &Matrix<$t, R>) -> Self::Output {
+                assert!(self.dim() == rhs.nrows(), "Can't multiply matrix and \
+                    vector because of incompatible dimensions");
+                let iter = (0..rhs.ncols())
+                    .map(|i| self.iter().zip(rhs.col(i))$($sum)*);
+                Vector::from_iter(rhs.ncols(), iter)
             }
         }
     }
 }
 
-pub struct ColumnMut<'a, T> {
-    ptr: *mut T,
-    off: usize,
-    last: *mut T,
-    lifetime: PhantomData<&'a mut T>,
-}
+impl_mul!(Integer, { .map(|(l, r)| l * r).fold(Integer::new(), |acc, f| acc + f) });
+impl_mul!(Rational, { .map(|(l, r)| (l * r).complete()).sum() });
+impl_mul!(f64, { .map(|(l, r)| l * r).sum() });
+impl_mul!(f32, { .map(|(l, r)| l * r).sum() });
 
-impl<'a, T> ColumnMut<'a, T> {
-    pub fn from_matrix(a: &'a mut Matrix<T>, col: usize) -> Self {
-        debug_assert!(col < a.cols);
-        Self {
-            ptr: unsafe { a.entries.add(col) },
-            off: a.cols,
-            last: unsafe { a.entries.add(col + (a.rows - 1) * a.cols) },
-            lifetime: PhantomData,
+impl<S, R> Mul<&Matrix<Float, R>> for &Matrix<Float, S>
+where
+    S: MatrixStorage<Float> + ?Sized,
+    R: MatrixStorage<Float> + ?Sized,
+{
+    type Output = FOwnedMatrix;
+
+    fn mul(self, rhs: &Matrix<Float, R>) -> Self::Output {
+        assert!(self.ncols() == rhs.nrows(), "Can't multiply matrices \
+            because of incompatible dimensions");
+        let prec = self.precision();
+        assert!(prec == rhs.precision(),
+            "Can't multiply matrices of different precision.\
+            This can be relaxed in the future.");
+
+        let mut m = Matrix::zero_prec(self.nrows(), rhs.ncols(), prec);
+
+        for i in 0..m.nrows() {
+            for j in 0..m.ncols() {
+                m[(i, j)] = self.row(i).iter()
+                    .zip(rhs.col(j))
+                    .map(|(l, r)| l * r)
+                    .fold(Float::with_val(prec, 0), |acc, f| acc + f)
+            }
         }
+
+        m
     }
 }
 
-impl<'a, T> Iterator for ColumnMut<'a, T> {
-    type Item = &'a mut T;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.ptr > self.last {
-            None
-        } else {
-            unsafe {
-                let v = &mut *self.ptr;
-                self.ptr = self.ptr.add(self.off);
-                Some(v)
-            }
-        }
+impl<S, R> Mul<&Vector<Float, R>> for &Matrix<Float, S>
+where
+    S: MatrixStorage<Float> + ?Sized,
+    R: VectorStorage<Float> + ?Sized,
+{
+    type Output = FOwnedVector;
+
+    fn mul(self, rhs: &Vector<Float, R>) -> Self::Output {
+        assert!(self.ncols() == rhs.dim(), "Can't multiply matrix and \
+            vector because of incompatible dimensions");
+
+        let prec = self.precision();
+        assert!(prec == rhs.precision(),
+            "Can't multiply matrix and vector of different precision.\
+            This can be relaxed in the future.");
+
+        let iter = self.rows()
+            .map(|r| r.iter()
+                .zip(rhs.iter())
+                .map(|(l, r)| l * r)
+                .fold(Float::with_val(prec, 0), |acc, f| acc + f)
+            );
+        Vector::from_iter(self.nrows(), iter)
+    }
+}
+
+impl<S, R> Mul<&Matrix<Float, R>> for &Vector<Float, S>
+where
+    S: VectorStorage<Float> + ?Sized,
+    R: MatrixStorage<Float> + ?Sized,
+{
+    type Output = FOwnedVector;
+
+    fn mul(self, rhs: &Matrix<Float, R>) -> Self::Output {
+        assert!(self.dim() == rhs.nrows(), "Can't multiply matrix and \
+            vector because of incompatible dimensions");
+        let prec = self.precision();
+        assert!(prec == rhs.precision(),
+            "Can't multiply matrix and vector of different precision.\
+            This can be relaxed in the future.");
+        let iter = (0..rhs.ncols())
+            .map(|i| self.iter().zip(rhs.col(i))
+                .map(|(l, r)| l * r)
+                .fold(Float::with_val(prec, 0), |l, r| l + r)
+            );
+        Vector::from_iter(rhs.ncols(), iter)
+    }
+}
+
+impl<T: PartialEq, S, R> PartialEq<Matrix<T, R>> for Matrix<T, S>
+where
+    S: MatrixStorage<T> + ?Sized,
+    R: MatrixStorage<T> + ?Sized,
+{
+    fn eq(&self, other: &Matrix<T, R>) -> bool {
+        self.nrows() == other.nrows() && self.ncols() == other.ncols()
+            && self.entries_row_major().eq(other.entries_row_major())
+    }
+}
+
+impl<T: Debug, S: MatrixStorage<T> + ?Sized> Debug for Matrix<T, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(self.rows())
+            .finish()
+    }
+}
+
+impl<T: Clone> Clone for OwnedMatrix<T> {
+    fn clone(&self) -> Self {
+        OwnedMatrix::from_iter(
+            self.nrows(),
+            self.ncols(),
+            self.entries_row_major().cloned()
+        )
     }
 }
 
 #[test]
-fn column_iter() {
-    let m = Matrix::<i32>::from_rows(&[
+fn transpose_test() {
+    let m = OwnedMatrix::<i32>::from_rows(&[
         [2, 3],
         [4, 5],
     ]);
-    let mut c0 = m.column(0);
-    assert_eq!(c0.next(), Some(&2));
-    assert_eq!(c0.next(), Some(&4));
-    assert!(c0.next().is_none());
-    let mut c1 = m.column(1);
-    assert_eq!(c1.next(), Some(&3));
-    assert_eq!(c1.next(), Some(&5));
-    assert!(c0.next().is_none());
+    let t = m.transpose();
+    assert_eq!(t.nrows(), 2);
+    assert_eq!(t.ncols(), 2);
+    assert_eq!(t[0], [2, 4]);
+    assert_eq!(t[1], [3, 5]);
+    assert_eq!(t[(0, 0)], 2);
+    assert_eq!(t[(0, 1)], 4);
+    assert_eq!(t[(1, 0)], 3);
+    assert_eq!(t[(1, 1)], 5);
 }
 
 #[test]
 fn row() {
-    let m = Matrix::<i32>::from_rows(&[
+    let m = OwnedMatrix::<i32>::from_rows(&[
         [2, 3],
         [4, 5],
     ]);
@@ -830,25 +1049,83 @@ fn row() {
 }
 
 #[test]
+fn col() {
+    let m = OwnedMatrix::<i32>::from_rows(&[
+        [2, 3],
+        [4, 5],
+    ]);
+    assert_eq!(m.col(0), &[2, 4]);
+    assert_eq!(m.col(1), &[3, 5]);
+}
+
+#[test]
 fn rows_iter() {
-    let m = Matrix::<i32>::from_rows(&[
+    let m = OwnedMatrix::<i32>::from_rows(&[
         [2, 3],
         [4, 5],
     ]);
     let mut r = m.rows();
-    assert_eq!(r.next().unwrap(), &[2, 3][..]);
+    assert_eq!(r.next().unwrap(), &[2, 3]);
     assert_eq!(r.next().unwrap(), &[4, 5]);
     assert!(r.next().is_none());
 }
 
 #[test]
+fn col_iter() {
+    let m = OwnedMatrix::<i32>::from_rows(&[
+        [2, 3],
+        [4, 5],
+    ]);
+    let mut c0 = m.col(0).iter();
+    assert_eq!(c0.next(), Some(&2));
+    assert_eq!(c0.next(), Some(&4));
+    assert!(c0.next().is_none());
+    let mut c1 = m.col(1).iter();
+    assert_eq!(c1.next(), Some(&3));
+    assert_eq!(c1.next(), Some(&5));
+    assert!(c0.next().is_none());
+}
+
+#[test]
 fn row_iter_rev_test() {
-    let m = Matrix::<i32>::from_rows(&[
+    let m = OwnedMatrix::<i32>::from_rows(&[
         [2, 3],
         [4, 5],
     ]);
     let mut r = m.rows();
-    assert_eq!(r.next_back().unwrap(), &[4, 5][..]);
+    assert_eq!(r.next_back().unwrap(), &[4, 5]);
     assert_eq!(r.next_back().unwrap(), &[2, 3]);
     assert!(r.next_back().is_none());
+}
+
+#[test]
+fn col_iter_rev() {
+    let m = OwnedMatrix::<i32>::from_rows(&[
+        [2, 3],
+        [4, 5],
+    ]);
+    let mut r = m.cols();
+    assert_eq!(r.next_back().unwrap(), &[3, 5]);
+    assert_eq!(r.next_back().unwrap(), &[2, 4]);
+    assert!(r.next_back().is_none());
+}
+
+#[test]
+fn entry_iterators() {
+    let m = OwnedMatrix::<i32>::from_rows(&[
+        [2, 3],
+        [4, 5],
+    ]);
+    let mut r = m.entries_row_major();
+    assert_eq!(r.next(), Some(&2));
+    assert_eq!(r.next(), Some(&3));
+    assert_eq!(r.next(), Some(&4));
+    assert_eq!(r.next(), Some(&5));
+    assert!(r.next().is_none());
+    let mut r = m.entries_col_major();
+    assert_eq!(r.next(), Some(&2));
+    assert_eq!(r.next(), Some(&4));
+    assert_eq!(r.next(), Some(&3));
+    assert_eq!(r.next(), Some(&5));
+    assert!(r.next().is_none());
 }
