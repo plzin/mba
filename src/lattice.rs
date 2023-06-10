@@ -448,18 +448,23 @@ macro_rules! impl_cvp_planes {
             f64 => { t.transform(|i| i.to_f64()) },
             f32 => { t.transform(|i| i.to_f32()) },
         );
-        //println!("Lattice in the new basis: {:?}", r);
-        //println!("Target vector in the new basis: {:?}", qt);
 
-        rad = select!($ty,
-            Float => { rad.map(|f| f.square()) },
-            default => { rad.map(|f| f * f) },
-        );
+        // If a radius is given, we square it,
+        // otherwise we use the squared norm of the target vector,
+        // because the origin is a point on the lattice.
+        // The actual value doesn't really matter,
+        // it will get replaced with the distance
+        // to Babai's nearest plane vector in the first descent.
+        // We just do this to avoid having to pass around an Option.
+        let rad = rad.map_or_else(|| qt.norm_sqr(), select!($ty,
+            Float => { |f| f.square() },
+            default => { |f| f * f },
+        ));
 
         /// Utility function for comparing a distance with the radius.
         /// If the radius is None, then this always accepts.
-        fn in_radius(d: &$ty, rad: &Option<$ty>) -> bool {
-            rad.as_ref().map_or(true, |rad| d.partial_cmp(rad).unwrap().is_le())
+        fn in_radius(d: &$ty, rad: &$ty) -> bool {
+            d.partial_cmp(rad).unwrap().is_le()
         }
 
         /// This actually finds the closest point.
@@ -467,7 +472,7 @@ macro_rules! impl_cvp_planes {
         /// This returns the coordinates of the closest point in the basis
         /// as the first entry and the actual point as the second entry.
         fn cvp_impl(
-            i: usize, r: &OwnedMatrix<$ty>, qt: &VectorView<$ty>, prec: u32, rad: &Option<$ty>
+            i: usize, r: &OwnedMatrix<$ty>, qt: &VectorView<$ty>, prec: u32, rad: &$ty
         ) -> Option<(IOwnedVector, OwnedVector<$ty>)> {
             // One dimensional lattice.
             if i == 0 {
@@ -587,7 +592,7 @@ macro_rules! impl_cvp_planes {
                 // So by Pythagoras the squared distance in the
                 // plane can only be <= rad - d.
                 // rad and d are already the square of the distance.
-                let plane_dist = min_dist.as_ref().map(|f| f - d);
+                let plane_dist = min_dist.clone() - d;
 
                 // Compute the point in the plane we need to be close to now.
                 let point_in_plane = qt - &index * &r[i];
@@ -626,7 +631,7 @@ macro_rules! impl_cvp_planes {
                 // then we have found the new best point.
                 if in_radius(&d, &min_dist) {
                     min = Some((v, w));
-                    min_dist = Some(d);
+                    min_dist = d;
                 }
             }
 

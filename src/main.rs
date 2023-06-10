@@ -358,26 +358,16 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
         }
     }
 
-    println!("Basis:");
-    for v in l.lattice.basis.rows() {
-        println!("{:?}", v);
-    }
-
     l.lattice.lll(&rug::Rational::from((99, 100)));
-
-    println!("LLL reduced basis:");
-    for v in l.lattice.basis.rows() {
-        println!("{:?}", v);
-    }
 
     for (e, c) in l.offset.iter_mut().zip(&complexity) {
         *e *= c;
     }
 
     let mut solution = l.offset.clone();
-    println!("Solver solution norm: {}", solution.norm());
-    solution -= &l.lattice.cvp_planes_f64(l.offset.view(), None).unwrap();
-    println!("CVP norm: {}", solution.norm());
+    let norm = solution.norm_sqr().to_f64().sqrt();
+    solution -= &l.lattice.cvp_planes_f64(l.offset.view(), Some(norm))
+        .unwrap();
 
     for (e, c) in solution.iter_mut().zip(&complexity) {
         debug_assert!(e.is_divisible_u(*c));
