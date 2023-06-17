@@ -241,7 +241,7 @@ impl<S: MatrixStorage<Float> + ?Sized> Matrix<Float, S> {
 impl FOwnedMatrix {
     /// Zero matrix with a certain precision.
     pub fn zero_prec(r: usize, c: usize, prec: u32) -> Self {
-        OwnedMatrix::from_iter(r, c, std::iter::repeat(Float::with_val(prec, 0)))
+        OwnedMatrix::from_iter(r, c, std::iter::repeat(Float::new(prec)))
     }
 
     /// Returns an nxn identity matrix.
@@ -862,6 +862,17 @@ impl<T, S: VectorStorage<T> + ?Sized> MatrixStorage<T> for ColumnVectorStorage<T
     }
 }
 
+impl<T, S, R> Mul<&Matrix<T, R>> for &Matrix<T, S>
+where
+    S: MatrixStorage<T> + ?Sized,
+    R: MatrixStorage<T> + ?Sized,
+{
+    type Output = OwnedMatrix<T>;
+    default fn mul(self, rhs: &Matrix<T, R>) -> Self::Output {
+        panic!("Matrix multiplication not implemented for this type.");
+    }
+}
+
 macro_rules! impl_mul {
     ($t:tt) => {
         impl<S, R> Mul<&Matrix<$t, R>> for &Matrix<$t, S>
@@ -869,7 +880,6 @@ macro_rules! impl_mul {
             S: MatrixStorage<$t> + ?Sized,
             R: MatrixStorage<$t> + ?Sized,
         {
-            type Output = OwnedMatrix<$t>;
             fn mul(self, rhs: &Matrix<$t, R>) -> Self::Output {
                 assert!(self.ncols() == rhs.nrows(), "Can't multiply matrices \
                     because of incompatible dimensions");
@@ -897,7 +907,7 @@ macro_rules! impl_mul {
                             Float => {
                                 iter.map(|(l, r)| l * r)
                                     .fold(
-                                        Float::with_val(prec, 0),
+                                        Float::new(prec),
                                         |acc, f| acc + f
                                     )
                             },

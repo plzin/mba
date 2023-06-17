@@ -453,7 +453,7 @@ impl<T> OwnedVector<T> {
 
 impl OwnedVector<Float> {
     pub fn zero_prec(dim: usize, prec: u32) -> Self {
-        Self::from_iter(dim, core::iter::repeat(Float::with_val(prec, 0)))
+        Self::from_iter(dim, core::iter::repeat(Float::new(prec)))
     }
 }
 
@@ -766,10 +766,8 @@ pub trait InnerProduct: Sized {
 }
 
 pub trait VectorNorm: Sized {
-    type Scalar;
-
     /// Computes the norm of the vector.
-    fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
+    fn norm<S>(v: &Vector<Self, S>) -> Self
         where S: VectorStorage<Self> + ?Sized;
 }
 
@@ -797,7 +795,7 @@ where
     T: VectorNorm,
 {
     /// Returns the norm of the vector.
-    pub fn norm(&self) -> T::Scalar {
+    pub fn norm(&self) -> T {
         T::norm(self)
     }
 }
@@ -805,13 +803,17 @@ where
 impl<S, T> Vector<T, S>
 where
     S: VectorStorage<T> + ?Sized,
-    T: VectorNorm<Scalar = T>,
+    T: VectorNorm,
     for<'a> Vector<T, S>: DivAssign<&'a T>,
 {
     pub fn normalize(&mut self) {
         *self /= &T::norm(self);
     }
 }
+
+// Implementations of all kinds of traits for vectors.
+// These are specializations. The traits are implemented
+// generically for all types, but the implementations just panic.
 
 impl InnerProduct for Integer {
     fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
@@ -829,17 +831,6 @@ impl InnerProduct for Integer {
         where S: VectorStorage<Self> + ?Sized,
     {
         v.iter().map(|x| x.square_ref()).sum()
-    }
-}
-
-impl VectorNorm for Integer {
-    type Scalar = Float;
-
-    fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
-        where S: VectorStorage<Self> + ?Sized,
-    {
-        let ns = v.norm_sqr();
-        Float::with_val(ns.signed_bits(), ns).sqrt()
     }
 }
 
@@ -862,16 +853,6 @@ impl InnerProduct for Rational {
     }
 }
 
-impl VectorNorm for Rational {
-    type Scalar = Float;
-    fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
-        where S: VectorStorage<Self> + ?Sized
-    {
-        let ns = v.norm_sqr();
-        Float::with_val(ns.numer().signed_bits(), ns).sqrt()
-    }
-}
-
 impl InnerProduct for Float {
     fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
     where
@@ -884,7 +865,7 @@ impl InnerProduct for Float {
             inner product of two vectors of different precision.");
         v.iter().zip(w.iter())
             .map(|(a, b)| a * b)
-            .fold(Float::with_val(prec, 0), |acc, x| acc + x)
+            .fold(Float::new(prec), |acc, x| acc + x)
     }
 
     fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
@@ -893,14 +874,12 @@ impl InnerProduct for Float {
         let prec = v.precision();
         v.iter()
             .map(|x| x * x)
-            .fold(Float::with_val(prec, 0), |acc, x| acc + x)
+            .fold(Float::new(prec), |acc, x| acc + x)
     }
 }
 
 impl VectorNorm for Float {
-    type Scalar = Float;
-
-    fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
+    fn norm<S>(v: &Vector<Self, S>) -> Self
         where S: VectorStorage<Self> + ?Sized,
     {
         v.norm_sqr().sqrt()
@@ -929,9 +908,7 @@ macro_rules! impl_innerproduct_norm {
         }
 
         impl VectorNorm for $t {
-            type Scalar = Self;
-
-            fn norm<S>(v: &Vector<Self, S>) -> Self::Scalar
+            fn norm<S>(v: &Vector<Self, S>) -> Self
                 where S: VectorStorage<Self> + ?Sized,
             {
                 v.norm_sqr().sqrt()
@@ -954,7 +931,6 @@ macro_rules! impl_addsub {
             R: VectorStorage<$t> + ?Sized,
             S: VectorStorage<$t> + ?Sized,
         {
-            type Output = OwnedVector<$t>;
             fn $op(self, rhs: &Vector<$t, R>) -> Self::Output {
                 assert!(self.dim() == rhs.dim(), "Can not perform operation \
                     for vectors of incompatible sizes");
@@ -988,7 +964,6 @@ impl_addsub!(Integer, Rational, Float, f32, f64);
 macro_rules! impl_addsub_reuse {
     ($t:ty) => {
         impl<S: VectorStorage<$t> + ?Sized> Add<&Vector<$t, S>> for OwnedVector<$t> {
-            type Output = OwnedVector<$t>;
             fn add(mut self, rhs: &Vector<$t, S>) -> Self::Output {
                 self += rhs;
                 self
@@ -996,7 +971,6 @@ macro_rules! impl_addsub_reuse {
         }
 
         impl<S: VectorStorage<$t> + ?Sized> Add<OwnedVector<$t>> for &Vector<$t, S> {
-            type Output = OwnedVector<$t>;
             fn add(self, mut rhs: OwnedVector<$t>) -> Self::Output {
                 rhs += self;
                 rhs
@@ -1004,7 +978,6 @@ macro_rules! impl_addsub_reuse {
         }
 
         impl<S: VectorStorage<$t>  + ?Sized> Sub<&Vector<$t, S>> for OwnedVector<$t> {
-            type Output = OwnedVector<$t>;
             fn sub(mut self, rhs: &Vector<$t, S>) -> Self::Output {
                 self -= rhs;
                 self
@@ -1012,7 +985,6 @@ macro_rules! impl_addsub_reuse {
         }
 
         impl<S: VectorStorage<$t> + ?Sized> Sub<OwnedVector<$t>> for &Vector<$t, S> {
-            type Output = OwnedVector<$t>;
             fn sub(self, mut rhs: OwnedVector<$t>) -> Self::Output {
                 for i in 0..self.dim() {
                     let ptr = &mut rhs[i] as *mut $t;
@@ -1038,19 +1010,9 @@ macro_rules! impl_muldiv {
     ($t:tt) => {
         impl_muldiv!(impl, $t, mul, Mul);
         impl_muldiv!(impl, $t, div, Div);
-        impl_muldiv!(invert, $t);
-    };
-    (invert, $t:ty) => {
-        impl<S: VectorStorage<$t> + ?Sized> Mul<&Vector<$t, S>> for &$t {
-            type Output = OwnedVector<$t>;
-            fn mul(self, rhs: &Vector<$t, S>) -> Self::Output {
-                rhs * self
-            }
-        }
     };
     (impl, $t:tt, $op:tt, $class:tt) => {
         impl<S: VectorStorage<$t> + ?Sized> $class<&$t> for &Vector<$t, S> {
-            type Output = OwnedVector<$t>;
             fn $op(self, rhs: &$t) -> Self::Output {
                 select!($t,
                     Float => {
@@ -1148,8 +1110,7 @@ impl_assign_muldiv!(Integer, Rational, Float, f32, f64);
 
 macro_rules! impl_neg {
     ($t:ty) => {
-        impl Neg for OwnedVector<$t> {
-            type Output = OwnedVector<$t>;
+        impl<S: VectorStorage<$t>> Neg for Vector<$t, S> {
             fn neg(mut self) -> Self::Output {
                 for e in self.iter_mut() {
                     e.neg_assign();
@@ -1165,3 +1126,136 @@ macro_rules! impl_neg {
 }
 
 impl_neg!(Integer, Rational, Float, f32, f64);
+
+// General implementations for all kinds of traits,
+// which just panic.
+// Specialize them for specific types.
+// See the macros above.
+
+impl<T> InnerProduct for T {
+    default fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
+    where
+        R: VectorStorage<Self> + ?Sized,
+        S: VectorStorage<Self> + ?Sized
+    {
+        panic!("dot not implemented for this type.");
+    }
+
+    default fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        panic!("norm_sqr not implemented for this type.");
+    }
+}
+
+impl<T> VectorNorm for T {
+    default fn norm<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        panic!("norm not implemented for this type.");
+    }
+}
+
+
+impl<T, R, S> Add<&Vector<T, R>> for &Vector<T, S>
+where
+    R: VectorStorage<T> + ?Sized,
+    S: VectorStorage<T> + ?Sized,
+{
+    type Output = OwnedVector<T>;
+    default fn add(self, rhs: &Vector<T, R>) -> Self::Output {
+        panic!("Add not implemented for this type.");
+    }
+}
+
+impl<T, R, S> Sub<&Vector<T, R>> for &Vector<T, S>
+where
+    R: VectorStorage<T> + ?Sized,
+    S: VectorStorage<T> + ?Sized,
+{
+    type Output = OwnedVector<T>;
+    default fn sub(self, rhs: &Vector<T, R>) -> Self::Output {
+        panic!("Sub not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T> + ?Sized> Add<&Vector<T, S>> for OwnedVector<T> {
+    type Output = OwnedVector<T>;
+    default fn add(mut self, rhs: &Vector<T, S>) -> Self::Output {
+        panic!("Add not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T> + ?Sized> Add<OwnedVector<T>> for &Vector<T, S> {
+    type Output = OwnedVector<T>;
+    default fn add(self, mut rhs: OwnedVector<T>) -> Self::Output {
+        panic!("Add not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T>  + ?Sized> Sub<&Vector<T, S>> for OwnedVector<T> {
+    type Output = OwnedVector<T>;
+    default fn sub(mut self, rhs: &Vector<T, S>) -> Self::Output {
+        panic!("Sub not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T> + ?Sized> Sub<OwnedVector<T>> for &Vector<T, S> {
+    type Output = OwnedVector<T>;
+    default fn sub(self, mut rhs: OwnedVector<T>) -> Self::Output {
+        panic!("Sub not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T> + ?Sized> Mul<&T> for &Vector<T, S> {
+    type Output = OwnedVector<T>;
+    default fn mul(self, rhs: &T) -> Self::Output {
+        panic!("Mul not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T> + ?Sized> Div<&T> for &Vector<T, S> {
+    type Output = OwnedVector<T>;
+    default fn div(self, rhs: &T) -> Self::Output {
+        panic!("Div not implemented for this type.");
+    }
+}
+
+impl<T, R, S> AddAssign<&Vector<T, R>> for Vector<T, S>
+where
+    R: VectorStorage<T> + ?Sized,
+    S: VectorStorage<T> + ?Sized,
+{
+    default fn add_assign(&mut self, rhs: &Vector<T, R>) {
+        panic!("AddAssign not implemented for this type.");
+    }
+}
+
+impl<T, R, S> SubAssign<&Vector<T, R>> for Vector<T, S>
+where
+    R: VectorStorage<T> + ?Sized,
+    S: VectorStorage<T> + ?Sized,
+{
+    default fn sub_assign(&mut self, rhs: &Vector<T, R>) {
+        panic!("SubAssign not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T> + ?Sized> MulAssign<&T> for Vector<T, S> {
+    default fn mul_assign(&mut self, rhs: &T) {
+        panic!("MulAssign not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T> + ?Sized> DivAssign<&T> for Vector<T, S> {
+    default fn div_assign(&mut self, rhs: &T) {
+        panic!("DivAssign not implemented for this type.");
+    }
+}
+
+impl<T, S: VectorStorage<T>> Neg for Vector<T, S> {
+    type Output = Vector<T, S>;
+    default fn neg(mut self) -> Self::Output {
+        panic!("Neg not implemented for this type.");
+    }
+}

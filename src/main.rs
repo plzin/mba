@@ -1,12 +1,12 @@
 #![allow(unused)]
 #![feature(ptr_metadata)]
+#![feature(min_specialization)]
 
 // You can only compile this for 64-bits because I use some hacky stuff
 // with vector views. This can be removed once rust allows supports
 // custom dynamically sized types.
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("This crate only works on 64-bit systems.");
-
 
 use rug::{Integer, Complete};
 use rand::{
@@ -310,8 +310,8 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
         return rewrite(&e, &ops, bits, false).unwrap_or(e);
     }
 
-    assert!(vars.len() <= 63, "More than 63 variables are currently not supported \
-            (You wouldn't be able to run this anyways).");
+    assert!(vars.len() <= 63, "More than 63 variables are currently \
+        not supported (You wouldn't be able to run this anyways).");
 
     let mut val = Valuation::zero(vars.clone());
 
@@ -366,7 +366,7 @@ fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
 
     let mut solution = l.offset.clone();
     let norm = solution.norm_sqr().to_f64().sqrt();
-    solution -= &l.lattice.cvp_planes_f64(l.offset.view(), Some(norm))
+    solution -= &l.lattice.cvp_planes(l.offset.view(), Some(norm), lattice::F64)
         .unwrap();
 
     for (e, c) in solution.iter_mut().zip(&complexity) {
