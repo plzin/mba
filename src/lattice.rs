@@ -142,13 +142,19 @@ impl Lattice {
 
     pub fn cvp_planes_coeff<WT: WorkingType>(
         &self, t: &IVectorView, rad: Option<WT::Scalar>, ty: WT
-    ) -> Option<IOwnedVector> {
+    ) -> Option<IOwnedVector>
+    where
+        WT::Scalar: VectorNorm
+    {
         cvp_planes(&self.basis, t, rad, ty)
     }
 
     pub fn cvp_planes<WT: WorkingType>(
         &self, t: &IVectorView, rad: Option<WT::Scalar>, ty: WT
-    ) -> Option<IOwnedVector> {
+    ) -> Option<IOwnedVector>
+    where
+        WT::Scalar: VectorNorm
+    {
         Some(self.at(&self.cvp_planes_coeff(t, rad, ty)?))
     }
 
@@ -266,7 +272,8 @@ pub fn cvp_rounding<WT: WorkingType>(
 /// Call `gram_schmidt_orthonormal` if you want that.
 pub fn gram_schmidt<T>(mut a: OwnedMatrix<T>) -> OwnedMatrix<T>
 where
-    T: for<'a> Div<&'a T, Output = T>,
+    for<'a> T: Clone + InnerProduct + SubAssign<&'a T>
+        + Mul<&'a T, Output = T> + Div<&'a T, Output = T>,
 {
     for i in 0..a.nrows() {
         for j in 0..i {
@@ -286,7 +293,9 @@ where
 /// (unlike `gram_schmidt`).
 pub fn gram_schmidt_orthonormal<T>(mut a: OwnedMatrix<T>) -> OwnedMatrix<T>
 where
-    T: for<'a> Div<&'a T, Output = T>,
+    for<'a> T: Clone + InnerProduct + VectorNorm
+        + Mul<&'a T, Output = T> + Div<&'a T, Output = T>
+        + SubAssign<&'a T> + DivAssign<&'a T>,
 {
     a = gram_schmidt(a);
     for i in 0..a.nrows() {
@@ -300,7 +309,9 @@ where
 /// such that `R * Q = A`.
 pub fn rq_decomposition<T>(a: &OwnedMatrix<T>) -> (OwnedMatrix<T>, OwnedMatrix<T>)
 where
-    T: Clone + for<'a> Div<&'a T, Output = T>,
+    for<'a> T: Clone + InnerProduct + VectorNorm
+        + Mul<&'a T, Output = T> + Div<&'a T, Output = T>
+        + SubAssign<&'a T> + DivAssign<&'a T>,
 {
     let q = gram_schmidt_orthonormal(a.clone());
     let r = a * q.transpose();
@@ -353,7 +364,10 @@ pub fn cvp_nearest_plane<WT: WorkingType>(
 /// It is the simplest one I could think of.
 pub fn cvp_planes<WT: WorkingType>(
     basis: &IOwnedMatrix, t: &IVectorView, rad: Option<WT::Scalar>, ty: WT
-) -> Option<IOwnedVector> {
+) -> Option<IOwnedVector>
+where
+    WT::Scalar: VectorNorm
+{
     assert!(basis.ncols() == t.dim(), "Mismatch of basis/target vector dimension.");
     // assert!(rad.as_ref().map_or(true, |rad| rad.prec() == prec),
     //     "rad needs to have the given precision.");
@@ -567,7 +581,8 @@ fn solve_linear<WT: WorkingType>(
 /// This is an ugly trait that is just the collection
 /// of things that are needed by the algorithms.
 /// Feel free to extend it for your own needs.
-pub trait WorkingType: Copy {
+pub trait WorkingType: Copy
+{
     type Scalar: Clone + Debug
         + Add<Self::Scalar, Output = Self::Scalar>
         + Sub<Self::Scalar, Output = Self::Scalar>
@@ -579,7 +594,9 @@ pub trait WorkingType: Copy {
         + for<'a> SubAssign<&'a Self::Scalar>
         + for<'a> MulAssign<&'a Self::Scalar>
         + for<'a> DivAssign<&'a Self::Scalar>
-        + PartialOrd;
+        + NegAssign
+        + PartialOrd
+        + InnerProduct;
 
     fn zero(self) -> Self::Scalar;
 

@@ -3,6 +3,7 @@
 use std::borrow::Borrow;
 use std::ops::{Index, IndexMut};
 use std::{marker::PhantomData, fmt::Debug, ops::Mul};
+use itertools::iproduct;
 use num_traits::{Zero, One};
 use rug::ops::NegAssign;
 use rug::{Integer, Complete, Float, Rational};
@@ -864,80 +865,19 @@ impl<T, S: VectorStorage<T> + ?Sized> MatrixStorage<T> for ColumnVectorStorage<T
 
 impl<T, S, R> Mul<&Matrix<T, R>> for &Matrix<T, S>
 where
+    T: InnerProduct,
     S: MatrixStorage<T> + ?Sized,
     R: MatrixStorage<T> + ?Sized,
 {
     type Output = OwnedMatrix<T>;
-    default fn mul(self, rhs: &Matrix<T, R>) -> Self::Output {
-        panic!("Matrix multiplication not implemented for this type.");
+    fn mul(self, rhs: &Matrix<T, R>) -> Self::Output {
+        let r = self.nrows();
+        let c = rhs.ncols();
+        let iter = iproduct!(0..r, 0..c)
+            .map(|(r, c)| self.row(r).dot(rhs.col(c)));
+        OwnedMatrix::from_iter(r, c, iter)
     }
 }
-
-macro_rules! impl_mul {
-    ($t:tt) => {
-        impl<S, R> Mul<&Matrix<$t, R>> for &Matrix<$t, S>
-        where
-            S: MatrixStorage<$t> + ?Sized,
-            R: MatrixStorage<$t> + ?Sized,
-        {
-            fn mul(self, rhs: &Matrix<$t, R>) -> Self::Output {
-                assert!(self.ncols() == rhs.nrows(), "Can't multiply matrices \
-                    because of incompatible dimensions");
-
-                select!($t,
-                    Float => {
-                        let prec = self.precision();
-                        assert!(prec == rhs.precision(),
-                            "Can't multiply matrices of different precision.\
-                            This can be relaxed in the future.");
-                        let mut m = Matrix::zero_prec(
-                            self.nrows(), rhs.ncols(), prec
-                        );
-                    },
-                    default => {
-                        let mut m = Matrix::zero(self.nrows(), rhs.ncols());
-                    },
-                );
-
-                for i in 0..m.nrows() {
-                    for j in 0..m.ncols() {
-                        let iter = self.row(i).iter()
-                            .zip(rhs.col(j));
-                        m[(i, j)] = select!($t,
-                            Float => {
-                                iter.map(|(l, r)| l * r)
-                                    .fold(
-                                        Float::new(prec),
-                                        |acc, f| acc + f
-                                    )
-                            },
-                            Integer => {
-                                iter.map(|(l, r)| l * r)
-                                    .fold(Integer::new(), |acc, f| acc + f)
-                            },
-                            Rational => {
-                                iter.map(|(l, r)| (l * r).complete())
-                                    .sum()
-                            },
-                            default => {
-                                iter.map(|(l, r)| l * r)
-                                    .sum()
-                            },
-                        );
-                    }
-                }
-
-                m
-            }
-        }
-    }
-}
-
-impl_mul!(Float);
-impl_mul!(Integer);
-impl_mul!(Rational);
-impl_mul!(f64);
-impl_mul!(f32);
 
 impl<T, S, R> Mul<&Vector<T, R>> for &Matrix<T, S>
 where
@@ -955,9 +895,9 @@ where
 
 impl<T, S, R> Mul<&Matrix<T, R>> for &Vector<T, S>
 where
+    T: InnerProduct,
     S: VectorStorage<T> + ?Sized,
     R: MatrixStorage<T> + ?Sized,
-    for<'a> &'a RowVector<T, S>: Mul<&'a Matrix<T, R>, Output = OwnedMatrix<T>>
 {
     type Output = OwnedVector<T>;
 
@@ -969,6 +909,7 @@ where
 
 impl<T: PartialEq, S, R> PartialEq<Matrix<T, R>> for Matrix<T, S>
 where
+    T: InnerProduct,
     S: MatrixStorage<T> + ?Sized,
     R: MatrixStorage<T> + ?Sized,
 {

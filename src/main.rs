@@ -1,6 +1,5 @@
 #![allow(unused)]
 #![feature(ptr_metadata)]
-#![feature(min_specialization)]
 
 // You can only compile this for 64-bits because I use some hacky stuff
 // with vector views. This can be removed once rust allows supports

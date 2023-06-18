@@ -861,7 +861,7 @@ impl InnerProduct for Float {
     {
         assert!(v.dim() == w.dim());
         let prec = v.precision();
-        assert_eq!(prec, w.precision(), "Cannot compute the \
+        debug_assert_eq!(prec, w.precision(), "Cannot compute the \
             inner product of two vectors of different precision.");
         v.iter().zip(w.iter())
             .map(|(a, b)| a * b)
@@ -920,342 +920,187 @@ macro_rules! impl_innerproduct_norm {
 impl_innerproduct_norm!(f32);
 impl_innerproduct_norm!(f64);
 
-macro_rules! impl_addsub {
-    ($t:tt) => {
-        impl_addsub!(impl, $t, add, Add);
-        impl_addsub!(impl, $t, sub, Sub);
-    };
-    (impl, $t:tt, $op:tt, $class:tt) => {
-        impl<R, S> $class<&Vector<$t, R>> for &Vector<$t, S>
-        where
-            R: VectorStorage<$t> + ?Sized,
-            S: VectorStorage<$t> + ?Sized,
-        {
-            fn $op(self, rhs: &Vector<$t, R>) -> Self::Output {
-                assert!(self.dim() == rhs.dim(), "Can not perform operation \
-                    for vectors of incompatible sizes");
-                select!($t,
-                    Float => {
-                        let prec = self.precision();
-                        assert!(prec == rhs.precision(),
-                            "Can not add vectors of different precision.");
-                    },
-                    default => {},
-                );
-                OwnedVector::from_iter(self.dim(),
-                    self.iter().zip(rhs.iter()).map(|(a, b)| select!($t,
-                        Float => { Float::with_val(prec, <&$t>::$op(a, b)) },
-                        Integer => { <&$t>::$op(a, b).complete() },
-                        Rational => { <&$t>::$op(a, b).complete() },
-                        default => { <&$t>::$op(a, b) },
-                    ))
-                )
-            }
-        }
-    };
-    ($t:tt, $($o:tt),+) => {
-        impl_addsub!($t);
-        impl_addsub!($($o),+);
-    };
-}
-
-impl_addsub!(Integer, Rational, Float, f32, f64);
-
-macro_rules! impl_addsub_reuse {
-    ($t:ty) => {
-        impl<S: VectorStorage<$t> + ?Sized> Add<&Vector<$t, S>> for OwnedVector<$t> {
-            fn add(mut self, rhs: &Vector<$t, S>) -> Self::Output {
-                self += rhs;
-                self
-            }
-        }
-
-        impl<S: VectorStorage<$t> + ?Sized> Add<OwnedVector<$t>> for &Vector<$t, S> {
-            fn add(self, mut rhs: OwnedVector<$t>) -> Self::Output {
-                rhs += self;
-                rhs
-            }
-        }
-
-        impl<S: VectorStorage<$t>  + ?Sized> Sub<&Vector<$t, S>> for OwnedVector<$t> {
-            fn sub(mut self, rhs: &Vector<$t, S>) -> Self::Output {
-                self -= rhs;
-                self
-            }
-        }
-
-        impl<S: VectorStorage<$t> + ?Sized> Sub<OwnedVector<$t>> for &Vector<$t, S> {
-            fn sub(self, mut rhs: OwnedVector<$t>) -> Self::Output {
-                for i in 0..self.dim() {
-                    let ptr = &mut rhs[i] as *mut $t;
-                    unsafe {
-                        let r = ptr.read();
-                        let v = &self[i] - r;
-                        ptr.write(v);
-                    }
-                }
-                rhs
-            }
-        }
-    };
-    ($t:ty, $($o:ty),+) => {
-        impl_addsub_reuse!($t);
-        impl_addsub_reuse!($($o),+);
-    };
-}
-
-impl_addsub_reuse!(Integer, Rational, Float, f32, f64);
-
-macro_rules! impl_muldiv {
-    ($t:tt) => {
-        impl_muldiv!(impl, $t, mul, Mul);
-        impl_muldiv!(impl, $t, div, Div);
-    };
-    (impl, $t:tt, $op:tt, $class:tt) => {
-        impl<S: VectorStorage<$t> + ?Sized> $class<&$t> for &Vector<$t, S> {
-            fn $op(self, rhs: &$t) -> Self::Output {
-                select!($t,
-                    Float => {
-                        let prec = self.precision();
-                            assert!(prec == rhs.prec(), "Can not \
-                                multiply/divide vectors with float of \
-                                different precision of different precision.");
-                    },
-                    default => {},
-                );
-                OwnedVector::from_iter(self.dim(),
-                    self.iter().map(|a| select!($t,
-                        Float => { Float::with_val(prec, <&$t>::$op(a, rhs)) },
-                        Integer => { <&$t>::$op(a, rhs).complete() },
-                        Rational => { <&$t>::$op(a, rhs).complete() },
-                        default => { <&$t>::$op(a, rhs) },
-                    ))
-                )
-            }
-        }
-    };
-    ($t:tt, $($o:tt),+) => {
-        impl_muldiv!($t);
-        impl_muldiv!($($o),+);
-    };
-}
-
-impl_muldiv!(Integer, Rational, Float, f32, f64);
-
-macro_rules! check_prec {
-    (Float, $l:expr, $r:expr) => {
-        assert!($l.precision() == $r.precision(),
-            "Can't add subtract vectors of different precision.");
-    };
-    ($_:tt, $l:expr, $r:expr) => {};
-}
-
-macro_rules! impl_assign_addsub {
-    (impl, $t:tt, $op:tt, $class:tt) => {
-        impl<R, S> $class<&Vector<$t, R>> for Vector<$t, S>
-        where
-            R: VectorStorage<$t> + ?Sized,
-            S: VectorStorage<$t> + ?Sized,
-        {
-            fn $op(&mut self, rhs: &Vector<$t, R>) {
-                assert!(self.dim() == rhs.dim(),
-                    "Can not add/subtract vectors of different dimensions.");
-                check_prec!($t, self, rhs);
-                for i in 0..self.dim() {
-                    macro_rules! op_impl {
-                        (add_assign) => { self[i] += &rhs[i]; };
-                        (sub_assign) => { self[i] -= &rhs[i]; };
-                    }
-
-                    op_impl!($op);
-                }
-            }
-        }
-    };
-    ($t:tt, $($o:tt),+) => {
-        impl_assign_addsub!($t);
-        impl_assign_addsub!($($o),+);
-    };
-    ($t:tt) => {
-        impl_assign_addsub!(impl, $t, add_assign, AddAssign);
-        impl_assign_addsub!(impl, $t, sub_assign, SubAssign);
-    };
-}
-
-impl_assign_addsub!(Integer, Rational, Float, f32, f64);
-
-macro_rules! impl_assign_muldiv {
-    ($t:ty) => {
-        impl<S: VectorStorage<$t> + ?Sized> MulAssign<&$t> for Vector<$t, S> {
-            fn mul_assign(&mut self, rhs: &$t) {
-                check_prec!($t, self, rhs);
-                self.map_mut(|i| *i *= rhs);
-            }
-        }
-
-        impl<S: VectorStorage<$t> + ?Sized> DivAssign<&$t> for Vector<$t, S> {
-            fn div_assign(&mut self, rhs: &$t) {
-                check_prec!($t, self, rhs);
-                self.map_mut(|i| *i /= rhs);
-            }
-        }
-    };
-    ($t:ty, $($o:ty),+) => {
-        impl_assign_muldiv!($t);
-        impl_assign_muldiv!($($o),+);
-    };
-}
-
-impl_assign_muldiv!(Integer, Rational, Float, f32, f64);
-
-macro_rules! impl_neg {
-    ($t:ty) => {
-        impl<S: VectorStorage<$t>> Neg for Vector<$t, S> {
-            fn neg(mut self) -> Self::Output {
-                for e in self.iter_mut() {
-                    e.neg_assign();
-                }
-                self
-            }
-        }
-    };
-    ($t:ty, $($o:ty),+) => {
-        impl_neg!($t);
-        impl_neg!($($o),+);
-    }
-}
-
-impl_neg!(Integer, Rational, Float, f32, f64);
-
-// General implementations for all kinds of traits,
-// which just panic.
-// Specialize them for specific types.
-// See the macros above.
-
-impl<T> InnerProduct for T {
-    default fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
-    where
-        R: VectorStorage<Self> + ?Sized,
-        S: VectorStorage<Self> + ?Sized
-    {
-        panic!("dot not implemented for this type.");
-    }
-
-    default fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
-        where S: VectorStorage<Self> + ?Sized,
-    {
-        panic!("norm_sqr not implemented for this type.");
-    }
-}
-
-impl<T> VectorNorm for T {
-    default fn norm<S>(v: &Vector<Self, S>) -> Self
-        where S: VectorStorage<Self> + ?Sized,
-    {
-        panic!("norm not implemented for this type.");
-    }
-}
-
-
 impl<T, R, S> Add<&Vector<T, R>> for &Vector<T, S>
 where
+    T: Clone + for<'a> Add<&'a T, Output = T>,
     R: VectorStorage<T> + ?Sized,
     S: VectorStorage<T> + ?Sized,
 {
     type Output = OwnedVector<T>;
-    default fn add(self, rhs: &Vector<T, R>) -> Self::Output {
-        panic!("Add not implemented for this type.");
+    fn add(self, rhs: &Vector<T, R>) -> Self::Output {
+        assert!(self.dim() == rhs.dim(), "Can not perform operation \
+            for vectors of incompatible sizes");
+        OwnedVector::from_iter(self.dim(),
+            self.iter().zip(rhs.iter()).map(|(a, b)| a.clone() + b)
+        )
     }
 }
 
 impl<T, R, S> Sub<&Vector<T, R>> for &Vector<T, S>
 where
+    T: Clone + for<'a> Sub<&'a T, Output = T>,
     R: VectorStorage<T> + ?Sized,
     S: VectorStorage<T> + ?Sized,
 {
     type Output = OwnedVector<T>;
-    default fn sub(self, rhs: &Vector<T, R>) -> Self::Output {
-        panic!("Sub not implemented for this type.");
-    }
-}
-
-impl<T, S: VectorStorage<T> + ?Sized> Add<&Vector<T, S>> for OwnedVector<T> {
-    type Output = OwnedVector<T>;
-    default fn add(mut self, rhs: &Vector<T, S>) -> Self::Output {
-        panic!("Add not implemented for this type.");
-    }
-}
-
-impl<T, S: VectorStorage<T> + ?Sized> Add<OwnedVector<T>> for &Vector<T, S> {
-    type Output = OwnedVector<T>;
-    default fn add(self, mut rhs: OwnedVector<T>) -> Self::Output {
-        panic!("Add not implemented for this type.");
-    }
-}
-
-impl<T, S: VectorStorage<T>  + ?Sized> Sub<&Vector<T, S>> for OwnedVector<T> {
-    type Output = OwnedVector<T>;
-    default fn sub(mut self, rhs: &Vector<T, S>) -> Self::Output {
-        panic!("Sub not implemented for this type.");
-    }
-}
-
-impl<T, S: VectorStorage<T> + ?Sized> Sub<OwnedVector<T>> for &Vector<T, S> {
-    type Output = OwnedVector<T>;
-    default fn sub(self, mut rhs: OwnedVector<T>) -> Self::Output {
-        panic!("Sub not implemented for this type.");
-    }
-}
-
-impl<T, S: VectorStorage<T> + ?Sized> Mul<&T> for &Vector<T, S> {
-    type Output = OwnedVector<T>;
-    default fn mul(self, rhs: &T) -> Self::Output {
-        panic!("Mul not implemented for this type.");
-    }
-}
-
-impl<T, S: VectorStorage<T> + ?Sized> Div<&T> for &Vector<T, S> {
-    type Output = OwnedVector<T>;
-    default fn div(self, rhs: &T) -> Self::Output {
-        panic!("Div not implemented for this type.");
+    fn sub(self, rhs: &Vector<T, R>) -> Self::Output {
+        assert!(self.dim() == rhs.dim(), "Can not perform operation \
+            for vectors of incompatible sizes");
+        OwnedVector::from_iter(self.dim(),
+            self.iter().zip(rhs.iter()).map(|(a, b)| a.clone() - b)
+        )
     }
 }
 
 impl<T, R, S> AddAssign<&Vector<T, R>> for Vector<T, S>
 where
+    T: for<'a> AddAssign<&'a T>,
     R: VectorStorage<T> + ?Sized,
     S: VectorStorage<T> + ?Sized,
 {
-    default fn add_assign(&mut self, rhs: &Vector<T, R>) {
-        panic!("AddAssign not implemented for this type.");
+    fn add_assign(&mut self, rhs: &Vector<T, R>) {
+        assert!(self.dim() == rhs.dim(),
+            "Can not add/subtract vectors of different dimensions.");
+        for i in 0..self.dim() {
+            self[i] += &rhs[i];
+        }
     }
 }
 
 impl<T, R, S> SubAssign<&Vector<T, R>> for Vector<T, S>
 where
+    T: for<'a> SubAssign<&'a T>,
     R: VectorStorage<T> + ?Sized,
     S: VectorStorage<T> + ?Sized,
 {
-    default fn sub_assign(&mut self, rhs: &Vector<T, R>) {
-        panic!("SubAssign not implemented for this type.");
+    fn sub_assign(&mut self, rhs: &Vector<T, R>) {
+        assert!(self.dim() == rhs.dim(),
+            "Can not add/subtract vectors of different dimensions.");
+        for i in 0..self.dim() {
+            self[i] -= &rhs[i];
+        }
     }
 }
 
-impl<T, S: VectorStorage<T> + ?Sized> MulAssign<&T> for Vector<T, S> {
-    default fn mul_assign(&mut self, rhs: &T) {
-        panic!("MulAssign not implemented for this type.");
+impl<T, S> Add<&Vector<T, S>> for OwnedVector<T>
+where
+    T: for<'a> AddAssign<&'a T>,
+    S: VectorStorage<T> + ?Sized,
+{
+    type Output = Self;
+    fn add(mut self, rhs: &Vector<T, S>) -> Self::Output {
+        self += rhs;
+        self
     }
 }
 
-impl<T, S: VectorStorage<T> + ?Sized> DivAssign<&T> for Vector<T, S> {
-    default fn div_assign(&mut self, rhs: &T) {
-        panic!("DivAssign not implemented for this type.");
+impl<T, S> Add<OwnedVector<T>> for &Vector<T, S>
+where
+    T: for<'a> AddAssign<&'a T>,
+    S: VectorStorage<T> + ?Sized,
+{
+    type Output = OwnedVector<T>;
+    fn add(self, mut rhs: OwnedVector<T>) -> Self::Output {
+        rhs += self;
+        rhs
     }
 }
 
-impl<T, S: VectorStorage<T>> Neg for Vector<T, S> {
-    type Output = Vector<T, S>;
-    default fn neg(mut self) -> Self::Output {
-        panic!("Neg not implemented for this type.");
+impl<T, S> Sub<&Vector<T, S>> for OwnedVector<T>
+where
+    T: for<'a> SubAssign<&'a T>,
+    S: VectorStorage<T> + ?Sized,
+{
+    type Output = Self;
+    fn sub(mut self, rhs: &Vector<T, S>) -> Self::Output {
+        self -= rhs;
+        self
+    }
+}
+
+impl<T, S> Sub<OwnedVector<T>> for &Vector<T, S>
+where
+    T: for<'a> AddAssign<&'a T> + NegAssign,
+    S: VectorStorage<T> + ?Sized,
+{
+    type Output = OwnedVector<T>;
+    fn sub(self, mut rhs: OwnedVector<T>) -> Self::Output {
+        rhs = -rhs;
+        rhs += self;
+        rhs
+    }
+}
+
+// Theoretically better implementation but more annoying bounds.
+//impl<T, S> Sub<OwnedVector<T>> for &Vector<T, S>
+//where
+//    for<'a> &'a T: Sub<T, Output = T>,
+//    S: VectorStorage<T> + ?Sized,
+//{
+//    type Output = OwnedVector<T>;
+//    fn sub(self, mut rhs: OwnedVector<T>) -> Self::Output {
+//        for i in 0..self.dim() {
+//            let ptr = &mut rhs[i] as *mut T;
+//            unsafe {
+//                let r = ptr.read();
+//                let v = &self[i] - r;
+//                ptr.write(v);
+//            }
+//        }
+//        rhs
+//    }
+//}
+
+impl<T, S> Mul<&T> for &Vector<T, S>
+where
+    T: Clone + for<'a> Mul<&'a T, Output = T>,
+    S: VectorStorage<T> + ?Sized,
+
+{
+    type Output = OwnedVector<T>;
+    fn mul(self, rhs: &T) -> Self::Output {
+        OwnedVector::from_iter(self.dim(), self.iter().map(|a| a.clone() * rhs))
+    }
+}
+
+impl<T, S> Div<&T> for &Vector<T, S>
+where
+    T: Clone + for<'a> Div<&'a T, Output = T>,
+    S: VectorStorage<T> + ?Sized,
+
+{
+    type Output = OwnedVector<T>;
+    fn div(self, rhs: &T) -> Self::Output {
+        OwnedVector::from_iter(self.dim(), self.iter().map(|a| a.clone() / rhs))
+    }
+}
+
+impl<T, S> MulAssign<&T> for Vector<T, S>
+where
+    T: for<'a> MulAssign<&'a T>,
+    S: VectorStorage<T> + ?Sized,
+{
+    fn mul_assign(&mut self, rhs: &T) {
+        self.map_mut(|i| *i *= rhs);
+    }
+}
+
+impl<T, S> DivAssign<&T> for Vector<T, S>
+where
+    T: for<'a> DivAssign<&'a T>,
+    S: VectorStorage<T> + ?Sized,
+{
+    fn div_assign(&mut self, rhs: &T) {
+        self.map_mut(|i| *i /= rhs);
+    }
+}
+
+impl<T: NegAssign, S: VectorStorage<T>> Neg for Vector<T, S> {
+    type Output = Self;
+    fn neg(mut self) -> Self::Output {
+        for e in self.iter_mut() {
+            e.neg_assign();
+        }
+        self
     }
 }
