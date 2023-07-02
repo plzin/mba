@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
+use crate::valuation::Valuation;
 use std::{ops::{Index, IndexMut, Neg}, collections::BTreeSet};
-
 use num_traits::Zero;
 use rug::{Integer, Complete};
 
-use crate::{Expr, int_from_it};
+use crate::{ExprOp, int_from_it};
 
 /// LUExpr is short for "Linear combination of Uniform Expressions"
 /// These are the expressions for which rewrite rules can be efficiently
@@ -14,6 +14,12 @@ use crate::{Expr, int_from_it};
 pub struct LUExpr(pub Vec<(Integer, UExpr)>);
 
 impl LUExpr {
+    /// Create the empty linear combination.
+    /// It evaluates to 0.
+    pub fn zero() -> Self {
+        Self(Vec::new())
+    }
+
     /// Creates an expression that equals a constant.
     pub fn constant(c: Integer) -> Self {
         Self(vec![(-c, UExpr::Ones)])
@@ -22,6 +28,11 @@ impl LUExpr {
     /// Creates an expression that equals a variable.
     pub fn var(name: String) -> Self {
         Self(vec![(1.into(), UExpr::Var(name))])
+    }
+
+    /// Removes all terms with coefficient 0.
+    pub fn remove_zero_terms(&mut self) {
+        self.0.retain(|(i, _)| !i.is_zero());
     }
 
     /// Returns all variables in the expression.
@@ -39,10 +50,10 @@ impl LUExpr {
     }
 
     /// Evaluate an expression with a valuation for the occurring variables.
-    pub fn eval(&self, v: &Valuation) -> Integer {
+    pub fn eval(&self, v: &mut Valuation, bits: u32) -> Integer {
         self.0.iter()
             .map(|(i, e)| i * e.eval(v))
-            .sum()
+            .fold(Integer::new(), |acc, x| (acc + x).keep_bits(bits))
     }
 
     /// Returns a measure of the complexity of the expression.
@@ -138,24 +149,24 @@ impl LUExpr {
     }
 
     /// Converts an LUExpr to an Expr.
-    pub fn to_expr(&self) -> Expr {
+    pub fn to_expr(&self) -> ExprOp {
         let mut it = self.0.iter();
         let s = match it.next() {
-            None => return Expr::Const(Integer::new()),
+            None => return ExprOp::Const(Integer::new()),
             Some(s) => s,
         };
 
         let from_summand = |(i, e): &(Integer, UExpr)| {
             if let UExpr::Ones = e {
-                Expr::Const(-i.clone())
+                ExprOp::Const(-i.clone())
             } else {
-                Expr::Mul(Expr::Const(i.clone()).into(), e.to_expr().into())
+                ExprOp::Mul(ExprOp::Const(i.clone()).into(), e.to_expr().into())
             }
         };
 
         let mut cur = from_summand(s);
         for s in it {
-            cur = Expr::Add(cur.into(), from_summand(s).into());
+            cur = ExprOp::Add(cur.into(), from_summand(s).into());
         }
 
         cur
@@ -250,11 +261,11 @@ impl UExpr {
     }
 
     /// Evaluate an expression with a valuation for the occurring variables.
-    pub fn eval(&self, v: &Valuation) -> Integer {
+    pub fn eval(&self, v: &mut Valuation) -> Integer {
         use UExpr::*;
         match self {
             Ones            => (-1).into(),
-            Var(c)          => v[c].clone(),
+            Var(c)          => v.value(c).clone(),
             And(e1, e2)     => e1.eval(v) & e2.eval(v),
             Or(e1, e2)      => e1.eval(v) | e2.eval(v),
             Xor(e1, e2)     => e1.eval(v) ^ e2.eval(v),
@@ -387,15 +398,15 @@ impl UExpr {
     }
 
     /// Converts a UExpr to an Expr.
-    pub fn to_expr(&self) -> Expr {
+    pub fn to_expr(&self) -> ExprOp {
         use UExpr::*;
         match self {
-            Ones        => Expr::Const((-1).into()),
-            Var(c)      => Expr::Var(c.clone()),
-            And(l, r)   => Expr::And(l.to_expr().into(), r.to_expr().into()),
-            Or(l, r)    => Expr::Or(l.to_expr().into(), r.to_expr().into()),
-            Xor(l, r)   => Expr::Xor(l.to_expr().into(), r.to_expr().into()),
-            Not(e)      => Expr::Not(e.to_expr().into()),
+            Ones        => ExprOp::Const((-1).into()),
+            Var(c)      => ExprOp::Var(c.clone()),
+            And(l, r)   => ExprOp::And(l.to_expr().into(), r.to_expr().into()),
+            Or(l, r)    => ExprOp::Or(l.to_expr().into(), r.to_expr().into()),
+            Xor(l, r)   => ExprOp::Xor(l.to_expr().into(), r.to_expr().into()),
+            Not(e)      => ExprOp::Not(e.to_expr().into()),
         }
     }
 }
@@ -416,43 +427,5 @@ impl std::fmt::Display for UExpr {
                     write!(f, "~({})", e)
                 },
         }
-    }
-}
-
-/// Stores values that should be substituted into variables.
-#[derive(Debug)]
-pub struct Valuation {
-    /// The key value pairs are stored as a Vector
-    /// because I doubt a hashmap/tree would be faster
-    /// when there are so few variables.
-    vals: Vec<(String, Integer)>,
-}
-
-impl Valuation {
-    /// Initializes a valuation from a list of variables
-    /// each of which will be Initialized to 0.
-    pub fn zero(vars: Vec<String>) -> Self {
-        let vals = vars.into_iter()
-            .map(|c| (c, 0.into()))
-            .collect();
-
-        Self { vals }
-    }
-}
-
-impl Index<&str> for Valuation {
-    type Output = Integer;
-    fn index(&self, index: &str) -> &Self::Output {
-        &self.vals.iter()
-            .find(|(name, _)| name == index)
-            .unwrap().1
-    }
-}
-
-impl IndexMut<&str> for Valuation {
-    fn index_mut(&mut self, index: &str) -> &mut Self::Output {
-        &mut self.vals.iter_mut()
-            .find(|(name, _)| name == index)
-            .unwrap().1
     }
 }

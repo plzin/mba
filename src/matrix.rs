@@ -8,7 +8,6 @@ use num_traits::{Zero, One};
 use rug::ops::NegAssign;
 use rug::{Integer, Complete, Float, Rational};
 use crate::vector::*;
-use crate::select;
 
 /// How are the entries of a matrix stored?
 pub trait MatrixStorage<T> {

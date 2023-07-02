@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use rug::{Integer, Complete, rand::{ThreadRandState, ThreadRandGen}};
 use rand::{distributions::{Distribution, Uniform}, prelude::ThreadRng, RngCore};
 
@@ -33,46 +31,6 @@ pub fn perm_pair(zi: &ZeroIdeal, degree: usize) -> (Poly, Poly) {
     let q = compute_inverse(&p, zi);
 
     (p, q)
-
-    // let p = Poly::from_vec(vec![3, 3, 5, 1, 7, 9]);
-    // let q = self.compute_inverse(&p);
-    // println!("p(x) = {}", p);
-    // println!("q(x) = {}", q);
-    // let mut r = self.compose(&p, &q);
-    // self.simp_poly(&mut r);
-    // println!("p(q(x)) = {}", r);
-
-    // let p = Poly::from_vec(vec![0, 1, 2]);
-    // let q = Poly::from_vec(vec![0, 1, 0, 1]);
-
-    // let r = self.compose(&p, &q);
-
-    // println!("p(x) = {}", p);
-    // println!("q(x) = {}", q);
-    // println!("p(q(x)) = {}", r);
-
-    // let mut p = Poly::from_vec(vec![3, 0, 8, 2, 15, 5, 3, 1]);
-    // println!("{}", p);
-
-    // for i in 0u32..(1<<n) {
-    //     println!("p({}) = {}", i, p.eval(&i.into()).keep_bits(n));
-    // }
-
-    // simp_poly(&mut p, &zero_ideal, n);
-
-    // println!("{}", p);
-    // for i in 0u32..(1<<n) {
-    //     println!("p({}) = {}", i, p.eval(&i.into()).keep_bits(n));
-    // }
-
-
-    // Verify that all generators do indeed compute the zero polynomial.
-    // for (i, p) in zero_ideal.iter().enumerate() {
-    //     for j in 0u32..1 << n {
-    //         let r = p.eval(&j.into()).keep_bits(n);
-    //         println!("p_{}({}) = {}", i, j, r);
-    //     }
-    // }
 }
 
 /// Returns a random permutation polynomial.

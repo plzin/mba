@@ -137,6 +137,9 @@ pub fn solve(a: &IOwnedMatrix, b: &IOwnedVector) -> AffineLattice {
 
 /// Solves a linear system of equations Ax=b mod n.
 pub fn solve_modular(a: &IOwnedMatrix, b: &IOwnedVector, n: &Integer) -> AffineLattice {
+    log::trace!("Solving {} linear equations in {} variables mod {}.",
+        a.nrows(), a.ncols(), n);
+
     //
     // Concatenate an n times the identity matrix to the right of A.
     //
@@ -196,7 +199,7 @@ fn small_test() {
     let b = Vector::from_entries([0, 1, 1, 2]);
 
     let l = solve(&a, &b);
-    assert!(l.offset.as_slice() == [2, 1, 0, 0]);
-    assert!(l.lattice.rank() == 1);
-    assert!(l.lattice.basis.row(0).as_slice() == [0, 0, 1, 1]);
+    assert_eq!(l.offset.as_slice(), [2, 1, 0, 0]);
+    assert_eq!(l.lattice.rank(), 1);
+    assert_eq!(l.lattice.basis.row(0).as_slice(), [0, 0, 1, 1]);
 }

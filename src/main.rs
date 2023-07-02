@@ -23,6 +23,8 @@ use matrix::*;
 mod vector;
 use vector::*;
 
+mod valuation;
+
 mod expr;
 use expr::*;
 
@@ -33,86 +35,7 @@ mod diophantine;
 mod lattice;
 mod poly;
 mod perm_poly;
-
-/// Rewrite a linear combination of uniform expression
-/// using a set of uniform expressions modulo `2^bits`.
-fn rewrite(
-    expr: &LUExpr,
-    ops: &[LUExpr],
-    bits: u32,
-    randomize: bool
-) -> Option<LUExpr> {
-    // Find all variables we have access to.
-    // This includes variables in the expression as well as potentially the ops.
-    let mut v = std::collections::BTreeSet::new();
-    expr.vars_impl(&mut v);
-    ops.iter().for_each(|e| e.vars_impl(&mut v));
-    let v: Vec<_> = v.into_iter().collect();
-
-    assert!(v.len() <= 63, "More than 63 variables are currently not supported \
-            (You wouldn't be able to run this anyways).");
-
-    let mut val = Valuation::zero(v.clone());
-
-    let rows = 1 << v.len();
-    let cols = ops.len();
-
-    let mut a = Matrix::zero(rows, cols);
-    let mut b = OwnedVector::zero(rows);
-
-    // Build up the matrix.
-    for i in 0..rows {
-        let row = a.row_mut(i);
-
-        // Initialize the valuation.
-        for (j, c) in v.iter().enumerate() {
-            val[c] = -Integer::from((i >> j) & 1);
-        }
-
-        // println!("{:?}", val);
-
-        // Write the values of the operations into this row of the matrix.
-        for (j, e) in ops.iter().enumerate() {
-            row[j] = e.eval(&val).keep_bits(bits);
-        }
-
-        // Write the desired result into the vector.
-        b[i] = expr.eval(&val).keep_bits(bits);
-    }
-
-    // Solve the system.
-    let l = diophantine::solve_modular(&a, &b, &(Integer::from(1) << bits));
-
-    // Does it have solutions?
-    if l.is_empty() {
-        return None;
-    }
-
-    // Sample a point from the lattice.
-    let solution = if randomize {
-        l.sample_point(bits)
-    } else {
-        l.offset
-    };
-
-    // Put it in a LUExpr.
-    let mut v = Vec::new();
-    for (c, o) in solution.iter().zip(ops.iter()) {
-        for (d, e) in &o.0 {
-            // Is the UExpr already in the linear combination?
-            match v.iter_mut().find(|(_, f)| f == e) {
-                Some((f, _)) => *f += c * d,
-                None => v.push(((c * d).complete(), e.clone())),
-            }
-        }
-    }
-
-    for (i, _) in &mut v {
-        i.keep_signed_bits_mut(bits);
-    }
-
-    Some(LUExpr(v))
-}
+mod linear_mba;
 
 // This generates an 8-bit permutation polynomial of degree 3 and its inverse.
 //fn main() {
@@ -251,6 +174,8 @@ fn rewrite(
 //}
 
 fn main() {
+    env_logger::init();
+
     let s = "4071272 * w + 3590309086 * (w | z & z & (y |
         w)) + 3690425492 * (w & x ^ ~z ^ ~y) + 3735539420 *
         (y ^ (w & z | y)) + 3176111544 * ((x & y | x ^ z) ^
@@ -267,137 +192,27 @@ fn main() {
         + 1678283628 * ~(~y & ~w) + 1083630375 * y";
     //let e = LUExpr::from_string("(x ^ y) + 2 * (x & y)").unwrap();
     let e = LUExpr::from_string(s).unwrap();
-    let d = deobfuscate_linear(e, 32, false);
+    let d = linear_mba::deobfuscate_luexpr(
+        e, 32, linear_mba::DeobfuscationConfig::LeastComplexTerms
+    );
     println!("{}", d);
 }
 
-fn deobfuscate_linear(e: LUExpr, bits: u32, fast: bool) -> LUExpr {
-    // Get all the variables.
-    let vars = e.vars();
-
-    // Insert some default operations.
-    let mut ops = Vec::new();
-    ops.push(UExpr::Ones);
-    for v in &vars {
-        ops.push(UExpr::Var(v.clone()));
-    }
-    for v in &vars {
-        for w in &vars {
-            if std::ptr::eq(v, w) {
-                break;
-            }
-
-            ops.push(UExpr::and(UExpr::Var(w.clone()), UExpr::Var(v.clone())));
-            ops.push(UExpr::or(UExpr::Var(w.clone()), UExpr::Var(v.clone())));
-            ops.push(UExpr::xor(UExpr::Var(w.clone()), UExpr::Var(v.clone())));
-        }
-    }
-
-    // Insert the original operations so we always have a solution.
-    for u in &e.0 {
-        if !ops.contains(&u.1) {
-            ops.push(u.1.clone());
-        }
-    }
-
-    //for o in &ops {
-    //    println!("{o}");
-    //}
-
-    if fast {
-        let ops: Vec<_> = ops.iter().map(|e| LUExpr::from(e.clone())).collect();
-        return rewrite(&e, &ops, bits, false).unwrap_or(e);
-    }
-
-    assert!(vars.len() <= 63, "More than 63 variables are currently \
-        not supported (You wouldn't be able to run this anyways).");
-
-    let mut val = Valuation::zero(vars.clone());
-
-    let rows = 1 << vars.len();
-    let cols = ops.len();
-
-    let mut a = Matrix::zero(rows, cols);
-    let mut b = Vector::zero(rows);
-
-    // Build up the matrix.
-    for i in 0..rows {
-        let row = a.row_mut(i);
-
-        // Initialize the valuation.
-        for (j, c) in vars.iter().enumerate() {
-            val[c] = -Integer::from((i >> j) & 1);
-        }
-
-        // println!("{:?}", val);
-
-        // Write the values of the operations into this row of the matrix.
-        for (j, e) in ops.iter().enumerate() {
-            row[j] = e.eval(&val).keep_bits(bits);
-        }
-
-        // Write the desired result into the vector.
-        b[i] = e.eval(&val).keep_bits(bits);
-    }
-
-    // Solve the system.
-    let mut l = diophantine::solve_modular(&a, &b, &(Integer::from(1) << bits));
-
-    // If I did everything correctly, this system should always have a solution.
-    assert!(!l.is_empty());
-    assert!(l.offset.dim() == ops.len());
-
-    let complexity: Vec<_> = ops.iter()
-        .map(|e| e.complexity())
-        .collect();
-
-    for v in l.lattice.basis.rows_mut() {
-        for (e, c) in v.iter_mut().zip(&complexity) {
-            *e *= c;
-        }
-    }
-
-    l.lattice.lll(&rug::Rational::from((99, 100)));
-
-    for (e, c) in l.offset.iter_mut().zip(&complexity) {
-        *e *= c;
-    }
-
-    let mut solution = l.offset.clone();
-    let norm = solution.norm_sqr().to_f64().sqrt();
-    solution -= &l.lattice.cvp_planes(l.offset.view(), Some(norm), lattice::F64)
-        .unwrap();
-
-    for (e, c) in solution.iter_mut().zip(&complexity) {
-        debug_assert!(e.is_divisible_u(*c));
-        e.div_exact_u_mut(*c);
-    }
-
-    // Put it in a LUExpr.
-    let v: Vec<_> = solution.iter()
-        .cloned()
-        .map(|i| i.keep_signed_bits(bits))
-        .zip(ops)
-        .collect();
-
-    LUExpr(v)
-}
-
 #[cfg(feature = "z3")]
-fn deobfuscate_nonlinear(e: Rc<Expr>) {
+fn deobfuscate_nonlinear(e: Expr) {
     let mut v = Vec::new();
     let mut q = std::collections::VecDeque::new();
     q.push_back(e);
     while let Some(e) = q.pop_front() {
         match e.as_ref() {
-            Expr::Add(l, r) => {
+            ExprOp::Add(l, r) => {
                 q.push_back(l.clone());
                 q.push_back(r.clone());
             },
-            Expr::Mul(l, r) => {
-                if let Expr::Const(i) = l.as_ref() {
+            ExprOp::Mul(l, r) => {
+                if let ExprOp::Const(i) = l.as_ref() {
                     v.push((i.clone(), r.clone()));
-                } else if let Expr::Const(i) = r.as_ref() {
+                } else if let ExprOp::Const(i) = r.as_ref() {
                     v.push((i.clone(), l.clone()));
                 } else {
                     println!("Could not deobfuscate expression, \
@@ -443,185 +258,6 @@ fn deobfuscate_nonlinear(e: Rc<Expr>) {
 //    e.print_simple();
 //}
 
-/// Provides an algorithm for obfuscating "any" kind of expression
-/// using the two primitives of rewriting and permutation polynomials.
-/// The members of this struct are used
-/// to cache things for the recursive algorithm.
-struct ExampleObfuscation {
-    /// Integer width.
-    bits: u32,
-
-    /// The operations used for rewriting things.
-    ops: Vec<LUExpr>,
-
-    /// The variables occurring in the expression.
-    vars: Vec<String>,
-
-    /// The quotient ring of permutation polynomials.
-    qr: perm_poly::ZeroIdeal,
-
-    /// Random number generator.
-    rng: ThreadRng,
-}
-
-impl ExampleObfuscation {
-    pub fn obfuscate(e: Expr, n: u32) -> Expr {
-        let mut o = ExampleObfuscation::init(&e, n);
-
-        // Yes we need to create an unnecessary Rc once.
-        // But the code is much simpler this way.
-        let mut e = Rc::new(e);
-
-        o.obfuscate_impl(&mut e);
-
-        let mut x = Rc::new(Expr::Var(
-            o.vars.get(0).map_or_else(|| "x".to_owned(), |v| v.clone())));
-        let mut y = Rc::new(Expr::Var(
-            o.vars.get(0).map_or_else(|| "y".to_owned(), |v| v.clone())));
-        let mut z = Rc::new(Expr::Var(
-            o.vars.get(0).map_or_else(|| "z".to_owned(), |v| v.clone())));
-
-        e.as_ref().clone().substitute("X", &mut x)
-            .substitute("Y", &mut y)
-            .substitute("Z", &mut z)
-    }
-
-    fn obfuscate_impl(&mut self, e: &mut Rc<Expr>) {
-        if self.rng.gen::<f32>() < 0.9 {
-            match Rc::make_mut(e) {
-                Expr::Const(i) => {
-                    let u = LUExpr::constant(i.clone());
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr().into();
-                    }
-                },
-                Expr::Var(v) => {
-                    let u = LUExpr::var("X".to_owned());
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr()
-                            .substitute("X", &mut Rc::new(Expr::Var(v.clone())))
-                            .into();
-                    }
-                },
-                Expr::Add(l, r) => {
-                    self.obfuscate_impl(l);
-                    self.obfuscate_impl(r);
-                    let u = LUExpr::from_string("X+Y").unwrap();
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr()
-                            .substitute("X", l)
-                            .substitute("Y", r)
-                            .into();
-                    }
-                },
-                Expr::Sub(l, r) => {
-                    self.obfuscate_impl(l);
-                    self.obfuscate_impl(r);
-                    let u = LUExpr::from_string("X-Y").unwrap();
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr()
-                            .substitute("X", l)
-                            .substitute("Y", r)
-                            .into();
-                    }
-                },
-                Expr::Mul(l, r) => {
-                    self.obfuscate_impl(l);
-                    self.obfuscate_impl(r);
-                    let f = Expr::from_string("(X&Y)*(X|Y)+(X&~Y)*(~X&Y)")
-                        .unwrap();
-
-                    *e = f.substitute("X", l).substitute("Y", r).into();
-                },
-                Expr::Div(l, r) => {
-                    self.obfuscate_impl(l);
-                    self.obfuscate_impl(r);
-                },
-                Expr::Neg(i) => {
-                    self.obfuscate_impl(i);
-                    let u = LUExpr::from_string("-X").unwrap();
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr()
-                            .substitute("X", i)
-                            .into();
-                    }
-                },
-                Expr::And(l, r) => {
-                    self.obfuscate_impl(l);
-                    self.obfuscate_impl(r);
-                    let u = LUExpr::from_string("X&Y").unwrap();
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr()
-                            .substitute("X", l)
-                            .substitute("Y", r)
-                            .into();
-                    }
-                },
-                Expr::Or(l, r) => {
-                    self.obfuscate_impl(l);
-                    self.obfuscate_impl(r);
-                    let u = LUExpr::from_string("X|Y").unwrap();
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr()
-                            .substitute("X", l)
-                            .substitute("Y", r)
-                            .into();
-                    }
-                },
-                Expr::Xor(l, r) => {
-                    self.obfuscate_impl(l);
-                    self.obfuscate_impl(r);
-                    let u = LUExpr::from_string("X^Y").unwrap();
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr()
-                            .substitute("X", l)
-                            .substitute("Y", r)
-                            .into();
-                    }
-                },
-                Expr::Not(i) => {
-                    self.obfuscate_impl(i);
-                    let u = LUExpr::from_string("~X").unwrap();
-                    if let Some(f) = rewrite(&u, &self.ops, self.bits, true) {
-                        *e = f.to_expr()
-                            .substitute("X", i)
-                            .into();
-                    }
-                },
-            };
-        }
-
-        if self.rng.gen::<f32>() < 0.3 {
-            let degree = Uniform::from(2..4).sample(&mut self.rng);
-            let (p, q) = perm_poly::perm_pair(&self.qr, degree);
-            let p = p.to_expr().substitute("x", e);
-            *e = Rc::new(q.to_expr().substitute("x", &mut Rc::new(p)));
-        }
-    }
-
-    fn init(e: &Expr, bits: u32) -> Self {
-        // Get the variables in the expression.
-        let vars = e.vars();
-
-        let ops = vec![
-            LUExpr::from_string("X&Y").unwrap(),
-            LUExpr::from_string("X^Y").unwrap(),
-            LUExpr::from_string("~(X^Y^Z)").unwrap(),
-            LUExpr::from_string("~X").unwrap(),
-            LUExpr::from_string("~Y").unwrap(),
-            LUExpr::from_string("Y").unwrap(),
-            LUExpr::from_string("Z").unwrap(),
-            LUExpr::from_string("Y&Z").unwrap(),
-            LUExpr::from_string("X|Z").unwrap(),
-            LUExpr::from_string("~X&Z").unwrap(),
-            LUExpr::from_string("Y|~Z").unwrap(),
-        ];
-        let qr = perm_poly::ZeroIdeal::init(bits);
-        let rng = rand::thread_rng();
-
-        Self { bits, ops, vars, qr, rng }
-    }
-}
 
 /// Hacky function to convert a rug::Integer to a z3 bitvector.
 #[cfg(feature = "z3")]
@@ -641,43 +277,24 @@ pub(crate) fn int_to_bv<'ctx>(
     z3::ast::BV::new(ctx, ast)
 }
 
-/// Very hacky macro that acts as a match statement for types.
-/// ```
-/// use crate::select;
-/// let i = select!(f32,
-///     f32 => { 1 },
-///     f64 => { 2 },
-///     default => { 3 },
-/// );
-/// assert_eq!(i, 1);
-/// ```
-/// This is used to generate different code for different types.
-/// Ideally we would use traits, but I felt I would run into too many
-/// problems. We want to support `Copy` types, like `f32`, and types
-/// like `rug::Float` which own memory.
-/// That means we want to use Copy for f64 where possible
-/// instead of passing around references, but for rug::Float
-/// we want to avoid copying at all costs.
-/// In addition operations like &rug::Float + &rug::Float
-/// return "Incomplete computation-values",
-/// which you have to `.complete` or assign in some way.
-/// I felt like doing all this with traits would be
-/// challenging, but obviously the superior solution.
-/// Instead we use this very hacky macro.
-/// A proc macro would be preferable, but this does
-/// the job for now.
-macro_rules! select {
-    (f32, f32 => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
-    (f64, f64 => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
-    (Float, Float => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
-    (Integer, Integer => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
-    (Rational, Rational => { $($b:tt)* }, $($o:tt)*) => { $($b)* };
-    ($t:tt, default => {$($b:tt)* }, $($o:tt)*) => {
-        $($b)*
-    };
-    ($t:tt, $n:ty => { $($nb:tt)* }, $($o:tt)*) => {
-        select!($t, $($o)*)
-    };
-}
+/// Used internally to convert an integer from and iterator over characters.
+pub(crate) fn int_from_it(
+    it: &mut std::iter::Peekable<std::str::Chars>
+) -> Option<Integer> {
+    let c = it.next()?;
+    let mut num: Integer = c.to_digit(10)?.into();
 
-pub(crate) use select;
+    let mut lookahead = it.peek();
+    while let Some(c) = lookahead {
+        if !c.is_ascii_digit() {
+            break;
+        }
+
+        num *= 10;
+        num += c.to_digit(10).unwrap();
+        it.next();
+        lookahead = it.peek();
+    }
+
+    Some(num)
+}

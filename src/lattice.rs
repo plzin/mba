@@ -1,11 +1,10 @@
-use crate::select;
 use crate::diophantine::hermite_normal_form;
 use crate::{matrix::*, vector::*};
 use rug::ops::NegAssign;
 use rug::{Integer, Rational, Complete, Float};
 use num_traits::{Zero, One, NumAssign};
 use std::fmt::Debug;
-use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign};
+use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign, Neg};
 use std::cmp::Ordering;
 
 
@@ -100,62 +99,30 @@ impl Lattice {
     /// This essentially is Gram-Schmidt
     /// but rounding the coefficients to integers.
     fn size_reduce(&mut self) {
-        for i in 0..self.basis.nrows() {
-            for j in 0..i {
-                let b_i = &self.basis[i];
-                let b_j = &self.basis[j];
-                let q = b_i.dot(b_j).div_rem_round(b_j.norm_sqr()).0;
-                let s = b_j * &q;
-                self.basis[i] -= &s;
-            }
-        }
+        size_reduce(&mut self.basis);
     }
 
-    /// Performs LLL basis reduction using rational numbers.
-    pub fn lll(&mut self, delta: &Rational) {
-        let n = self.basis.nrows();
-        let mut swap_condition = true;
-
-        while swap_condition {
-            self.size_reduce();
-
-            // Lovasz condition
-            swap_condition = false;
-            for i in 0..n-1 {
-                let b = &self.basis[i];
-                let c = &self.basis[i+1];
-
-                let lhs = Rational::from(c.norm_sqr());
-
-                let b_norm_sqr = b.norm_sqr();
-                let q = Rational::from((c.dot(b), b_norm_sqr.clone()));
-                let rhs = b_norm_sqr * (delta - q.square());
-
-                if lhs < rhs {
-                    self.basis.swap_rows(i, i + 1);
-                    swap_condition = true;
-                    break;
-                }
-            }
-        }
+    /// Performs LLL basis reduction.
+    pub fn lll<WT: WorkingType>(&mut self, delta: &WT::Scalar, ty: WT)
+        where WT::Scalar: InnerProduct
+    {
+        lll(&mut self.basis, delta, ty);
     }
 
     pub fn cvp_planes_coeff<WT: WorkingType>(
-        &self, t: &IVectorView, rad: Option<WT::Scalar>, ty: WT
+        &self, t: &IVectorView, rad_sqr: Option<WT::Scalar>, ty: WT
     ) -> Option<IOwnedVector>
-    where
-        WT::Scalar: VectorNorm
+        where WT::Scalar: VectorNorm
     {
-        cvp_planes(&self.basis, t, rad, ty)
+        cvp_planes(&self.basis, t, rad_sqr, ty)
     }
 
     pub fn cvp_planes<WT: WorkingType>(
-        &self, t: &IVectorView, rad: Option<WT::Scalar>, ty: WT
+        &self, t: &IVectorView, rad_sqr: Option<WT::Scalar>, ty: WT
     ) -> Option<IOwnedVector>
-    where
-        WT::Scalar: VectorNorm
+        where WT::Scalar: VectorNorm
     {
-        Some(self.at(&self.cvp_planes_coeff(t, rad, ty)?))
+        Some(self.at(&self.cvp_planes_coeff(t, rad_sqr, ty)?))
     }
 
     pub fn cvp_rounding_coeff<WT: WorkingType>(
@@ -216,6 +183,71 @@ impl AffineLattice {
     /// Returns a random point on the lattice mod 2^bits.
     pub fn sample_point(&self, bits: u32) -> IOwnedVector {
         self.lattice.sample_point_impl(bits, self.offset.clone())
+    }
+
+    /// Returns the shortest vector on the **affine(!)** lattice.
+    /// This solves the CVP on the normal lattice with
+    /// target offset.
+    pub fn svp<WT: WorkingType>(
+        &self, rad: Option<WT::Scalar>, ty: WT
+    ) -> Option<IOwnedVector>
+        where WT::Scalar: VectorNorm
+    {
+        self.lattice.cvp_planes(self.offset.view(), rad, ty)
+            .map(|v| &self.offset - v)
+    }
+}
+
+/// Size reduce the basis.
+/// This essentially is Gram-Schmidt
+/// but rounding the coefficients to integers.
+pub fn size_reduce(basis: &mut IOwnedMatrix) {
+    for i in 0..basis.nrows() {
+        for j in 0..i {
+            let b_i = &basis[i];
+            let b_j = &basis[j];
+            let q = b_i.dot(b_j).div_rem_round(b_j.norm_sqr()).0;
+            if q.is_zero() {
+                continue;
+            }
+            let s = b_j * &q;
+            basis[i] -= &s;
+        }
+    }
+}
+
+/// Performs LLL basis reduction using rational numbers.
+pub fn lll<WT: WorkingType>(
+    basis: &mut IOwnedMatrix,
+    delta: &WT::Scalar,
+    ty: WT
+) where WT::Scalar: InnerProduct
+{
+    log::trace!("Running LLL on rank {} lattice.", basis.nrows());
+    let n = basis.nrows();
+    let mut swap_condition = true;
+
+    while swap_condition {
+        size_reduce(basis);
+
+        // Lovasz condition
+        swap_condition = false;
+        for i in 0..n-1 {
+            let b = &basis[i];
+            let c = &basis[i+1];
+
+            let lhs = ty.from_int(&c.norm_sqr());
+
+            let b_norm_sqr = ty.from_int(&b.norm_sqr());
+            let q = ty.from_int(&c.dot(b)) / &b_norm_sqr;
+            let rhs = b_norm_sqr * &(-WT::square(q) + delta);
+
+            if lhs < rhs {
+                basis.swap_rows(i, i + 1);
+                swap_condition = true;
+                break;
+            }
+        }
     }
 }
 
@@ -356,21 +388,23 @@ pub fn cvp_nearest_plane<WT: WorkingType>(
 /// - `basis` is the matrix that contains the basis as rows.
 /// - `t` is the target vector.
 /// - `prec` is the precision of the floating point numbers used.
-/// - `r` is an optional float that contains the maximum distance to search for.
+/// - `rad_sqr` is an optional float that contains the square of the maximum
+/// distance to search for.
+///
 /// The returned vector is the vector of coefficients.
 /// This will always return some vector unless no vector is within `r` of the target.
 /// This algorithm is a generalization Babai's nearest plane algorithm
 /// that searches all planes that could contain the closest vector.
 /// It is the simplest one I could think of.
 pub fn cvp_planes<WT: WorkingType>(
-    basis: &IOwnedMatrix, t: &IVectorView, rad: Option<WT::Scalar>, ty: WT
+    basis: &IOwnedMatrix, t: &IVectorView, rad_sqr: Option<WT::Scalar>, ty: WT
 ) -> Option<IOwnedVector>
 where
     WT::Scalar: VectorNorm
 {
-    assert!(basis.ncols() == t.dim(), "Mismatch of basis/target vector dimension.");
-    // assert!(rad.as_ref().map_or(true, |rad| rad.prec() == prec),
-    //     "rad needs to have the given precision.");
+    log::trace!("Solving CVP in a rank {} lattice.", basis.nrows());
+    assert!(basis.ncols() == t.dim(),
+        "Mismatch of basis/target vector dimension.");
     let bf = basis.transform(|i| ty.from_int(i));
 
     // Q is the Gram-Schmidt orthonormalization and
@@ -383,20 +417,11 @@ where
     // then this will project it into the span.
     let qt = &q * &t.transform(|i| ty.from_int(i));
 
-    // If a radius is given, we square it,
-    // otherwise we use the squared norm of the target vector,
-    // because the origin is a point on the lattice.
-    // The actual value doesn't really matter,
-    // it will get replaced with the distance
-    // to Babai's nearest plane vector in the first descent.
     // We just do this to avoid having to pass around an Option.
-    let rad = rad.map_or_else(|| qt.norm_sqr(), WT::square);
+    let rad = rad_sqr.unwrap_or_else(|| ty.infinity());
 
-    /// Utility function for comparing a distance with the radius.
-    /// If the radius is None, then this always accepts.
-    fn in_radius<T: PartialOrd>(d: &T, rad: &T) -> bool {
-        d.partial_cmp(rad).unwrap().is_le()
-    }
+    // Multiply the coefficients by the basis.
+    return cvp_impl(r.ncols() - 1, &r, qt.view(), &rad, ty).map(|v| v.0);
 
     /// This actually finds the closest point.
     /// `rad` is the squared norm.
@@ -418,7 +443,7 @@ where
             let m = WT::round(qt.clone() / r);
             let plane = r.clone() * &m;
             let d = WT::square(plane.clone() - qt);
-            return in_radius(&d, rad).then(|| (
+            return (&d <= rad).then(|| (
                 IOwnedVector::from_array([WT::to_int(&m)]),
                 OwnedVector::from_array([plane])
             ));
@@ -484,7 +509,7 @@ where
             // If the plane is not in the radius,
             // then the next one in the loop definitely is not
             // either, by the way we iterate over the planes.
-            if !in_radius(&d, &min_dist) {
+            if d > min_dist {
                 break;
             }
 
@@ -524,7 +549,7 @@ where
 
             // If the distance is smaller than the current minimal dist,
             // then we have found the new best point.
-            if in_radius(&d, &min_dist) {
+            if d <= min_dist {
                 min = Some((v, w));
                 min_dist = d;
             }
@@ -532,11 +557,9 @@ where
 
         min
     }
-
-    // Multiply the coefficients by the basis.
-    cvp_impl(r.ncols() - 1, &r, qt.view(), &rad, ty).map(|v| v.0)
 }
 
+/// Solves a square system of linear equations.
 fn solve_linear<WT: WorkingType>(
     mut a: OwnedMatrix<WT::Scalar>, mut b: OwnedVector<WT::Scalar>, ty: WT
 ) -> Option<OwnedVector<WT::Scalar>> {
@@ -550,6 +573,7 @@ fn solve_linear<WT: WorkingType>(
             .skip(i)
             .filter(|e| !WT::is_zero(e.1))
             .max_by(|e, f| WT::cmp_abs(e.1, f.1))?.0;
+        // Swap the pivot row with the current row.
         a.swap_rows(pivot, i);
         let pivot = a[(i, i)].clone();
         for r in i+1..a.nrows() {
@@ -594,11 +618,18 @@ pub trait WorkingType: Copy
         + for<'a> SubAssign<&'a Self::Scalar>
         + for<'a> MulAssign<&'a Self::Scalar>
         + for<'a> DivAssign<&'a Self::Scalar>
+        + Neg<Output = Self::Scalar>
         + NegAssign
         + PartialOrd
         + InnerProduct;
 
     fn zero(self) -> Self::Scalar;
+
+    fn eps(self) -> Self::Scalar;
+
+    fn infinity(self) -> Self::Scalar {
+        panic!("`infinity` is not supported for this type.");
+    }
 
     fn is_zero(s: &Self::Scalar) -> bool;
 
@@ -630,6 +661,14 @@ impl WorkingType for F64 {
     type Scalar = f64;
     fn zero(self) -> Self::Scalar {
         0.0
+    }
+
+    fn eps(self) -> Self::Scalar {
+        f64::EPSILON
+    }
+
+    fn infinity(self) -> Self::Scalar {
+        f64::INFINITY
     }
 
     fn is_zero(s: &Self::Scalar) -> bool {
@@ -669,6 +708,14 @@ impl WorkingType for F32 {
         0.0
     }
 
+    fn eps(self) -> Self::Scalar {
+        f32::EPSILON
+    }
+
+    fn infinity(self) -> Self::Scalar {
+        f32::INFINITY
+    }
+
     fn is_zero(s: &Self::Scalar) -> bool {
         s.is_zero()
     }
@@ -704,6 +751,14 @@ impl WorkingType for FP {
     type Scalar = Float;
     fn zero(self) -> Self::Scalar {
         Float::new(self.0)
+    }
+
+    fn eps(self) -> Self::Scalar {
+        Float::with_val(self.0, 1) >> (self.0 - 1)
+    }
+
+    fn infinity(self) -> Self::Scalar {
+        Float::with_val(self.0, rug::float::Special::Infinity)
     }
 
     fn is_zero(s: &Self::Scalar) -> bool {
@@ -743,6 +798,10 @@ impl WorkingType for Rat {
         Rational::new()
     }
 
+    fn eps(self) -> Self::Scalar {
+        Rational::new()
+    }
+
     fn is_zero(s: &Self::Scalar) -> bool {
         s.is_zero()
     }
@@ -770,77 +829,6 @@ impl WorkingType for Rat {
     fn add_isize(s: Self::Scalar, i: isize) -> Self::Scalar {
         s + i
     }
-}
-
-
-#[test]
-fn cvp_temp_test() {
-    let l = Lattice::from_basis(IOwnedMatrix::from_rows(&[
-        [  1,  -74,   20,   19,   -5,   21,  -19,   18,  -54,  -56,  -40,
-          -38,  -58,   54,  -34,   -1,   -3,    0,  -27,    8],
-        [-44,   19,  -20,   14,  -34,  -61,   53,  -31,   42,   42,   27,
-           40,  -77,  -59,    2,  -26,    9,    3,  -49,   33],
-        [-19,  -12,   18,  -31,   63,    8,   52,   52,  -50,  -19,   22,
-           -1,   51,   -8,  -57,   70,  -62,  -45,   48,  -51],
-        [-66,   -5,   15,   34,    2,  -50,   82,   28,   16,   18,   17,
-           66,   23,  -38,   39,  -36,  -66,   19,  -64,  -62],
-        [-15,   10,  -65,  -46,  -55,  -22,  -88,  -49,   46,  -19,   -4,
-           -6,   -5,  -20,   23,  -24,  -86,  -29,   -7,   16],
-        [ 35,  -57,    9,   41,    9,   -7,   63,   11,  -72,  -23,   -2,
-         -103,   62,   -9,   64,    1,   25,   10,   48,  -41],
-        [ 18,   11,   31,    2,  -51,   48,   11,  -33,   69,   93,  -12,
-          -52,   -3, -100,   14,  -15,   85,  -61,    6,   27],
-        [-58,  -54,  -29,  -28,   93,  -88,    3,  -63,   -3,   -9,   26,
-           22,   89,   26,   11,   -2,  -21,   -5,   37,  -36],
-        [ 24,   72,  -79,  -38,   50,   17,  -54,  -24,   38,   -9,  -64,
-          -32,  -10,   70,  -67,  -88,   -4,  -34,   -4,   -3],
-        [-24,  -54,   11,   34,  -14,   -5, -132,   46,   51,   67,   24,
-           -3,  -10,   -6,   22,   38,  -15,  -23,   29,  -39],
-        [ 72,    9,   49,  -19,   66,   -6,  -53,  -77,   40,   -9,  -52,
-          -20,   90,  -12,   58, -107,  -47,  -64,  -66,  -10],
-        [ 48,  -28,   41,  -76,   17,  -13,  -20,  -16,  -15,   75,  -30,
-           51,  -55,   31,  -50,    3,  -60,  -34,   13,   31],
-        [ 62,   -9,   13,  -10,   39,   50,   81,   94,  -38,    7,  -62,
-          -49,   34,   61,   45,   30,  -51,  -78,  -70,   -4],
-        [ 34,   92,  -16,   -3,  113,  -24,    1,   40,  -30,   91,  -57,
-           -6,  -28,   -7,   13,   64,   18,   24,  -33,  -10],
-        [ -1,  -20,  -45,   44,  -75,   31,   -9,  -47,   74,   -7,   64,
-           77,  -41,    9,   52,  -33,  -83,  118,   63,    1],
-        [ -9,  -37,   11, -106,  -13,    1,   74,   11,   89,  -10,   61,
-           43,  -17,  -45,   -7,    5, -103,   43,  -36,   46],
-        [ 60, -101,  -48,  -23,   37,  -45,    1,   23,   52,  -18,  -19,
-          -36, -125,  -23,   22,  -32,  -28,  -41,   16,  -34],
-        [ 19,  -47,  -85,   17,    2,    1,   12,   19,   27,  -21,   43,
-           43,   -9,    8,  -60,   36,   83,   65,  -50,   58],
-        [ 59,   -4,   51,   36,  -10,  -12,  -19,  -54,   93,   12,   23,
-           31,   77,   18,   45,   57,   46,   52,  -21,  -51],
-        [-57,   49,   26,   10,  -22,   32,  -52,  -71,   -9,   31,   45,
-           28,  -28,  -30,   24,   44,   88,    2,  -63, -105],
-    ]));
-    let t = IOwnedVector::from_entries([-48, 69, -76, 36, -72, 31, -53,
-        -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
-    //let now = std::time::Instant::now();
-    //for _ in 0..100 {
-    //    let v = cvp_planes(&b, &t, 53, None);
-    //}
-    //println!("{}", now.elapsed().as_secs_f64());
-
-    fn bench(name: &str, f: impl Fn() -> IOwnedVector, t: &IOwnedVector) {
-        let now = std::time::Instant::now();
-        let mut v = IOwnedVector::empty();
-        for _ in 0..100 {
-            v = f();
-        }
-        let time = now.elapsed().as_secs_f64() * 1000.;
-        let d = (&v - t).norm_sqr();
-        let d = Float::with_val(d.signed_bits(), d).sqrt();
-        println!("{name}: {d:.3} in {time:.3}ms ({v:?})");
-    }
-
-    let now = std::time::Instant::now();
-    bench("exact solution float", || l.cvp_planes(t.view(), None, FP(53)).unwrap(), &t);
-    bench("exact solution f64", || l.cvp_planes(t.view(), None, F64).unwrap(), &t);
-    bench("exact solution f32", || l.cvp_planes(t.view(), None, F32).unwrap(), &t);
 }
 
 #[test]
@@ -935,7 +923,7 @@ fn babai_rounding_example() {
 
     let mut lattice = Lattice::from_generating_set(gen);
     println!("{:?}", lattice);
-    lattice.lll(&Rational::from((99, 100)));
+    lattice.lll(&Rational::from((99, 100)), Rat);
     println!("{:?}", lattice);
     let lattice = AffineLattice {
         offset: Vector::from_entries([1, 1, 0, 0, 0]),

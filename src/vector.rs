@@ -10,7 +10,6 @@ use std::fmt::Debug;
 use num_traits::Zero;
 use rug::{Integer, Complete, Float, Rational, ops::NegAssign};
 use crate::matrix::{RowVector, ColumnVector};
-use crate::select;
 
 /// How are the entries of a vector stored?
 pub trait VectorStorage<T> {
@@ -1025,8 +1024,12 @@ where
 {
     type Output = OwnedVector<T>;
     fn sub(self, mut rhs: OwnedVector<T>) -> Self::Output {
-        rhs = -rhs;
-        rhs += self;
+        assert!(self.dim() == rhs.dim(),
+            "Can not add/subtract vectors of different dimensions.");
+        for (a, b) in self.iter().zip(rhs.iter_mut()) {
+            b.neg_assign();
+            *b += a;
+        }
         rhs
     }
 }

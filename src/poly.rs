@@ -4,7 +4,7 @@ use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign};
 
 use rug::{Integer, Complete};
 
-use crate::expr::Expr;
+use crate::expr::{ExprOp, Expr};
 
 /// Represents a polynomial with integer coefficients.
 ///
@@ -170,21 +170,19 @@ impl Poly {
 
     /// Returns an expression that uses
     /// Horner's method to evaluate the polynomial in x.
-    pub fn to_expr(&self) -> Expr {
+    pub fn to_expr(&self) -> ExprOp {
         let mut it = self.coeffs.iter().rev();
         let mut e = match it.next() {
-            None => Expr::zero(),
-            Some(c) => Expr::Const(c.clone()),
+            None => ExprOp::zero(),
+            Some(c) => ExprOp::Const(c.clone()),
         };
 
-        use std::rc::Rc;
-
-        let x = Rc::new(Expr::Var("x".to_owned()));
+        let x = Expr::new(ExprOp::Var("x".to_owned()));
 
         for c in it {
-            e = Expr::Mul(x.clone(), e.into());
+            e = ExprOp::Mul(x.clone(), e.into());
             if c != &Integer::ZERO {
-                e = Expr::Add(Rc::new(Expr::Const(c.clone())), Rc::new(e));
+                e = ExprOp::Add(ExprOp::Const(c.clone()).into(), e.into());
             }
         }
 
