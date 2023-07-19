@@ -22,7 +22,6 @@ pub fn hermite_normal_form(a: &mut IOwnedMatrix) -> IOwnedMatrix {
             .enumerate()
             .skip(r)
             .filter(|e| !e.1.is_zero())
-            //.min_by_key(|e| e.1.clone().abs())
             .min_by(|a, b| a.1.cmp_abs(b.1))
             .map(|e| e.0);
 

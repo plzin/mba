@@ -420,7 +420,7 @@ where
     // We just do this to avoid having to pass around an Option.
     let rad = rad_sqr.unwrap_or_else(|| ty.infinity());
 
-    // Multiply the coefficients by the basis.
+    // Multiply the coefficients of the vector.
     return cvp_impl(r.ncols() - 1, &r, qt.view(), &rad, ty).map(|v| v.0);
 
     /// This actually finds the closest point.
@@ -508,7 +508,7 @@ where
 
             // If the plane is not in the radius,
             // then the next one in the loop definitely is not
-            // either, by the way we iterate over the planes.
+            // either, because of the way we iterate over the planes.
             if d > min_dist {
                 break;
             }

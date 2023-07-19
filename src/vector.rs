@@ -7,7 +7,7 @@ use std::ops::{
     AddAssign, SubAssign, MulAssign, DivAssign, Index, Range, IndexMut
 };
 use std::fmt::Debug;
-use num_traits::Zero;
+use num_traits::{Zero, Signed};
 use rug::{Integer, Complete, Float, Rational, ops::NegAssign};
 use crate::matrix::{RowVector, ColumnVector};
 
@@ -764,6 +764,7 @@ pub trait InnerProduct: Sized {
     }
 }
 
+/// L2 norm.
 pub trait VectorNorm: Sized {
     /// Computes the norm of the vector.
     fn norm<S>(v: &Vector<Self, S>) -> Self
@@ -809,10 +810,6 @@ where
         *self /= &T::norm(self);
     }
 }
-
-// Implementations of all kinds of traits for vectors.
-// These are specializations. The traits are implemented
-// generically for all types, but the implementations just panic.
 
 impl InnerProduct for Integer {
     fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
@@ -918,6 +915,87 @@ macro_rules! impl_innerproduct_norm {
 
 impl_innerproduct_norm!(f32);
 impl_innerproduct_norm!(f64);
+
+pub trait L1Norm: Sized {
+    /// Computes the norm of the vector.
+    fn l1_norm<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized;
+}
+
+impl L1Norm for Float {
+    fn l1_norm<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        let mut n = Float::new(v.precision());
+        for e in v.iter() {
+            if e.is_sign_negative() {
+                n -= e;
+            } else {
+                n += e;
+            }
+        }
+
+        n
+    }
+}
+
+impl L1Norm for Integer {
+    fn l1_norm<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        let mut n = Integer::new();
+        for e in v.iter() {
+            if e.is_negative() {
+                n -= e;
+            } else {
+                n += e;
+            }
+        }
+        n
+    }
+}
+
+impl L1Norm for Rational {
+    fn l1_norm<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        let mut n = Rational::new();
+        for e in v.iter() {
+            if e.cmp0().is_le() {
+                n -= e;
+            } else {
+                n += e;
+            }
+        }
+        n
+    }
+}
+
+impl L1Norm for f32 {
+    fn l1_norm<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        v.iter().map(|e| e.abs()).sum()
+    }
+}
+
+impl L1Norm for f64 {
+    fn l1_norm<S>(v: &Vector<Self, S>) -> Self
+        where S: VectorStorage<Self> + ?Sized,
+    {
+        v.iter().map(|e| e.abs()).sum()
+    }
+}
+
+impl<T, S> Vector<T, S>
+where
+    T: L1Norm,
+    S: VectorStorage<T> + ?Sized,
+{
+    pub fn l1_norm(&self) -> T {
+        T::l1_norm(self)
+    }
+}
 
 impl<T, R, S> Add<&Vector<T, R>> for &Vector<T, S>
 where

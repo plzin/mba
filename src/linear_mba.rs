@@ -221,7 +221,7 @@ pub enum DeobfuscationConfig {
     /// of solutions to the linear system where the entries
     /// are weighted by the complexity of their corresponding
     /// rewrite operations.
-    ShortestSolution,
+    ShortVector,
 }
 
 /// Deobfuscate a linear MBA expression.
@@ -284,6 +284,8 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
     let mut l = solve_linear_system(&e, &ops, &vars, bits);
 
     log::trace!("Lattice rank: {}", l.lattice.rank());
+    log::trace!("Offset: {:?}", l.offset);
+    log::trace!("Basis: {:?}", l.lattice.basis);
 
     // If I did everything correctly,
     // this system should always have a solution.
@@ -297,6 +299,7 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
                 l.offset -= &(&l.lattice.basis[i] * &q);
             }
         }
+        log::trace!("Least complex solution: {:?}", l.offset);
     }
 
     // If this should be fast, just use the particular solution
@@ -673,6 +676,23 @@ fn linear_obfuscate_test() {
 }
 
 #[test]
+fn deobfuscate_linear_test() {
+    env_logger::init();
+    let e = UExpr::xor(UExpr::not(UExpr::var("x")), UExpr::var("y"));
+    let d = deobfuscate_luexpr(e.clone().into(), 4, DeobfuscationConfig::ShortVector);
+    println!("{d}");
+
+    let mut v = Valuation::zero();
+    for x in 0..15 {
+        *v.value("x") = x.into();
+        for y in 0..15 {
+            *v.value("y") = y.into();
+            assert_eq!(e.eval(&mut v).keep_signed_bits(4), d.eval(&mut v, 4).keep_signed_bits(4));
+        }
+    }
+}
+
+#[test]
 fn deobfuscate_test() {
     env_logger::init();
     let bits = 8;
@@ -686,8 +706,8 @@ fn deobfuscate_test() {
     let mut o = e.deep_copy();
     let cfg = ObfuscationConfig {
         //rewrite_vars: 8,
-        //rewrite_expr_depth: 2,
-        //rewrite_expr_count: 48,
+        rewrite_expr_depth: 2,
+        rewrite_expr_count: 48,
         ..ObfuscationConfig::default()
     };
     obfuscate(&mut o, bits, &cfg);

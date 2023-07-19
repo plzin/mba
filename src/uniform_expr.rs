@@ -220,8 +220,8 @@ pub enum UExpr {
 }
 
 impl UExpr {
-    pub fn var(c: String) -> Self {
-        Self::Var(c)
+    pub fn var<T: Into<String>>(name: T) -> Self {
+        Self::Var(name.into())
     }
 
     pub fn and(l: Self, r: Self) -> Self {
@@ -292,7 +292,9 @@ impl UExpr {
         match self {
             Ones => 1,
             Var(_) => 1,
-            And(l, r) | Or(l, r) | Xor(l, r) => l.complexity() + r.complexity() + 1,
+            And(l, r) => l.complexity() + r.complexity() + 1,
+            Or(l, r) => l.complexity() + r.complexity() + 1,
+            Xor(l, r) => l.complexity() + r.complexity() + 1,
             Not(e) => e.complexity() + 1,
         }
     }
