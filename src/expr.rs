@@ -1,11 +1,10 @@
 #![allow(dead_code)]
 
 use std::{rc::Rc, collections::BTreeSet, ops::{Deref, DerefMut}, fmt::Display};
-
 use num_traits::{Zero, One};
 use rug::Integer;
-
 use crate::valuation::Valuation;
+use crate::Symbol;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Expr(Rc<ExprOp>);
@@ -183,7 +182,7 @@ impl Expr {
 
             let v = match e.as_ref() {
                 ExprOp::Const(n) => n.clone(),
-                ExprOp::Var(name) => v.value(name).clone(),
+                ExprOp::Var(name) => v.value(*name).clone(),
                 ExprOp::Add(l, r) => eval_impl(l, v, bits, cache) + eval_impl(r, v, bits, cache),
                 ExprOp::Sub(l, r) => eval_impl(l, v, bits, cache) - eval_impl(r, v, bits, cache),
                 ExprOp::Mul(l, r) => eval_impl(l, v, bits, cache) * eval_impl(r, v, bits, cache),
@@ -225,12 +224,12 @@ impl Expr {
     /// Substitutes an expression for a variable.
     /// If the Rc's in this expression are shared with
     /// other expressions then this will also substitute in those.
-    pub fn substitute(&mut self, var: &str, s: &mut Expr) {
+    pub fn substitute(&mut self, var: Symbol, s: &mut Expr) {
         let mut visited = Vec::new();
         substitute_impl(self, var, s, &mut visited);
         fn substitute_impl(
             e: &mut Expr,
-            var: &str,
+            var: Symbol,
             s: &mut Expr,
             visited: &mut Vec<*const ExprOp>
         ) {
@@ -276,7 +275,7 @@ impl Expr {
 
             let r = match e.as_ref() {
                 ExprOp::Const(n) => ExprOp::Const(n.clone()),
-                ExprOp::Var(name) => ExprOp::Var(name.clone()),
+                ExprOp::Var(name) => ExprOp::Var(*name),
                 ExprOp::Add(l, r) => ExprOp::Add(deep_copy_impl(l, v), deep_copy_impl(r, v)),
                 ExprOp::Sub(l, r) => ExprOp::Sub(deep_copy_impl(l, v), deep_copy_impl(r, v)),
                 ExprOp::Mul(l, r) => ExprOp::Mul(deep_copy_impl(l, v), deep_copy_impl(r, v)),
@@ -352,7 +351,7 @@ impl Expr {
                 it.next();
             }
 
-            Expr::new(Var(var))
+            Expr::new(Var(var.into()))
         } else if c.is_ascii_digit() {
             let num = crate::int_from_it(it)?;
             Expr::new(Const(num))
@@ -446,7 +445,7 @@ impl Display for Expr {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ExprOp {
     Const(Integer),
-    Var(String),
+    Var(Symbol),
     Add(Expr, Expr),
     Sub(Expr, Expr),
     Mul(Expr, Expr),
@@ -485,16 +484,16 @@ impl ExprOp {
 
     /// Returns all variables in the expression.
     /// This can include duplicates.
-    pub fn vars(&self) -> Vec<String> {
+    pub fn vars(&self) -> Vec<Symbol> {
         let mut v = BTreeSet::new();
         self.vars_impl(&mut v);
         v.into_iter().collect()
     }
 
-    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<String>) {
+    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<Symbol>) {
         match self {
             ExprOp::Const(_) => {},
-            ExprOp::Var(name) => drop(v.insert(name.clone())),
+            ExprOp::Var(name) => drop(v.insert(*name)),
             ExprOp::Neg(e) | ExprOp::Not(e) => e.vars_impl(v),
             ExprOp::Add(l, r) | ExprOp::Sub(l, r) | ExprOp::Mul(l, r)
             | ExprOp::Div(l, r) | ExprOp::And(l, r) | ExprOp::Or(l, r)

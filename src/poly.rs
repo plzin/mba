@@ -177,7 +177,7 @@ impl Poly {
             Some(c) => ExprOp::Const(c.clone()),
         };
 
-        let x = Expr::new(ExprOp::Var("x".to_owned()));
+        let x = Expr::new(ExprOp::Var("x".into()));
 
         for c in it {
             e = ExprOp::Mul(x.clone(), e.into());
@@ -187,36 +187,6 @@ impl Poly {
         }
 
         e
-    }
-}
-
-impl std::fmt::Display for Poly {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.coeffs.iter().enumerate().rev();
-
-        let mut has_terms = false;
-        match iter.next() {
-            None => write!(f, "0")?,
-            Some((e, c)) => if e == 0 {
-                write!(f, "{}", c)?
-            } else if *c != 0 {
-                write!(f, "{}x^{}", c, e)?;
-                has_terms = true;
-            },
-        };
-
-        for (e, c) in iter {
-            if e == 0 {
-                if *c != 0 || !has_terms {
-                    write!(f, " + {}", c)?;
-                }
-            } else if *c != 0 {
-                write!(f, " + {}x^{}", c, e)?;
-                has_terms = true;
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -353,5 +323,125 @@ impl MulAssign<&Integer> for Poly {
         for c in &mut self.coeffs {
             *c *= rhs;
         }
+    }
+}
+
+impl std::fmt::Display for Poly {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.coeffs.iter().enumerate().rev();
+
+        let mut has_terms = false;
+        match iter.next() {
+            None => write!(f, "0")?,
+            Some((e, c)) => if e == 0 {
+                write!(f, "{}", c)?
+            } else if *c != 0 {
+                write!(f, "{}x^{}", c, e)?;
+                has_terms = true;
+            },
+        };
+
+        for (e, c) in iter {
+            if e == 0 {
+                if *c != 0 || !has_terms {
+                    write!(f, " + {}", c)?;
+                }
+            } else if *c != 0 {
+                write!(f, " + {}x^{}", c, e)?;
+                has_terms = true;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl std::fmt::LowerHex for Poly {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.coeffs.iter().enumerate().rev();
+
+        let mut has_terms = false;
+        match iter.next() {
+            None => write!(f, "0")?,
+            Some((e, c)) => if e == 0 {
+                write!(f, "{:x}", c)?
+            } else if *c != 0 {
+                write!(f, "{:x}x^{}", c, e)?;
+                has_terms = true;
+            },
+        };
+
+        for (e, c) in iter {
+            if e == 0 {
+                if *c != 0 || !has_terms {
+                    write!(f, " + {:x}", c)?;
+                }
+            } else if *c != 0 {
+                write!(f, " + {:x}x^{}", c, e)?;
+                has_terms = true;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl std::fmt::UpperHex for Poly {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.coeffs.iter().enumerate().rev();
+
+        let mut has_terms = false;
+        match iter.next() {
+            None => write!(f, "0")?,
+            Some((e, c)) => if e == 0 {
+                write!(f, "{:X}", c)?
+            } else if *c != 0 {
+                write!(f, "{:X}x^{}", c, e)?;
+                has_terms = true;
+            },
+        };
+
+        for (e, c) in iter {
+            if e == 0 {
+                if *c != 0 || !has_terms {
+                    write!(f, " + {:X}", c)?;
+                }
+            } else if *c != 0 {
+                write!(f, " + {:X}x^{}", c, e)?;
+                has_terms = true;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl std::fmt::Binary for Poly {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.coeffs.iter().enumerate().rev();
+
+        let mut has_terms = false;
+        match iter.next() {
+            None => write!(f, "0")?,
+            Some((e, c)) => if e == 0 {
+                write!(f, "{:b}", c)?
+            } else if *c != 0 {
+                write!(f, "{:b}x^{}", c, e)?;
+                has_terms = true;
+            },
+        };
+
+        for (e, c) in iter {
+            if e == 0 {
+                if *c != 0 || !has_terms {
+                    write!(f, " + {:b}", c)?;
+                }
+            } else if *c != 0 {
+                write!(f, " + {:b}x^{}", c, e)?;
+                has_terms = true;
+            }
+        }
+
+        Ok(())
     }
 }

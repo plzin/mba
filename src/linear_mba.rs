@@ -4,6 +4,7 @@ use num_traits::Zero;
 use rug::ops::DivRounding;
 use rug::{Integer, Complete, Rational};
 
+use crate::simplify_boolean::{simplify_from_truth_table, SimplificationConfig};
 use crate::valuation::Valuation;
 use crate::diophantine;
 use crate::expr::{self, ExprOp, Expr};
@@ -11,6 +12,7 @@ use crate::lattice::{self, AffineLattice};
 use crate::uniform_expr::*;
 use crate::matrix::*;
 use crate::vector::*;
+use crate::Symbol;
 
 /// Rewrite a linear combination of uniform expression
 /// using a set of uniform expressions modulo `2^bits`.
@@ -51,14 +53,14 @@ pub fn obfuscate(e: &mut Expr, bits: u32, cfg: &ObfuscationConfig) {
     // Find all variables we have access to.
     let mut vars = e.vars();
     for i in 0..(cfg.rewrite_vars - vars.len() as isize) {
-        vars.push(format!("aux{}", i));
+        vars.push(format!("aux{}", i).into());
     }
 
     let mut v = Vec::new();
     obfuscate_impl(e, &mut v, &vars, bits, cfg);
 
     fn rewrite_random(
-        e: &LUExpr, vars: &[String], bits: u32, cfg: &ObfuscationConfig
+        e: &LUExpr, vars: &[Symbol], bits: u32, cfg: &ObfuscationConfig
     ) -> LUExpr {
         let mut vars = vars.to_vec();
         for v in e.vars() {
@@ -68,7 +70,7 @@ pub fn obfuscate(e: &mut Expr, bits: u32, cfg: &ObfuscationConfig) {
         }
 
         fn try_rewrite(
-            e: &LUExpr, vars: &[String], bits: u32, cfg: &ObfuscationConfig
+            e: &LUExpr, vars: &[Symbol], bits: u32, cfg: &ObfuscationConfig
         ) -> Option<LUExpr> {
             let mut ops = Vec::new();
             ops.push(LUExpr::from(UExpr::Ones));
@@ -109,7 +111,7 @@ pub fn obfuscate(e: &mut Expr, bits: u32, cfg: &ObfuscationConfig) {
     fn obfuscate_impl(
         er: &mut Expr,
         visited: &mut Vec<*const ExprOp>,
-        vars: &[String],
+        vars: &[Symbol],
         bits: u32,
         cfg: &ObfuscationConfig
     ) {
@@ -130,7 +132,7 @@ pub fn obfuscate(e: &mut Expr, bits: u32, cfg: &ObfuscationConfig) {
             *e = rewrite_random(&lu, vars, bits, cfg).to_expr();
             for (var, sub) in &mut subs.0 {
                 obfuscate_impl(sub, visited, vars, bits, cfg);
-                er.substitute(var, sub);
+                er.substitute(*var, sub);
             }
             return;
         }
@@ -151,14 +153,20 @@ pub fn obfuscate(e: &mut Expr, bits: u32, cfg: &ObfuscationConfig) {
 pub fn deobfuscate(e: &mut Expr, bits: u32) {
     log::trace!("Deobfuscating expression: {}", e);
 
+    let cfg = DeobfuscationConfig {
+        alg: SolutionAlgorithm::LeastComplexTerms,
+        boolean: true,
+    };
+
     let mut v = Vec::new();
-    deobfuscate_impl(e, &mut v, bits);
+    deobfuscate_impl(e, &mut v, bits, &cfg);
     e.simplify();
 
     fn deobfuscate_impl(
         er: &mut Expr,
         visited: &mut Vec<*const ExprOp>,
-        bits: u32
+        bits: u32,
+        cfg: &DeobfuscationConfig
     ) {
         // Check if we have already visited this expression.
         let ptr = er.as_ptr();
@@ -175,15 +183,15 @@ pub fn deobfuscate(e: &mut Expr, bits: u32) {
         // linear MBA and obfuscate it on its own.
         if let Some((lu, mut subs)) = expr_to_luexpr(er, false) {
             log::trace!("Deobfuscating LU expression: {}", lu);
-            let lu = deobfuscate_luexpr(lu, bits, DeobfuscationConfig::LeastComplexTerms);
+            let lu = deobfuscate_luexpr(lu, bits, cfg);
             log::trace!("Deobfuscated LU expression: {}", lu);
             *e = lu.to_expr();
 
             // Deobfuscate all the subexpressions
             // and substitute them into the expression.
             for (var, sub) in &mut subs.0 {
-                deobfuscate_impl(sub, visited, bits);
-                er.substitute(var, sub);
+                deobfuscate_impl(sub, visited, bits, cfg);
+                er.substitute(*var, sub);
             }
             return;
         }
@@ -192,8 +200,8 @@ pub fn deobfuscate(e: &mut Expr, bits: u32) {
         match e {
             ExprOp::Mul(l, r) | ExprOp::Div(l, r) | ExprOp::Shl(l, r)
             | ExprOp::Shr(l, r) | ExprOp::Sar(l, r) => {
-                deobfuscate_impl(l, visited, bits);
-                deobfuscate_impl(r, visited, bits);
+                deobfuscate_impl(l, visited, bits, cfg);
+                deobfuscate_impl(r, visited, bits, cfg);
             }
             _ => panic!("Expression should be linear MBA, \
                 but expr_to_luexpr failed ({:?}).", e),
@@ -201,8 +209,17 @@ pub fn deobfuscate(e: &mut Expr, bits: u32) {
     }
 }
 
+pub struct DeobfuscationConfig {
+    /// The algorithm to use for finding a small solution.
+    pub alg: SolutionAlgorithm,
+
+    /// Detect whether the expression is purely boolean
+    /// and find a simplified expression from the truth table.
+    pub boolean: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeobfuscationConfig {
+pub enum SolutionAlgorithm {
     /// Just use the solution from the linear system solver.
     /// This should not really be used as
     /// [DeobfuscationConfig::LeastComplexTerms] is almost as
@@ -225,8 +242,8 @@ pub enum DeobfuscationConfig {
 }
 
 /// Deobfuscate a linear MBA expression.
-pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUExpr {
-    use DeobfuscationConfig::*;
+pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LUExpr {
+    use SolutionAlgorithm::*;
 
     // Get all the variables.
     let vars = e.vars();
@@ -235,6 +252,42 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
         "Deobfuscating linear MBA expression with {} variables.",
         vars.len()
     );
+
+    // This could be optimized.
+    // We compute the values of the expression twice.
+    // Once here and once in `solve_linear_system`.
+    if cfg.boolean {
+        // Allocate a valuation.
+        let mut val = Valuation::zero();
+
+        let entries = 1 << vars.len();
+        let mut v = Vec::with_capacity(entries);
+        for i in 0..entries {
+            // Initialize the valuation.
+            for (j, c) in vars.iter().enumerate() {
+                val.set_value(*c, -Integer::from((i >> j) & 1));
+            }
+
+            // Evaluate the expression.
+            let r = e.eval(&mut val, bits).keep_signed_bits(bits);
+            let r = if r == 0 {
+                false
+            } else if r == -1 {
+                true
+            } else {
+                break
+            };
+
+            // Write the desired result into the vector.
+            v.push(r);
+        }
+
+        if v.len() == entries {
+            let cfg = SimplificationConfig::default();
+            let u = simplify_from_truth_table(&vars, v.iter().cloned(), &cfg);
+            return u.into();
+        }
+    }
 
     //
     // Insert some default operations.
@@ -246,7 +299,7 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
 
     // Variables
     for v in &vars {
-        ops.push(UExpr::Var(v.clone()));
+        ops.push(UExpr::Var(*v));
     }
 
     // Binary operations (and, or, xor) for all variable pairs.
@@ -256,9 +309,9 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
                 break;
             }
 
-            ops.push(UExpr::and(UExpr::Var(w.clone()), UExpr::Var(v.clone())));
-            ops.push(UExpr::or(UExpr::Var(w.clone()), UExpr::Var(v.clone())));
-            ops.push(UExpr::xor(UExpr::Var(w.clone()), UExpr::Var(v.clone())));
+            ops.push(UExpr::and(UExpr::Var(*w), UExpr::Var(*v)));
+            ops.push(UExpr::or(UExpr::Var(*w), UExpr::Var(*v)));
+            ops.push(UExpr::xor(UExpr::Var(*w), UExpr::Var(*v)));
         }
     }
 
@@ -271,7 +324,7 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
 
     log::trace!("Using rewrite {} operations.", ops.len());
 
-    if cfg == LeastComplexTerms {
+    if cfg.alg == LeastComplexTerms {
         // Sort by descending complexity.
         ops.sort_by_cached_key(|e| -(e.complexity() as i32));
     }
@@ -291,7 +344,7 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
     // this system should always have a solution.
     assert!(l.offset.dim() == ops.len());
 
-    if cfg == LeastComplexTerms {
+    if cfg.alg == LeastComplexTerms {
         for i in 0..l.offset.dim() {
             assert!(!l.lattice.basis[i][i].is_zero());
             let q = l.offset[i].clone().div_euc(&l.lattice.basis[i][i]);
@@ -305,7 +358,7 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
     // If this should be fast, just use the particular solution
     // from the solver. In practice, this seems to work well.
     //if fast {
-    if matches!(cfg, Fast | LeastComplexTerms) {
+    if matches!(cfg.alg, Fast | LeastComplexTerms) {
         return collect_solution(l.offset.view(), &ops, bits);
     }
 
@@ -357,7 +410,7 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: DeobfuscationConfig) -> LUE
 fn solve_linear_system(
     expr: &LUExpr,
     ops: &[LUExpr],
-    vars: &[String],
+    vars: &[Symbol],
     bits: u32
 ) -> AffineLattice {
     log::trace!("Solving MBA system with {} variables and {} operations.",
@@ -383,7 +436,7 @@ fn solve_linear_system(
 
         // Initialize the valuation.
         for (j, c) in vars.iter().enumerate() {
-            *val.value(c) = -Integer::from((i >> j) & 1);
+            val.set_value(*c, -Integer::from((i >> j) & 1));
         }
 
         // Write the values of the operations into this row of the matrix.
@@ -427,7 +480,7 @@ fn collect_solution(
 
 /// A list of substitutions.
 /// See e.g. [expr_to_uexpr] on what this is used for.
-pub struct Subs(pub Vec<(String, Expr)>);
+pub struct Subs(pub Vec<(Symbol, Expr)>);
 
 impl Subs {
     /// Creates a new empty substitution list.
@@ -436,17 +489,17 @@ impl Subs {
     }
 
     /// Adds a new substitution.
-    pub fn add(&mut self, expr: Expr) -> String {
+    pub fn add(&mut self, expr: Expr) -> Symbol {
         // Do we have this expression stored already?
         for (var, e) in &self.0 {
             if e == &expr {
-                return var.clone();
+                return *var;
             }
         }
 
         // Create a new substitution variable.
-        let var = format!("_sub_{}", self.0.len());
-        self.0.push((var.clone(), expr));
+        let var = Symbol::from(format!("_sub_{}", self.0.len()));
+        self.0.push((var, expr));
         var
     }
 }
@@ -466,7 +519,7 @@ fn expr_to_uexpr(
     let mut new_sub = || force.then(|| UExpr::Var(subs.add(e.clone())));
 
     if let ExprOp::Var(v) = e.as_ref() {
-        return Some(UExpr::Var(v.clone()));
+        return Some(UExpr::Var(*v));
     }
 
     // We don't try, when the expression is shared.
@@ -583,12 +636,12 @@ fn expr_to_luexpr_impl(
 /// It would be very desirable to make this smarter.
 /// Currently it generates a lot of non-sense expressions,
 /// which simplify to zero or one easily.
-fn random_bool_expr(vars: &[String], max_depth: usize) -> UExpr {
+fn random_bool_expr(vars: &[Symbol], max_depth: usize) -> UExpr {
     assert!(!vars.is_empty(), "There needs to be \
         at least one variable for the random expression.");
 
     let rand_var = || UExpr::Var(
-        vars[rand::random::<usize>() % vars.len()].clone()
+        vars[rand::random::<usize>() % vars.len()]
     );
 
     if max_depth == 0 {
@@ -678,15 +731,21 @@ fn linear_obfuscate_test() {
 #[test]
 fn deobfuscate_linear_test() {
     env_logger::init();
-    let e = UExpr::xor(UExpr::not(UExpr::var("x")), UExpr::var("y"));
-    let d = deobfuscate_luexpr(e.clone().into(), 4, DeobfuscationConfig::ShortVector);
+    let cfg = DeobfuscationConfig {
+        alg: SolutionAlgorithm::LeastComplexTerms,
+        boolean: true,
+    };
+    let x = Symbol::from("x");
+    let y = Symbol::from("y");
+    let e = UExpr::xor(UExpr::not(UExpr::var(x)), UExpr::var(y));
+    let d = deobfuscate_luexpr(e.clone().into(), 4, &cfg);
     println!("{d}");
 
     let mut v = Valuation::zero();
-    for x in 0..15 {
-        *v.value("x") = x.into();
-        for y in 0..15 {
-            *v.value("y") = y.into();
+    for xv in 0..15 {
+        *v.value(x) = xv.into();
+        for yv in 0..15 {
+            *v.value(y) = yv.into();
             assert_eq!(e.eval(&mut v).keep_signed_bits(4), d.eval(&mut v, 4).keep_signed_bits(4));
         }
     }

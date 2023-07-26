@@ -14,7 +14,10 @@ use rand::{
 };
 #[cfg(feature = "z3")]
 use z3::{self, ast::Ast};
-
+// It would be nicer to import the symbol_table crate ourselves,
+// and re-export GlobalSymbol, but we don't want to run into
+// version conflicts.
+pub use egg::Symbol;
 use std::rc::Rc;
 
 mod matrix;
@@ -31,11 +34,14 @@ use expr::*;
 mod uniform_expr;
 use uniform_expr::*;
 
+use crate::linear_mba::{DeobfuscationConfig, SolutionAlgorithm};
+
 mod diophantine;
 mod lattice;
 mod poly;
 mod perm_poly;
 mod linear_mba;
+mod simplify_boolean;
 
 // This generates an 8-bit permutation polynomial of degree 3 and its inverse.
 //fn main() {
@@ -191,9 +197,13 @@ fn main() {
         (~(z | w) | w) + 3194849700 * ~((y | y) ^ y ^ z)
         + 1678283628 * ~(~y & ~w) + 1083630375 * y";
     //let e = LUExpr::from_string("(x ^ y) + 2 * (x & y)").unwrap();
+    let cfg = DeobfuscationConfig {
+        alg: SolutionAlgorithm::LeastComplexTerms,
+        boolean: true,
+    };
     let e = LUExpr::from_string(s).unwrap();
     let d = linear_mba::deobfuscate_luexpr(
-        e, 32, linear_mba::DeobfuscationConfig::LeastComplexTerms
+        e, 32, &cfg
     );
     println!("{}", d);
 }

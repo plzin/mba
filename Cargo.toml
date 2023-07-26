@@ -6,10 +6,12 @@ edition = "2021"
 [dependencies]
 log = { version = "0.4", features = ["release_max_level_off"] }
 env_logger = "0.10"
+lazy_static = "1.4"
 itertools = "0.10"
 rand = "0.8"
 num-traits = "0.2"
 rug = { version = "1", features = ["integer", "rational", "rand", "num-traits"] }
+egg = "0.9"
 z3 = { version = "0.11", optional = true }
 z3-sys = { version = "0.7", optional = true }
 

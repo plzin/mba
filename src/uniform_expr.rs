@@ -1,11 +1,10 @@
 #![allow(dead_code)]
 
-use crate::valuation::Valuation;
 use std::{ops::{Index, IndexMut, Neg}, collections::BTreeSet};
 use num_traits::Zero;
 use rug::{Integer, Complete};
-
-use crate::{ExprOp, int_from_it};
+use crate::valuation::Valuation;
+use crate::{Symbol, ExprOp, int_from_it};
 
 /// LUExpr is short for "Linear combination of Uniform Expressions"
 /// These are the expressions for which rewrite rules can be efficiently
@@ -26,8 +25,8 @@ impl LUExpr {
     }
 
     /// Creates an expression that equals a variable.
-    pub fn var(name: String) -> Self {
-        Self(vec![(1.into(), UExpr::Var(name))])
+    pub fn var<T: Into<Symbol>>(name: T) -> Self {
+        Self(vec![(1.into(), UExpr::Var(name.into()))])
     }
 
     /// Removes all terms with coefficient 0.
@@ -37,13 +36,13 @@ impl LUExpr {
 
     /// Returns all variables in the expression.
     /// This will include duplicates.
-    pub fn vars(&self) -> Vec<String> {
+    pub fn vars(&self) -> Vec<Symbol> {
         let mut v = BTreeSet::new();
         self.vars_impl(&mut v);
         v.into_iter().collect()
     }
 
-    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<String>) {
+    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<Symbol>) {
         for (_, e) in &self.0 {
             e.vars_impl(v);
         }
@@ -212,7 +211,7 @@ impl std::fmt::Display for LUExpr {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum UExpr {
     Ones,
-    Var(String),
+    Var(Symbol),
     And(Box<Self>, Box<Self>),
     Or(Box<Self>, Box<Self>),
     Xor(Box<Self>, Box<Self>),
@@ -220,7 +219,7 @@ pub enum UExpr {
 }
 
 impl UExpr {
-    pub fn var<T: Into<String>>(name: T) -> Self {
+    pub fn var<T: Into<Symbol>>(name: T) -> Self {
         Self::Var(name.into())
     }
 
@@ -242,17 +241,17 @@ impl UExpr {
 
     /// Returns all variables in the expression.
     /// This will include duplicates.
-    pub fn vars(&self) -> Vec<String> {
+    pub fn vars(&self) -> Vec<Symbol> {
         let mut v = BTreeSet::new();
         self.vars_impl(&mut v);
         v.into_iter().collect()
     }
 
-    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<String>) {
+    pub(crate) fn vars_impl(&self, v: &mut BTreeSet<Symbol>) {
         use UExpr::*;
         match self {
             Ones            => {},
-            Var(c)          => drop(v.insert(c.clone())),
+            Var(c)          => drop(v.insert(*c)),
             And(e1, e2)     => { e1.vars_impl(v); e2.vars_impl(v) },
             Or(e1, e2)      => { e1.vars_impl(v); e2.vars_impl(v) },
             Xor(e1, e2)     => { e1.vars_impl(v); e2.vars_impl(v) },
@@ -265,7 +264,7 @@ impl UExpr {
         use UExpr::*;
         match self {
             Ones            => (-1).into(),
-            Var(c)          => v.value(c).clone(),
+            Var(c)          => v.value(*c).clone(),
             And(e1, e2)     => e1.eval(v) & e2.eval(v),
             Or(e1, e2)      => e1.eval(v) | e2.eval(v),
             Xor(e1, e2)     => e1.eval(v) ^ e2.eval(v),
@@ -274,11 +273,11 @@ impl UExpr {
     }
 
     /// Rename a variable.
-    pub fn rename_var(&mut self, old: &str, new: &str) {
+    pub fn rename_var(&mut self, old: Symbol, new: Symbol) {
         use UExpr::*;
         match self {
             Ones        => (),
-            Var(v)      => if *v == old { v.clear(); v.push_str(new) },
+            Var(v)      => if *v == old { *v = new },
             And(l, r)   => { l.rename_var(old, new); r.rename_var(old, new) },
             Or(l, r)    => { l.rename_var(old, new); r.rename_var(old, new) },
             Xor(l, r)   => { l.rename_var(old, new); r.rename_var(old, new) },
@@ -359,7 +358,7 @@ impl UExpr {
                 it.next();
             }
 
-            Var(var)
+            Var(var.into())
         } else if c == '1' {
             it.next();
             Ones
@@ -404,7 +403,7 @@ impl UExpr {
         use UExpr::*;
         match self {
             Ones        => ExprOp::Const((-1).into()),
-            Var(c)      => ExprOp::Var(c.clone()),
+            Var(c)      => ExprOp::Var(*c),
             And(l, r)   => ExprOp::And(l.to_expr().into(), r.to_expr().into()),
             Or(l, r)    => ExprOp::Or(l.to_expr().into(), r.to_expr().into()),
             Xor(l, r)   => ExprOp::Xor(l.to_expr().into(), r.to_expr().into()),
