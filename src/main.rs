@@ -208,36 +208,36 @@ fn main() {
     println!("{}", d);
 }
 
-#[cfg(feature = "z3")]
-fn deobfuscate_nonlinear(e: Expr) {
-    let mut v = Vec::new();
-    let mut q = std::collections::VecDeque::new();
-    q.push_back(e);
-    while let Some(e) = q.pop_front() {
-        match e.as_ref() {
-            ExprOp::Add(l, r) => {
-                q.push_back(l.clone());
-                q.push_back(r.clone());
-            },
-            ExprOp::Mul(l, r) => {
-                if let ExprOp::Const(i) = l.as_ref() {
-                    v.push((i.clone(), r.clone()));
-                } else if let ExprOp::Const(i) = r.as_ref() {
-                    v.push((i.clone(), l.clone()));
-                } else {
-                    println!("Could not deobfuscate expression, \
-                        because a term in the linear combination \
-                        is not in a form we recognize.");
-                }
-            },
-            _ => {
-                println!("Could not deobfuscate the expression, \
-                    because it is not in a form we recognize.");
-                return;
-            }
-        }
-    }
-}
+// #[cfg(feature = "z3")]
+// fn deobfuscate_nonlinear(e: Expr) {
+//     let mut v = Vec::new();
+//     let mut q = std::collections::VecDeque::new();
+//     q.push_back(e);
+//     while let Some(e) = q.pop_front() {
+//         match e.as_ref() {
+//             ExprOp::Add(l, r) => {
+//                 q.push_back(l.clone());
+//                 q.push_back(r.clone());
+//             },
+//             ExprOp::Mul(l, r) => {
+//                 if let ExprOp::Const(i) = l.as_ref() {
+//                     v.push((i.clone(), r.clone()));
+//                 } else if let ExprOp::Const(i) = r.as_ref() {
+//                     v.push((i.clone(), l.clone()));
+//                 } else {
+//                     println!("Could not deobfuscate expression, \
+//                         because a term in the linear combination \
+//                         is not in a form we recognize.");
+//                 }
+//             },
+//             _ => {
+//                 println!("Could not deobfuscate the expression, \
+//                     because it is not in a form we recognize.");
+//                 return;
+//             }
+//         }
+//     }
+// }
 
 // Solve a system of linear congruences.
 //fn main() {
@@ -277,14 +277,14 @@ pub(crate) fn int_to_bv<'ctx>(
     use z3::ast::Ast;
     let mut bits = i.to_digits::<bool>(rug::integer::Order::Lsf);
     bits.resize(width as usize, false);
-    let ast = unsafe {
-        z3_sys::Z3_mk_bv_numeral(
+    unsafe {
+        let ast = z3_sys::Z3_mk_bv_numeral(
             *(ctx as *const _ as *const z3_sys::Z3_context),
             width,
             bits.as_ptr()
-        )
-    };
-    z3::ast::BV::new(ctx, ast)
+        );
+        z3::ast::BV::wrap(ctx, ast)
+    }
 }
 
 /// Used internally to convert an integer from and iterator over characters.
