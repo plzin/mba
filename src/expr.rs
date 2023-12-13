@@ -559,13 +559,13 @@ impl ExprOp {
             let l = if pred > l.precedence() && l.strong_count() == 1 {
                 format!("({})", ExprOp::print_simple_rc(l, vars))
             } else {
-                format!("{}", ExprOp::print_simple_rc(l, vars))
+                ExprOp::print_simple_rc(l, vars)
             };
 
             let r = if pred > r.precedence() && r.strong_count() == 1 {
                 format!("({})", ExprOp::print_simple_rc(r, vars))
             } else {
-                format!("{}", ExprOp::print_simple_rc(r, vars))
+                ExprOp::print_simple_rc(r, vars)
             };
 
             format!("{} {} {}", l, op, r)
