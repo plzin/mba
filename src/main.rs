@@ -69,7 +69,7 @@ mod simplify_boolean;
 //}
 
 // Rewrite a constant using non-linear MBA.
-fn m() {
+fn main() {
     let Some((_, bits, num)) = std::env::args().next_tuple() else {
         println!("\
             The current `main` is just one example of how to use the crate.\n\
@@ -233,22 +233,22 @@ fn m() {
 // }
 
 // Solve a system of linear congruences.
-fn main() {
-    let solution = diophantine::solve_modular(
-        Matrix::from_array([[3, 5], [4, 2]]).view(),
-        Vector::from_slice(&[2.into(), 0.into()]),
-        &256.into()
-    );
-
-    if (solution.is_empty()) {
-        println!("No solution");
-    } else {
-        println!("Off: {:?}\nBasis:", solution.offset);
-        for b in solution.lattice.basis.rows() {
-            println!("{:?}", b);
-        }
-    }
-}
+// fn main() {
+//     let solution = diophantine::solve_modular(
+//         Matrix::from_array([[3, 5], [4, 2]]).view(),
+//         Vector::from_slice(&[2.into(), 0.into()]),
+//         &256.into()
+//     );
+//
+//     if (solution.is_empty()) {
+//         println!("No solution");
+//     } else {
+//         println!("Off: {:?}\nBasis:", solution.offset);
+//         for b in solution.lattice.basis.rows() {
+//             println!("{:?}", b);
+//         }
+//     }
+// }
 
 //fn main() {
 //    // The example will obfuscate x+y where x and y are 32-bit integers.
