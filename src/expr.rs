@@ -39,8 +39,11 @@ impl Expr {
 
         fn simplify_impl(e: &mut Expr, visited: &mut Vec<*const ExprOp>) {
             let ptr = e.as_ptr();
-            if e.strong_count() > 1 && visited.contains(&ptr) {
-                return
+            if e.strong_count() > 1 {
+                if visited.contains(&ptr) {
+                    return
+                }
+                visited.push(ptr);
             }
 
             let m = unsafe { &mut *(ptr as *mut _) };
@@ -149,10 +152,6 @@ impl Expr {
                         *e = l.clone();
                     }
                 },
-            }
-
-            if e.strong_count() > 1 {
-                visited.push(ptr);
             }
         }
     }

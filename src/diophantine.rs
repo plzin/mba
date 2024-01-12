@@ -85,7 +85,7 @@ pub fn hermite_normal_form(a: &mut IOwnedMatrix) -> IOwnedMatrix {
 }
 
 /// Solves a system of linear diophantine equations.
-pub fn solve(a: &IOwnedMatrix, b: &IOwnedVector) -> AffineLattice {
+pub fn solve(a: &IMatrixView, b: &IVectorView) -> AffineLattice {
     assert!(a.nrows() == b.dim(),
         "Vector must have an entry for each row in the matrix.");
 
@@ -135,7 +135,7 @@ pub fn solve(a: &IOwnedMatrix, b: &IOwnedVector) -> AffineLattice {
 }
 
 /// Solves a linear system of equations Ax=b mod n.
-pub fn solve_modular(a: &IOwnedMatrix, b: &IOwnedVector, n: &Integer) -> AffineLattice {
+pub fn solve_modular(a: &IMatrixView, b: &IVectorView, n: &Integer) -> AffineLattice {
     log::trace!("Solving {} linear equations in {} variables mod {}.",
         a.nrows(), a.ncols(), n);
 
@@ -157,7 +157,7 @@ pub fn solve_modular(a: &IOwnedMatrix, b: &IOwnedVector, n: &Integer) -> AffineL
     }
 
     // Solve the diophantine system.
-    let l = solve(&m, b);
+    let l = solve(m.view(), b);
     if l.is_empty() {
         return l;
     }
@@ -197,7 +197,7 @@ fn small_test() {
 
     let b = Vector::from_entries([0, 1, 1, 2]);
 
-    let l = solve(&a, &b);
+    let l = solve(a.view(), b.view());
     assert_eq!(l.offset.as_slice(), [2, 1, 0, 0]);
     assert_eq!(l.lattice.rank(), 1);
     assert_eq!(l.lattice.basis.row(0).as_slice(), [0, 0, 1, 1]);

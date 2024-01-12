@@ -18,6 +18,11 @@ Rust itself will panic (at least in debug builds) when addition/multiplication o
 If you want to try this for yourself, check out my implementation that compiles to WASM
 [here](https://github.com/plzin/mba-wasm), and is hosted as a web interface
 [here](https://plzin.github.io/mba-wasm/).
+Eventually this crate should be a library that the WASM crate (and others) can use.
+Currently this crate is slightly different because it uses `rug::Integers` everywhere
+(not WASM compatible) instead of template parameters (`u8`, `u16`, ...).
+(Also the linear system solver is different and worse).
+You can find some examples of how to use this crate in `src/main.rs`
 
 ### References
 \[1\] [Information Hiding in Software with Mixed Boolean-Arithmetic Transforms](https://link.springer.com/chapter/10.1007/978-3-540-77535-5_5)

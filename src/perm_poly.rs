@@ -16,7 +16,6 @@ impl ThreadRandGen for Generator {
     }
 }
 
-
 /// Returns a pair of permutation polynomials mod 2^n.
 /// The functions are inverses of each other.
 /// `degree` specifies the degree of the first polynomial.
@@ -132,13 +131,6 @@ pub fn compute_inverse(f: &Poly, zi: &ZeroIdeal) -> Poly {
 
         it += 1;
     }
-}
-
-#[test]
-fn sdfs() {
-    env_logger::init();
-    let zi = ZeroIdeal::init(8);
-    let (p, q) = perm_pair(&zi, 5);
 }
 
 /// Computes the inverse of a permutation polynomial by using f as a generator.
@@ -469,7 +461,7 @@ fn order(p: &Poly, zi: &ZeroIdeal) -> usize {
         }
     }
 
-    panic!("We shouldn't get here.\
+    panic!("We shouldn't get here. \
         Either p is not a permutation polynomial or the composition is wrong.");
 }
 

@@ -164,16 +164,16 @@ where
 
     fn from_1(
         vars: &[Symbol], i: usize, nodes: &RefCell<Vec<BooleanLanguage>>
-    ) -> Id {
+    ) -> usize {
         let mut iter = (0..vars.len()).map(|j|
-            Id::from(j * 2 + ((i >> j) & 1))
+            j * 2 + (1 - ((i >> j) & 1))
         );
 
         let first = iter.next().unwrap();
         iter.fold(first, |acc, x| {
             let mut nodes = nodes.borrow_mut();
-            nodes.push(BooleanLanguage::And([acc, x]));
-            Id::from(nodes.len() - 1)
+            nodes.push(BooleanLanguage::And([Id::from(acc), Id::from(x)]));
+            nodes.len() - 1
         })
     }
 
@@ -181,11 +181,16 @@ where
     let Some(first) = iter.next() else {
         return UExpr::not(UExpr::Ones);
     };
-    iter.fold(first, |acc, x| {
+    let root = iter.fold(first, |acc, x| {
         let mut nodes = nodes.borrow_mut();
-        nodes.push(BooleanLanguage::Or([acc, x]));
-        Id::from(nodes.len() - 1)
+        nodes.push(BooleanLanguage::Or([Id::from(acc), Id::from(x)]));
+        nodes.len() - 1
     });
+
+    // If there is only one variable `a` and the expression is `a`,
+    // then the variable entry will the root. But the vector already
+    // contains `not a`, so we need to remove it, so that `a` is the root.
+    nodes.borrow_mut().truncate(root + 1);
 
     let dnf = RecExpr::from(nodes.into_inner());
     bexpr_to_uexpr(&simplify_bexpr(&dnf, cfg))
@@ -211,16 +216,16 @@ where
 
     fn from_0(
         vars: &[Symbol], i: usize, nodes: &RefCell<Vec<BooleanLanguage>>
-    ) -> Id {
+    ) -> usize {
         let mut iter = (0..vars.len()).map(|j|
-            Id::from(j * 2 + (1 - ((i >> j) & 1)))
+            j * 2 + ((i >> j) & 1)
         );
 
         let first = iter.next().unwrap();
         iter.fold(first, |acc, x| {
             let mut nodes = nodes.borrow_mut();
-            nodes.push(BooleanLanguage::Or([acc, x]));
-            Id::from(nodes.len() - 1)
+            nodes.push(BooleanLanguage::Or([Id::from(acc), Id::from(x)]));
+            nodes.len() - 1
         })
     }
 
@@ -228,11 +233,16 @@ where
     let Some(first) = iter.next() else {
         return UExpr::Ones;
     };
-    iter.fold(first, |acc, x| {
+    let root = iter.fold(first, |acc, x| {
         let mut nodes = nodes.borrow_mut();
-        nodes.push(BooleanLanguage::And([acc, x]));
-        Id::from(nodes.len() - 1)
+        nodes.push(BooleanLanguage::And([Id::from(acc), Id::from(x)]));
+        nodes.len() - 1
     });
+
+    // If there is only one variable `a` and the expression is `a`,
+    // then the variable entry will the root. But the vector already
+    // contains `not a`, so we need to remove it, so that `a` is the root.
+    nodes.borrow_mut().truncate(root + 1);
 
     let dnf = RecExpr::from(nodes.into_inner());
     bexpr_to_uexpr(&simplify_bexpr(&dnf, cfg))
@@ -411,8 +421,7 @@ fn make_rules() -> Vec<Rewrite<BooleanLanguage, ()>> {
     rules
 }
 
-#[test]
-fn boolean_simlify_test() {
+fn simplify_explanation_test() {
     let expr: BExpr = "(and ?x (xor ?x ?y))".parse().unwrap();
     println!("{expr}");
 
@@ -506,34 +515,8 @@ fn n_vars(n: usize) -> Vec<Symbol> {
     (1..=n).map(|i| Symbol::from(format!("x{}", i))).collect()
 }
 
-#[test]
-fn fsdfs() {
-    env_logger::init();
-    //let e = UExpr::from_string("(((~x) & y) | (x & y))").unwrap();
-    //let e = UExpr::from_string("z & ((z & (((~x) & y) | (x & y))) | (x & (~y)))").unwrap();
-    //let e = UExpr::from_string("z & (x | (z & y))").unwrap();
-    //let e = UExpr::from_string("y & ((~(z | x)) | (z & (x & y)))").unwrap();
-    let e = UExpr::from_string("((x ^ y) & z) ^ (z | (~(x & y)))").unwrap();
-    let cfg = SimplificationConfig {
-        retry_limit: 1,
-        iter_limit: 100,
-        node_limit: 1_000_000,
-        time_limit: std::time::Duration::from_secs(600),
-        ..SimplificationConfig::default()
-    };
-    println!("{}", simplify(&e, &cfg));
-
-    //let e = simplify_from_truth_table_dnf(
-    //    &["x", "y", "z"],
-    //    [0usize, 5].into_iter(),
-    //    &cfg
-    //);
-    //println!("{e}");
-}
-
-#[test]
+// Used during development and I didn't want to delete it.
 fn short_from_rand_truth_table() {
-    env_logger::init();
     let n = rand::random::<usize>() % 5 + 1;
     let vars = n_vars(n);
 
@@ -555,9 +538,8 @@ fn short_from_rand_truth_table() {
     println!("{e}");
 }
 
-#[test]
+// Used during development and I didn't want to delete it.
 fn list_minimal_expressions() {
-    env_logger::init();
     let vars = n_vars(3);
     let mut truth_table = vec![false; 1 << vars.len()];
     let cfg = SimplificationConfig::default();
@@ -582,5 +564,4 @@ fn list_minimal_expressions() {
             }
         }
     }
-
 }

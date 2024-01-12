@@ -448,7 +448,7 @@ fn solve_linear_system(
         b[i] = expr.eval(&mut val, bits).keep_signed_bits(bits);
     }
 
-    diophantine::solve_modular(&a, &b, &(Integer::from(1) << bits))
+    diophantine::solve_modular(a.view(), b.view(), &(Integer::from(1) << bits))
 }
 
 /// Converts a solution to the linear system and the operations
@@ -730,7 +730,6 @@ fn linear_obfuscate_test() {
 
 #[test]
 fn deobfuscate_linear_test() {
-    env_logger::init();
     let cfg = DeobfuscationConfig {
         alg: SolutionAlgorithm::LeastComplexTerms,
         boolean: true,
@@ -753,13 +752,12 @@ fn deobfuscate_linear_test() {
 
 #[test]
 fn deobfuscate_test() {
-    env_logger::init();
     let bits = 8;
     //let e = Expr::from_string("x + y * x").unwrap();
     let e = Expr::from_string("179 * x - 6 + y * x * 4").unwrap();
 
     // Create an example expression.
-    log::debug!("Original:\n{e}");
+    println!("Original:\n{e}");
 
     // Obfuscate it.
     let mut o = e.deep_copy();
@@ -770,12 +768,16 @@ fn deobfuscate_test() {
         ..ObfuscationConfig::default()
     };
     obfuscate(&mut o, bits, &cfg);
-    log::debug!("Obfuscated:\n{o}");
+    println!("Obfuscated:\n{o}");
 
+    for _ in 0..100 {
+        let mut v = Valuation::random(bits);
+        assert_eq!(e.eval(&mut v, bits), o.eval(&mut v, bits));
+    }
 
     // Deobfuscate it.
     deobfuscate(&mut o, bits);
-    log::debug!("Deobfuscated:\n{o}");
+    println!("Deobfuscated:\n{o}");
 
     for _ in 0..100 {
         let mut v = Valuation::random(bits);
