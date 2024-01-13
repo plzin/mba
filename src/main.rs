@@ -68,14 +68,14 @@ mod simplify_boolean;
 //    }
 //}
 
-// Rewrite a constant using non-linear MBA.
+// Rewrite a linear MBA expression using non-linear MBA.
 fn main() {
-    let Some((_, bits, num)) = std::env::args().next_tuple() else {
+    let Some((_, bits, expr)) = std::env::args().next_tuple() else {
         println!("\
             The current `main` is just one example of how to use the crate.\n\
             Eventually, this crate should be a library.\n\
-            The current `main` obfuscates an n bit constant using non-linear MBA.\n\
-            Usage: mba <bits> <constant>\
+            The current `main` obfuscates an n bit linear MBA expression using non-linear MBA.\n\
+            Usage: mba <bits> <expr>\
         ");
         return;
     };
@@ -85,24 +85,13 @@ fn main() {
         return;
     };
 
-    // This is the constant that will be obfuscated.
-    let Ok(input) = Integer::from_str_radix(&num, 10) else {
-        println!("Invalid constant.");
+    let Some(expr) = LUExpr::from_string(expr) else {
+        println!("Invalid expression.");
         return;
     };
 
     // Initialize stuff.
     let n = Integer::from(1) << bits;
-    let zi = perm_poly::ZeroIdeal::init(bits);
-
-    // Obfuscate a different constant and apply a
-    // polynomial at the end to get the real one.
-    //let p = poly::Poly::from_vec(vec![0, 1, 2]);
-    //let q = perm_poly::compute_inverse(&p, &zi);
-    //let input = q.eval_bits(&input, bits);
-
-    // The expression to obfuscate.
-    let expr = LUExpr::constant(input.clone());
 
     // The operations for rewriting.
     let ops = &[
@@ -123,7 +112,6 @@ fn main() {
 
     // Rewrite the constant.
     let obf = linear_mba::rewrite(&expr, ops, bits, true).unwrap();
-    println!("{obf}");
 
     // Contains the linear combination of the multiplication.
     let mut v: Vec<(Integer, UExpr, UExpr)> = Vec::new();
@@ -135,7 +123,6 @@ fn main() {
         let mut ops = ops.to_vec();
         ops.retain(|f| &f.0[0].1 != e);
         let coeff = linear_mba::rewrite(&coeff, &ops, bits, true).unwrap();
-        println!("{e}: {coeff}");
 
         // Add all coefficients of the obfuscated coefficient
         // to the linear combination.
@@ -174,31 +161,7 @@ fn main() {
         expr = Expr::new(ExprOp::Add(expr, a));
     }
 
-    //let mut re = Rc::new(expr);
-    //expr = p.to_expr().substitute("x", &mut re);
-
-
-    //if cfg!(feature = "z3") {
-    //    let cfg = z3::Config::new();
-    //    let ctx = z3::Context::new(&cfg);
-    //    let bv = expr.to_z3_bv(&ctx, bits);
-
-    //    let solver = z3::Solver::new(&ctx);
-    //    let assertion = bv._eq(&int_to_bv(&ctx, bits, &input)).not();
-    //    println!("assertion: {}", assertion);
-    //    solver.assert(&assertion);
-    //    println!("Using z3 to check that the rewritten expression is equivalent.");
-    //    let now = std::time::Instant::now();
-    //    let result = solver.check();
-    //    let dur = now.elapsed().as_secs_f32();
-    //    match result {
-    //        z3::SatResult::Sat => println!("Found counterexample:\n{}",
-    //            solver.get_model().unwrap()),
-    //        z3::SatResult::Unsat => println!("Verification successful."),
-    //        z3::SatResult::Unknown => println!("z3 aborted."),
-    //    }
-    //    println!("z3 verification took {dur:.2} seconds.");
-    //}
+    expr.simplify();
 
     println!("{expr}");
 }
@@ -206,28 +169,15 @@ fn main() {
 // fn main() {
 //     env_logger::init();
 //
-//     let s = "4071272 * w + 3590309086 * (w | z & z & (y |
-//         w)) + 3690425492 * (w & x ^ ~z ^ ~y) + 3735539420 *
-//         (y ^ (w & z | y)) + 3176111544 * ((x & y | x ^ z) ^
-//         ~y) + 90227856 * (y & x & x & (x & w | ~w)) +
-//         2231609705 * (~z ^ w & x | z ^ x | x | w) +
-//         263864489 * (w ^ z | x | w | z) + 17029904 *
-//         (~w ^ w ^ (x | z) ^ ~x) + 2987805917 * (z & x) +
-//         1280785607 * z + 2092481170 * (y & (w & y | ~z)) +
-//         637019375 * (~w | w & z & ~x) + 3221225472 * ((x |
-//         w) ^ x ^ x ^ y) + 3985988880 * x + 263864489 * (~~w &
-//         x) + 469200020 * ((z ^ w & w) & ~(x ^ y)) +
-//         1774328762 * ((w | x) & (x ^ z) & z) + 3645311564 *
-//         (~(z | w) | w) + 3194849700 * ~((y | y) ^ y ^ z)
-//         + 1678283628 * ~(~y & ~w) + 1083630375 * y";
-//     //let e = LUExpr::from_string("(x ^ y) + 2 * (x & y)").unwrap();
+//     let e = LUExpr::from_string("(x ^ y) + 2 * (x & y)").unwrap();
 //     let cfg = DeobfuscationConfig {
 //         alg: SolutionAlgorithm::LeastComplexTerms,
-//         boolean: true,
+//         boolean: false,
 //     };
 //     let e = LUExpr::from_string(s).unwrap();
+//     println!("{e}");
 //     let d = linear_mba::deobfuscate_luexpr(
-//         e, 32, &cfg
+//         e, 8, &cfg
 //     );
 //     println!("{}", d);
 // }

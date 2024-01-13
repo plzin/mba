@@ -138,9 +138,9 @@ impl LUExpr {
                 v.push((sign.into(), e));
             }
 
-            // If the next character is not a plus then we are done.
+            // If the next character is not a plus or - then we are done.
             match it.peek() {
-                Some('+') => it.next(), // Skip the +.
+                Some('+') => { neg = false; it.next() }, // Skip the +.
                 Some('-') => { neg = true; it.next() },
                 _ => return Some(Self(v)),
             };
