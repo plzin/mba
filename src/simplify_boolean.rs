@@ -42,7 +42,7 @@ pub struct SimplificationConfig {
     /// If we find an expression with cost 12 again,
     /// we will try again for this number of times,
     /// as long as the expression changes.
-    /// Tje default is 3.
+    /// The default is 3.
     retry_same_cost: usize,
     /// The maximum number of nodes in the egraph.
     /// The default is 10'000.
@@ -293,7 +293,7 @@ fn simplify_bexpr(e: &BExpr, cfg: &SimplificationConfig) -> BExpr {
 
         if best_cost_iter >= cfg.retry_same_cost
             || matches!(stop_reason, StopReason::Saturated)
-            || i == cfg.retry_limit - 1 {
+            || i + 1 == cfg.retry_limit {
             return new_best;
         }
         best = new_best;
