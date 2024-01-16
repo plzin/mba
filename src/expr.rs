@@ -1,7 +1,10 @@
-#![allow(dead_code)]
+//! General expressions.
 
-use std::{rc::Rc, collections::BTreeSet, ops::{Deref, DerefMut}, fmt::Display};
-use num_traits::{Zero, One};
+use std::rc::Rc;
+use std::collections::BTreeSet;
+use std::ops::Deref;
+use std::fmt::Display;
+use num_traits::One;
 use rug::Integer;
 use crate::valuation::Valuation;
 use crate::Symbol;
@@ -14,6 +17,7 @@ impl Expr {
         Self(Rc::new(e))
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn as_ref(&self) -> &ExprOp {
         self.0.as_ref()
     }
@@ -383,7 +387,7 @@ impl Expr {
             // the one whose subexpression we are currently parsing
             // then we need to finish this operator first.
             it.next();
-            let mut rhs = |it| Self::parse(it, op_pre);
+            let rhs = |it| Self::parse(it, op_pre);
             let lhs = e;
             e = Expr::new(match c {
                 '+' => Add(lhs, rhs(it)?),

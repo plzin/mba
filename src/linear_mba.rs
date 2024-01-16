@@ -1,13 +1,12 @@
-use std::rc::Rc;
+//! Linear Mixed Boolean-Arithmetic.
 
-use num_traits::Zero;
 use rug::ops::DivRounding;
-use rug::{Integer, Complete, Rational};
+use rug::{Integer, Complete};
 
 use crate::simplify_boolean::{simplify_from_truth_table, SimplificationConfig};
 use crate::valuation::Valuation;
 use crate::diophantine;
-use crate::expr::{self, ExprOp, Expr};
+use crate::expr::{ExprOp, Expr};
 use crate::lattice::{self, AffineLattice};
 use crate::uniform_expr::*;
 use crate::matrix::*;
@@ -222,7 +221,7 @@ pub struct DeobfuscationConfig {
 pub enum SolutionAlgorithm {
     /// Just use the solution from the linear system solver.
     /// This should not really be used as
-    /// [DeobfuscationConfig::LeastComplexTerms] is almost as
+    /// [SolutionAlgorithm::LeastComplexTerms] is almost as
     /// fast and much better.
     Fast,
 
@@ -480,7 +479,8 @@ fn collect_solution(
 
 /// A list of substitutions.
 /// See e.g. [expr_to_uexpr] on what this is used for.
-pub struct Subs(pub Vec<(Symbol, Expr)>);
+#[derive(Default)]
+struct Subs(pub Vec<(Symbol, Expr)>);
 
 impl Subs {
     /// Creates a new empty substitution list.
@@ -687,10 +687,10 @@ pub struct ObfuscationConfig {
     pub rewrite_tries: RewriteTries,
 }
 
-impl ObfuscationConfig {
+impl Default for ObfuscationConfig {
     /// Returns a reasonable default configuration.
     /// The the documentation of the members for the default values.
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             rewrite_vars: 4,
             rewrite_expr_depth: 3,

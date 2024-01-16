@@ -1,7 +1,7 @@
-#![allow(dead_code)]
+//! This module contains uniform expressions ([UExpr]), which are just bitwise expressions
+//! on n bits, and linear combinations of uniform expressions ([LUExpr]).
 
-use std::{ops::{Index, IndexMut, Neg}, collections::BTreeSet};
-use num_traits::Zero;
+use std::{ops::Neg, collections::BTreeSet};
 use rug::{Integer, Complete};
 use crate::valuation::Valuation;
 use crate::{Symbol, ExprOp, int_from_it};
@@ -74,8 +74,8 @@ impl LUExpr {
     /// and expects very specific syntax.
     /// It is used for convenience when testing things and
     /// not really meant to be used by something outside this crate.
-    pub(crate) fn from_string<T: ToString>(s: T) -> Option<Self> {
-        let mut s = s.to_string();
+    pub fn from_string<T: Into<String>>(s: T) -> Option<Self> {
+        let mut s = s.into();
         s.retain(|c| !c.is_whitespace());
         let mut it = s.chars().peekable();
 
@@ -235,6 +235,7 @@ impl UExpr {
         Self::Xor(l.into(), r.into())
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn not(e: Self) -> Self {
         Self::Not(e.into())
     }
@@ -315,8 +316,8 @@ impl UExpr {
     }
 
     /// Parse a string to an expression.
-    pub(crate) fn from_string<T: ToString>(s: T) -> Option<Self> {
-        let mut s = s.to_string();
+    pub fn from_string<T: Into<String>>(s: T) -> Option<Self> {
+        let mut s = s.into();
         s.retain(|c| !c.is_whitespace());
         let mut it = s.chars().peekable();
 

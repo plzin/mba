@@ -1,5 +1,7 @@
+//! Basically a key-value store for variable names and their values,
+//! but you can specify what to do when a variable is not found.
+
 use rug::Integer;
-use std::{ops::{Index, IndexMut}, cell::UnsafeCell};
 use crate::Symbol;
 
 /// Stores values that should be substituted into variables.

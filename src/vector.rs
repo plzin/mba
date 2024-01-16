@@ -1,10 +1,11 @@
-//! Owned and non-owned vectors constant runtime dimension.
+//! Vectors
 
 use std::borrow::{Borrow, BorrowMut};
 use std::marker::PhantomData;
 use std::ops::{
-    Deref, DerefMut, Neg, Add, Sub, Mul, Div,
-    AddAssign, SubAssign, MulAssign, DivAssign, Index, Range, IndexMut
+    Neg, Add, Sub, Mul, Div,
+    AddAssign, SubAssign, MulAssign, DivAssign,
+    Index, IndexMut, Range
 };
 use std::fmt::Debug;
 use num_traits::{Zero, Signed};
@@ -646,13 +647,12 @@ impl<T> StrideVectorView<T> {
 
 /// This is extremely hacky, because rust currently does not support
 /// custom dynamically sized types (DST). We make this a DST by having
-/// a slice as the member, just as for `ContiguousStorage`.
+/// a slice as the member, just as for [ContiguousVectorStorage].
 /// We abuse the metadata of the slice to store the dimension and stride!
-/// (See https://doc.rust-lang.org/std/ptr/trait.Pointee.html, for what
-/// metadata is). Since we cannot implement `Pointee` ourselves, we
-/// have to use the usize metadata of the slice.
-/// The first 32 bits are the dimension, the second 32 bits are the stride.
-/// As I said, very hacky, but in practice the both the dimension and
+/// (See [std::ptr::Pointee], for what metadata is). Since we cannot
+/// implement `Pointee` ourselves, we have to use the usize metadata of the
+/// slice. The first 32 bits are the dimension, the second 32 bits are the
+/// stride. As I said, very hacky, but in practice the both the dimension and
 /// stride should fit into 32 bits.
 #[repr(transparent)]
 pub struct StrideStorage<T>([T]);
@@ -660,9 +660,7 @@ pub struct StrideStorage<T>([T]);
 impl<T> StrideStorage<T> {
     /// The stride of the vector.
     pub fn stride(&self) -> usize {
-        unsafe {
-            self.0.len() >> 32
-        }
+        self.0.len() >> 32
     }
 }
 

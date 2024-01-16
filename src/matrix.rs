@@ -1,6 +1,5 @@
-//! Owned matrix with constant runtime dimension.
+//! Matrices
 
-use std::borrow::Borrow;
 use std::ops::{Index, IndexMut};
 use std::{marker::PhantomData, fmt::Debug, ops::Mul};
 use itertools::iproduct;
@@ -97,22 +96,22 @@ impl<T, S: MatrixStorage<T> + ?Sized> Matrix<T, S> {
     }
 
     /// Returns an iterator over the rows.
-    pub fn rows(&self) -> impl Iterator<Item = &Vector<T, S::RowVecStorage>> + DoubleEndedIterator {
+    pub fn rows(&self) -> impl DoubleEndedIterator<Item = &Vector<T, S::RowVecStorage>> {
         (0..self.nrows()).map(|r| self.row(r))
     }
 
     /// Returns an iterator over the mutable rows.
-    pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Vector<T, S::RowVecStorage>> + DoubleEndedIterator {
+    pub fn rows_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Vector<T, S::RowVecStorage>> {
         (0..self.nrows()).map(|r| unsafe { &mut *(self as *mut Self) }.row_mut(r))
     }
 
     /// Returns an iterator over the columns.
-    pub fn cols(&self) -> impl Iterator<Item = &Vector<T, S::ColVecStorage>> + DoubleEndedIterator {
+    pub fn cols(&self) -> impl DoubleEndedIterator<Item = &Vector<T, S::ColVecStorage>> {
         (0..self.ncols()).map(|c| self.col(c))
     }
 
     /// Returns an iterator over the mutable columns.
-    pub fn cols_mut(&mut self) -> impl Iterator<Item = &mut Vector<T, S::ColVecStorage>> + DoubleEndedIterator {
+    pub fn cols_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Vector<T, S::ColVecStorage>> {
         (0..self.ncols()).map(|c| unsafe { &mut *(self as *mut Self) }.col_mut(c))
     }
 
@@ -164,7 +163,7 @@ impl<T, S: MatrixStorage<T>> Matrix<T, S> {
 
 impl<T: Clone, S: MatrixStorage<T> + ?Sized> Matrix<T, S> {
     /// Returns a copy of the matrix.
-    fn to_owned(&self) -> OwnedMatrix<T> {
+    pub fn to_owned(&self) -> OwnedMatrix<T> {
         OwnedMatrix::from_iter(
             self.nrows(),
             self.ncols(),
@@ -384,7 +383,7 @@ impl<T> OwnedMatrix<T> {
     pub fn from_iter<I: Iterator<Item = T>>(
         r: usize, c: usize, mut iter: I
     ) -> Self {
-        let mut m = Self::uninit(r, c);
+        let m = Self::uninit(r, c);
         for i in 0..r*c {
             let e = iter.next()
                 .expect("The iterator needs to return at least r * c items.");
@@ -730,7 +729,7 @@ impl<T> TransposedMatrixView<T> {
 /// Very hacky, see [StrideStorage] for explanation.
 /// Metadata stores the number of columns (in the least significant 4 bytes)
 /// and rows (in the most significant 4 bytes).
-/// This allows you to transmute a [ContiguousMatrixStorage] reference into a
+/// This allows you to transmute a [SliceMatrixStorage] reference into a
 /// [TransposedMatrixStorage] reference while transposing the view.
 pub struct TransposedMatrixStorage<T>([T]);
 

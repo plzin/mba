@@ -1,7 +1,7 @@
-use num_traits::Zero;
+//! Solves linear diophantine equations.
+
 use rug::ops::DivRounding;
 use rug::{Integer, Complete};
-use rand::random;
 
 use crate::matrix::*;
 use crate::vector::*;
@@ -175,7 +175,7 @@ pub fn solve_modular(a: &IMatrixView, b: &IVectorView, n: &Integer) -> AffineLat
         .chain((0..a.ncols()).flat_map(|i| (0..a.ncols()).map(
             move |j| if j == i { n.clone() } else { Integer::new() }))
         );
-    let mut bm = Matrix::from_iter(l.lattice.rank() + a.ncols(), a.ncols(),
+    let bm = Matrix::from_iter(l.lattice.rank() + a.ncols(), a.ncols(),
         iter
     );
 

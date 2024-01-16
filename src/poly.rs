@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+//! Polynomials.
 
 use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign};
 
@@ -8,7 +8,7 @@ use crate::expr::{ExprOp, Expr};
 
 /// Represents a polynomial with integer coefficients.
 ///
-/// coeffs[0] + coeffs[1]x + coeffs[2]x^2 + ...
+/// `coeffs[0] + coeffs[1]*x + coeffs[2]*x*x + ...`
 ///
 /// The coefficients should maybe be stored in reverse order.
 #[derive(Clone, Debug)]
@@ -48,6 +48,7 @@ impl Poly {
     }
 
     /// Returns the degree of the polynomial.
+    /// The degree of the zero polynomial is zero here!
     pub fn degree(&self) -> usize {
         match self.coeffs.len() {
             0 => 0,
@@ -56,6 +57,7 @@ impl Poly {
     }
 
     /// Returns the number of coefficient.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.coeffs.len()
     }

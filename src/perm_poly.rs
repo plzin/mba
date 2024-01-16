@@ -1,3 +1,5 @@
+//! Binary permutation polynomials.
+
 use rug::{Integer, Complete, rand::{ThreadRandState, ThreadRandGen}};
 use rand::{distributions::{Distribution, Uniform}, prelude::ThreadRng, RngCore};
 
@@ -68,8 +70,11 @@ fn random_perm_poly(zi: &ZeroIdeal, degree: usize) -> Poly {
     Poly { coeffs: p }.truncated()
 }
 
-/// Computes the composition of two polynomials.
-fn compose(p: &Poly, q: &Poly, zi: &ZeroIdeal) -> Poly {
+/// Computes the composition p(q(x)) of two polynomials.
+/// It does not simplify the result as much as possible,
+/// so it is recommended to call [Poly::simplify] afterwards.
+/// It does however reduce the degree of the result.
+pub fn compose(p: &Poly, q: &Poly, zi: &ZeroIdeal) -> Poly {
     // Iterate over the coefficients in reverse order.
     let mut iter = p.coeffs.iter().rev();
 
@@ -134,7 +139,7 @@ pub fn compute_inverse(f: &Poly, zi: &ZeroIdeal) -> Poly {
 }
 
 /// Computes the inverse of a permutation polynomial by using f as a generator.
-fn compute_inverse_generator(f: &Poly, zi: &ZeroIdeal) -> Poly {
+pub fn compute_inverse_generator(f: &Poly, zi: &ZeroIdeal) -> Poly {
     // The inverse will contain f^(2^n-1)
     let mut inverse = f.clone();
 
@@ -200,7 +205,7 @@ fn zero_ideal(n: u32) -> Vec<Poly> {
 
 /// This is the zero ideal usually specified in papers,
 /// but it is not minimal.
-fn zero_ideal_redundant(n: u32) -> Vec<Poly> {
+pub fn zero_ideal_redundant(n: u32) -> Vec<Poly> {
     let mut gen = Vec::new();
 
     // div stores how often 2 divides i!.
@@ -266,7 +271,7 @@ fn is_perm_poly(f: &Poly) -> bool {
 }
 
 /// The zero ideal is the ideal of all polynomials
-/// that evaluate to zero everywhere in the polynomial ring Z_{2^n}[X].
+/// that evaluate to zero everywhere in the polynomial ring Z_{2^n}\[X\].
 pub struct ZeroIdeal {
     /// The coefficients are mod 2^n.
     n: u32,
@@ -292,18 +297,17 @@ impl ZeroIdeal {
     pub fn zero_ideal(&self) -> &[Poly] {
         &self.gen
     }
-
 }
 
 impl Poly {
-    fn simplified(mut self, zi: &ZeroIdeal) -> Self {
+    pub fn simplified(mut self, zi: &ZeroIdeal) -> Self {
         self.simplify(zi);
         self
     }
 
     /// Simplifies a polynomial by adding a polynomial in the zero ideal
     /// to reduce the degree of the polynomial.
-    fn simplify(&mut self, zi: &ZeroIdeal) {
+    pub fn simplify(&mut self, zi: &ZeroIdeal) {
         // We reduce all polynomials with degree larger or equal to that of
         // zi.last with zi.last, because it has a leading coefficient of 1,
         // so each coefficient of higher degree
@@ -345,9 +349,9 @@ impl Poly {
     /// Reduces the degree of a polynomial if possible.
     /// This function should be used during computations
     /// where the degree could otherwise explode.
-    /// It is a simplified version of the simplify algorithm,
+    /// It is a simplified version of the [Poly::simplify] algorithm,
     /// that only uses the generator of the highest degree.
-    fn reduce(&mut self, zi: &ZeroIdeal) {
+    pub fn reduce(&mut self, zi: &ZeroIdeal) {
         if self.len() == 0 {
             return;
         }
@@ -443,9 +447,9 @@ pub fn zero_ideal_test() {
     }
 }
 
-// Computes the order of a polynomial by brute force.
-// Should only be used for testing and only with tiny n.
-fn order(p: &Poly, zi: &ZeroIdeal) -> usize {
+/// Computes the order of a polynomial by brute force.
+/// Should only be used for testing and only with tiny n.
+pub fn order(p: &Poly, zi: &ZeroIdeal) -> usize {
     assert!(is_perm_poly(p), "The order is only defined for permutation polynomials!");
     assert!(zi.n <= 8, "'order' should only be used with tiny n!");
 

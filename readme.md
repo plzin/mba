@@ -3,7 +3,8 @@
 This algorithm transforms expressions like `x+y` into monstrosities like this:
 
 ```
-1771482302*(x & y) + -188000673*(x ^ y) + -1073741824*(~(x ^ (y ^ z))) + -1201767181*(~x) + -441272728*(~y) + -1327013878*y + -504443739*z + -569298085*(y & z) + -2087508331*(x | z) + -59975317*((~x) & z) + -1578185563*(y | (~z))
+$ cargo run --example quadratic_mba 8 x+y
+212 * -1 * (x ^ y) + 215 * -1 * (x & y) + 5 * -1 * ~(x | y) + 39 * -1 * ~x + 87 * -1 * ~y + 98 * -1 * z + 107 * -1 * x + 237 * -1 * y + 152 * -1 * (y & z) + 36 * -1 * (x | z) + 76 * -1 * (~x & z) + 162 * -1 * (y | ~z) + 68 * (x & y) * (x ^ y) + 85 * (x ^ y) * ~(x | y) + 184 * (x ^ y) * ~x + 140 * (x ^ y) * ~y + 96 * z * (x ^ y) + 55 * x * (x ^ y) + 223 * y * (x ^ y) + 63 * (y & z) * (x ^ y) + 101 * (x | z) * (x ^ y) + 159 * (~x & z) * (x ^ y) + 10 * (y | ~z) * (x ^ y) + 50 * (x & y) * ~(x | y) + 252 * (x & y) * ~x + 72 * (x & y) * ~y + 6 * z * (x & y) + 192 * x * (x & y) + 240 * y * (x & y) + 190 * (y & z) * (x & y) + 58 * (x & y) * (x | z) + 184 * (x & y) * (~x & z) + 59 * (x & y) * (y | ~z) + 194 * ~x * ~(x | y) + 193 * ~y * ~(x | y) + 191 * z * ~(x | y) + 54 * x * ~(x | y) + 174 * y * ~(x | y) + 187 * (y & z) * ~(x | y) + 69 * (x | z) * ~(x | y) + 209 * (~x & z) * ~(x | y) + 222 * (y | ~z) * ~(x | y) + 58 * ~y * ~x + 138 * z * ~x + 78 * x * ~x + 227 * y * ~x + 183 * (y & z) * ~x + 251 * (x | z) * ~x + 187 * (~x & z) * ~x + 131 * (y | ~z) * ~x + 21 * z * ~y + 179 * x * ~y + 17 * y * ~y + 54 * (y & z) * ~y + 147 * (x | z) * ~y + 152 * (~x & z) * ~y + 189 * (y | ~z) * ~y + 115 * z * x + 81 * z * y + 26 * z * (x | z) + 127 * z * (~x & z) + 216 * y * x + 203 * x * (y & z) + 115 * x * (x | z) + 85 * x * (~x & z) + 251 * x * (y | ~z) + 213 * y * (y & z) + 48 * y * (x | z) + 13 * y * (~x & z) + 110 * y * (y | ~z) + 196 * (y & z) * (x | z) + 163 * (y & z) * (~x & z) + 153 * (~x & z) * (y | ~z)
 ```
 
 These kind of expressions involving both normal arithmetic as well as boolean operations are known as mixed boolean-arithmetic expressions.
@@ -18,11 +19,11 @@ Rust itself will panic (at least in debug builds) when addition/multiplication o
 If you want to try this for yourself, check out my implementation that compiles to WASM
 [here](https://github.com/plzin/mba-wasm), and is hosted as a web interface
 [here](https://plzin.github.io/mba-wasm/).
-Eventually this crate should be a library that the WASM crate (and others) can use.
+Eventually this crate should be used by the WASM crate.
 Currently this crate is slightly different because it uses `rug::Integers` everywhere
 (not WASM compatible) instead of template parameters (`u8`, `u16`, ...).
 (Also the linear system solver is different and worse).
-You can find some examples of how to use this crate in `src/main.rs`
+You can find some examples of how to use this crate in `examples/`.
 
 ### References
 \[1\] [Information Hiding in Software with Mixed Boolean-Arithmetic Transforms](https://link.springer.com/chapter/10.1007/978-3-540-77535-5_5)

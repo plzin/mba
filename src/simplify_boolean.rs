@@ -11,14 +11,14 @@
 
 use std::cell::RefCell;
 use egg::*;
-use crate::{uniform_expr::UExpr, valuation::Valuation};
+use crate::uniform_expr::UExpr;
 
 /// The way we simplify is by running equality saturation
 /// on the expression. The egraph for the expression would be
 /// prohibitively large, so that full equality saturation
 /// would take too long. egg has a lot of parameters that
 /// change the behavior of when it stops.
-/// See [https://docs.rs/egg/0.9.5/egg/struct.Runner.html](here)
+/// See [here](https://docs.rs/egg/0.9.5/egg/struct.Runner.html)
 /// for the documentation of most of these fields.
 /// When equality saturation stops without the actual
 /// saturation being complete, we start again with the
@@ -55,9 +55,9 @@ pub struct SimplificationConfig {
     time_limit: std::time::Duration,
 }
 
-impl SimplificationConfig {
+impl Default for SimplificationConfig {
     /// Returns the default configuration.
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             retry_limit: 10,
             retry_same_cost: 3,
@@ -68,8 +68,8 @@ impl SimplificationConfig {
     }
 }
 
-/// Language for boolean expressions.
 define_language! {
+    /// Language for boolean expressions.
     enum BooleanLanguage {
         "0" = Zero,
         "1" = One,
@@ -109,8 +109,8 @@ fn bexpr_eq(l: &BExpr, r: &BExpr) -> bool {
     )
 }
 
-/// The set of equivalences.
 lazy_static::lazy_static! {
+    /// The set of equivalences.
     static ref RULES: Vec<Rewrite<BooleanLanguage, ()>> = make_rules();
 }
 
@@ -160,7 +160,7 @@ where
         nodes.push(BooleanLanguage::Not(Id::from(nodes.len() - 1)));
     }
 
-    let mut nodes = RefCell::new(nodes);
+    let nodes = RefCell::new(nodes);
 
     fn from_1(
         vars: &[Symbol], i: usize, nodes: &RefCell<Vec<BooleanLanguage>>
@@ -212,7 +212,7 @@ where
         nodes.push(BooleanLanguage::Not(Id::from(nodes.len() - 1)));
     }
 
-    let mut nodes = RefCell::new(nodes);
+    let nodes = RefCell::new(nodes);
 
     fn from_0(
         vars: &[Symbol], i: usize, nodes: &RefCell<Vec<BooleanLanguage>>
@@ -263,7 +263,7 @@ fn simplify_bexpr(e: &BExpr, cfg: &SimplificationConfig) -> BExpr {
     let mut best = e.clone();
     let mut best_cost_iter = 0usize;
     for i in 0.. {
-        let mut runner = Runner::default()
+        let runner = Runner::default()
             .with_iter_limit(cfg.iter_limit)
             .with_node_limit(cfg.node_limit)
             .with_time_limit(cfg.time_limit)
@@ -421,27 +421,6 @@ fn make_rules() -> Vec<Rewrite<BooleanLanguage, ()>> {
     rules
 }
 
-fn simplify_explanation_test() {
-    let expr: BExpr = "(and ?x (xor ?x ?y))".parse().unwrap();
-    println!("{expr}");
-
-    let mut runner = Runner::default()
-        .with_explanations_enabled()
-        .with_expr(&expr)
-        .run(&*RULES);
-
-    // Print the total egraph size.
-    println!("Total egraph size: {}", runner.egraph.total_size());
-
-    let root = runner.roots[0];
-
-    let extractor = Extractor::new(&runner.egraph, AstSize);
-    let (best_cost, best) = extractor.find_best(root);
-    println!("Simplified {} to {} with cost {}", expr, best, best_cost);
-
-    println!("{}", runner.explain_equivalence(&expr, &best));
-}
-
 /// Verifies that all the equivalences are indeed equivalences.
 #[test]
 fn verify_boolean_equivalences() {
@@ -462,7 +441,7 @@ fn verify_boolean_equivalences() {
                     UExpr::or(ast_to_uexpr_impl(e, *i), ast_to_uexpr_impl(e, *j)),
                 BooleanLanguage::Xor([i, j]) =>
                     UExpr::xor(ast_to_uexpr_impl(e, *i), ast_to_uexpr_impl(e, *j)),
-                BooleanLanguage::Symbol(s) => panic!("There should be no free variables."),
+                BooleanLanguage::Symbol(_) => panic!("There should be no free variables."),
             }
         }
 
@@ -470,13 +449,14 @@ fn verify_boolean_equivalences() {
     }
 
     fn verify(lhs: &PatternAst<BooleanLanguage>, rhs: &PatternAst<BooleanLanguage>) {
+        use crate::valuation::Valuation;
         let lhs = ast_to_uexpr(lhs);
         let rhs = ast_to_uexpr(rhs);
         println!("Verifying equivalence: {lhs} == {rhs}");
         let mut vars = std::collections::BTreeSet::new();
         lhs.vars_impl(&mut vars);
         rhs.vars_impl(&mut vars);
-        let mut vars: Vec<_> = vars.into_iter().collect();
+        let vars: Vec<_> = vars.into_iter().collect();
         let mut val = Valuation::zero();
 
         assert!(vars.len() <= 64);
@@ -516,6 +496,7 @@ fn n_vars(n: usize) -> Vec<Symbol> {
 }
 
 // Used during development and I didn't want to delete it.
+#[allow(dead_code)]
 fn short_from_rand_truth_table() {
     let n = rand::random::<usize>() % 5 + 1;
     let vars = n_vars(n);
@@ -539,6 +520,7 @@ fn short_from_rand_truth_table() {
 }
 
 // Used during development and I didn't want to delete it.
+#[allow(dead_code)]
 fn list_minimal_expressions() {
     let vars = n_vars(3);
     let mut truth_table = vec![false; 1 << vars.len()];

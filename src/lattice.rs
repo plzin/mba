@@ -1,8 +1,10 @@
+//! Integer lattices and algorithms.
+
 use crate::diophantine::hermite_normal_form;
 use crate::{matrix::*, vector::*};
 use rug::ops::NegAssign;
-use rug::{Integer, Rational, Complete, Float};
-use num_traits::{Zero, One, NumAssign};
+use rug::{Integer, Rational, Float};
+use num_traits::Zero;
 use std::fmt::Debug;
 use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign, Neg};
 use std::cmp::Ordering;
@@ -98,7 +100,7 @@ impl Lattice {
     /// Size reduce the basis.
     /// This essentially is Gram-Schmidt
     /// but rounding the coefficients to integers.
-    fn size_reduce(&mut self) {
+    pub fn size_reduce(&mut self) {
         size_reduce(&mut self.basis);
     }
 
@@ -970,7 +972,6 @@ fn babai_rounding_identity_dim_2_subspace() {
 
 #[test]
 fn babai_rounding_linear_dim_3() {
-    use rand::random;
     let lattice = Lattice::from_basis(Matrix::from_rows(&[
         [3, 3, 3]
     ]));
