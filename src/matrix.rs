@@ -513,10 +513,10 @@ impl<T> OwnedMatrixStorage<T> {
             }
         }
 
-        let esize = core::mem::size_of::<Integer>();
+        let esize = core::mem::size_of::<T>();
         let layout = std::alloc::Layout::from_size_align(
             self.rows * self.cols * esize,
-            core::mem::align_of::<Integer>()
+            core::mem::align_of::<T>()
         ).unwrap();
 
         // This should hopefully not actually allocate.
@@ -545,8 +545,8 @@ impl<T> Drop for OwnedMatrixStorage<T> {
             }
 
             let layout = std::alloc::Layout::from_size_align(
-                self.rows * self.cols * core::mem::size_of::<Integer>(),
-                core::mem::align_of::<Integer>()
+                self.rows * self.cols * core::mem::size_of::<T>(),
+                core::mem::align_of::<T>()
             ).unwrap();
 
             // Free the memory.
