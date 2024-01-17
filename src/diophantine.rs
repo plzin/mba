@@ -137,9 +137,6 @@ pub fn solve(a: &IMatrixView, b: &IVectorView) -> AffineLattice {
 /// Solves a linear system of equations Ax=b mod n.
 /// The solution lattice consists of all integer solutions to the equations.
 pub fn solve_modular(a: &IMatrixView, b: &IVectorView, n: &Integer) -> AffineLattice {
-    log::trace!("Solving {} linear equations in {} variables mod {}.",
-        a.nrows(), a.ncols(), n);
-
     //
     // Concatenate an n times the identity matrix to the right of A.
     //

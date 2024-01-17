@@ -258,7 +258,6 @@ pub fn simplify(e: &UExpr, cfg: &SimplificationConfig) -> UExpr {
 /// Simplifies a BExpr.
 fn simplify_bexpr(e: &BExpr, cfg: &SimplificationConfig) -> BExpr {
     // The current expression with the best cost and its cost.
-    log::trace!("Simplifying {e}");
     let mut best_cost = usize::MAX;
     let mut best = e.clone();
     let mut best_cost_iter = 0usize;
@@ -271,14 +270,12 @@ fn simplify_bexpr(e: &BExpr, cfg: &SimplificationConfig) -> BExpr {
             .run(&*RULES);
 
         let stop_reason = runner.stop_reason.unwrap();
-        log::trace!("{:?}", stop_reason);
 
         let extractor = Extractor::new(&runner.egraph, AstSize);
 
         let root = runner.roots[0];
         let (cost, new_best) = extractor.find_best(root);
 
-        log::trace!("{new_best} with cost {cost}");
         assert!(cost <= best_cost, "Cost should not increase");
 
         if cost == best_cost {

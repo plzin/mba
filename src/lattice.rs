@@ -225,7 +225,6 @@ pub fn lll<WT: WorkingType>(
     ty: WT
 ) where WT::Scalar: InnerProduct
 {
-    log::trace!("Running LLL on rank {} lattice.", basis.nrows());
     let n = basis.nrows();
     let mut swap_condition = true;
 
@@ -404,7 +403,6 @@ pub fn cvp_planes<WT: WorkingType>(
 where
     WT::Scalar: VectorNorm
 {
-    log::trace!("Solving CVP in a rank {} lattice.", basis.nrows());
     assert!(basis.ncols() == t.dim(),
         "Mismatch of basis/target vector dimension.");
     let bf = basis.transform(|i| ty.from_int(i));

@@ -95,7 +95,6 @@ pub fn compose(p: &Poly, q: &Poly, zi: &ZeroIdeal) -> Poly {
 
 /// Computes the inverse of a permutation polynomial using Newton's Method.
 pub fn compute_inverse(f: &Poly, zi: &ZeroIdeal) -> Poly {
-    log::trace!("Computing inverse of {} with Newton's method.", f);
     assert!(is_perm_poly(f),
         "Can't invert the function as it is not a permutation polynomial");
     // Simplify p.
@@ -108,8 +107,6 @@ pub fn compute_inverse(f: &Poly, zi: &ZeroIdeal) -> Poly {
 
     // Do the newton method.
     loop {
-        log::trace!("compute_inverse: it={}: {:b}", it, q);
-
         // Not proven to always work so make sure
         // to stop after a certain number of iterations.
         assert!(it <= zi.n * 2, "Failed to compute the inverse \

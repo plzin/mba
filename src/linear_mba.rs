@@ -150,8 +150,6 @@ pub fn obfuscate(e: &mut Expr, bits: u32, cfg: &ObfuscationConfig) {
 }
 
 pub fn deobfuscate(e: &mut Expr, bits: u32) {
-    log::trace!("Deobfuscating expression: {}", e);
-
     let cfg = DeobfuscationConfig {
         alg: SolutionAlgorithm::LeastComplexTerms,
         boolean: true,
@@ -181,9 +179,7 @@ pub fn deobfuscate(e: &mut Expr, bits: u32) {
         // Try to find the largest subexpression that is
         // linear MBA and obfuscate it on its own.
         if let Some((lu, mut subs)) = expr_to_luexpr(er, false) {
-            log::trace!("Deobfuscating LU expression: {}", lu);
             let lu = deobfuscate_luexpr(lu, bits, cfg);
-            log::trace!("Deobfuscated LU expression: {}", lu);
             *e = lu.to_expr();
 
             // Deobfuscate all the subexpressions
@@ -246,11 +242,6 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
 
     // Get all the variables.
     let vars = e.vars();
-
-    log::trace!(
-        "Deobfuscating linear MBA expression with {} variables.",
-        vars.len()
-    );
 
     // This could be optimized.
     // We compute the values of the expression twice.
@@ -321,8 +312,6 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
         }
     }
 
-    log::trace!("Using rewrite {} operations.", ops.len());
-
     if cfg.alg == LeastComplexTerms {
         // Sort by descending complexity.
         ops.sort_by_cached_key(|e| -(e.complexity() as i32));
@@ -334,10 +323,6 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
 
     // Solve the system.
     let mut l = solve_linear_system(&e, &ops, &vars, bits);
-
-    log::trace!("Lattice rank: {}", l.lattice.rank());
-    log::trace!("Offset: {:?}", l.offset);
-    log::trace!("Basis: {:?}", l.lattice.basis);
 
     // If I did everything correctly,
     // this system should always have a solution.
@@ -351,7 +336,6 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
                 l.offset -= &(&l.lattice.basis[i] * &q);
             }
         }
-        log::trace!("Least complex solution: {:?}", l.offset);
     }
 
     // If this should be fast, just use the particular solution
@@ -412,9 +396,6 @@ fn solve_linear_system(
     vars: &[Symbol],
     bits: u32
 ) -> AffineLattice {
-    log::trace!("Solving MBA system with {} variables and {} operations.",
-        vars.len(), ops.len());
-
     // If you want more than 64 vars, get a lot of RAM
     // and change the iterators to use Integer instead of usize.
     assert!(vars.len() < 64, "More than 63 variables are currently \
