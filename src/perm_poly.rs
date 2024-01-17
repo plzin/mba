@@ -1,22 +1,9 @@
 //! Binary permutation polynomials.
 
-use rug::{Integer, Complete, rand::{ThreadRandState, ThreadRandGen}};
-use rand::{distributions::{Distribution, Uniform}, prelude::ThreadRng, RngCore};
+use rug::{Integer, Complete};
+use rand::distributions::{Distribution, Uniform};
 
 use crate::poly::Poly;
-
-struct Generator(ThreadRng);
-impl Generator {
-    pub fn new(rng: ThreadRng) -> Self {
-        Self(rng)
-    }
-}
-
-impl ThreadRandGen for Generator {
-    fn gen(&mut self) -> u32 {
-        self.0.next_u32()
-    }
-}
 
 /// Returns a pair of permutation polynomials mod 2^n.
 /// The functions are inverses of each other.
@@ -36,8 +23,8 @@ pub fn perm_pair(zi: &ZeroIdeal, degree: usize) -> (Poly, Poly) {
 
 /// Returns a random permutation polynomial.
 fn random_perm_poly(zi: &ZeroIdeal, degree: usize) -> Poly {
-    let mut gen = Generator::new(rand::thread_rng());
-    let mut rng = ThreadRandState::new_custom(&mut gen);
+    let mut rng = rug::rand::RandState::new();
+    rng.seed(&rand::random::<u64>().into());
     let mut p: Vec<_> =  (0..=degree)
         .map(|_| Integer::from(Integer::random_bits(zi.n, &mut rng)))
         .collect();
@@ -254,10 +241,7 @@ pub fn zero_ideal_redundant(n: u32) -> Vec<Poly> {
 /// that is whether they are even or odd,
 /// depending on the initial value of the accumulator.
 fn parity(acc: bool, i: &Integer) -> bool {
-    match i.is_odd() {
-        true => !acc,
-        false => acc,
-    }
+    i.is_odd() ^ acc
 }
 
 /// Is this function a permutation polynomial?
