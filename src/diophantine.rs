@@ -1,7 +1,10 @@
 //! Solves linear diophantine equations.
 
-use rug::ops::DivRounding;
-use rug::{Integer, Complete};
+use num_bigint::BigInt;
+use num_traits::Euclid;
+use num_traits::One;
+use num_traits::Signed;
+use num_traits::Zero;
 
 use crate::matrix::*;
 use crate::vector::*;
@@ -22,7 +25,7 @@ pub fn hermite_normal_form(a: &mut IOwnedMatrix) -> IOwnedMatrix {
             .enumerate()
             .skip(r)
             .filter(|e| !e.1.is_zero())
-            .min_by(|a, b| a.1.cmp_abs(b.1))
+            .min_by(|a, b| a.1.magnitude().cmp(b.1.magnitude()))
             .map(|e| e.0);
 
         let Some(pivot) = pivot else {
@@ -41,8 +44,8 @@ pub fn hermite_normal_form(a: &mut IOwnedMatrix) -> IOwnedMatrix {
         // If there remain non-zero entries in this column,
         // then we will go over this column again.
         for k in r+1..a.nrows() {
-            if a[(k, c)] != 0 {
-                let m = -(&a[(k, c)] / &a[(r, c)]).complete();
+            if !a[(k, c)].is_zero() {
+                let m = -(&a[(k, c)] / &a[(r, c)]);
 
                 a.row_multiply_add(r, k, &m);
                 u.row_multiply_add(r, k, &m);
@@ -50,12 +53,12 @@ pub fn hermite_normal_form(a: &mut IOwnedMatrix) -> IOwnedMatrix {
         }
 
         // If there is any non-zero element then we need to continue in the same column.
-        if a.col(c).iter().skip(r + 1).any(|e| *e != 0) {
+        if a.col(c).iter().skip(r + 1).any(|e| !e.is_zero()) {
             continue;
         }
 
         // Flip sign if necessary.
-        if a[(r, c)] < 0 {
+        if a[(r, c)].is_negative() {
             a.flip_sign_row(r);
             u.flip_sign_row(r);
         }
@@ -67,9 +70,9 @@ pub fn hermite_normal_form(a: &mut IOwnedMatrix) -> IOwnedMatrix {
         if !a[(r, c)].is_zero() {
             for k in 0..r {
                 let entry = &a[(k, c)];
-                let m = -Integer::from(entry.div_euc(&a[(r, c)]));
+                let m = -entry.div_euclid(&a[(r, c)]);
 
-                if m != 0 {
+                if !m.is_zero() {
                     a.row_multiply_add(r, k, &m);
                     u.row_multiply_add(r, k, &m);
                 }
@@ -102,7 +105,7 @@ pub fn solve(a: &IMatrixView, b: &IVectorView) -> AffineLattice {
         m[(a.ncols(), i)] = b[i].clone();
     }
 
-    m[(a.ncols(), a.nrows())] = Integer::from(1);
+    m[(a.ncols(), a.nrows())] = One::one();
 
     // Transform it into hermite normal form.
     let u = hermite_normal_form(&mut m);
@@ -116,8 +119,8 @@ pub fn solve(a: &IMatrixView, b: &IVectorView) -> AffineLattice {
     // Make sure the hermite normal form has the correct form,
     // because only then does it have a solution.
     let r = rank - 1;
-    let has_solution = m[(r, m.ncols() - 1)] == 1
-        && m.row(r).iter().take(m.ncols() - 1).all(|e| *e == 0);
+    let has_solution = m[(r, m.ncols() - 1)].is_one()
+        && m.row(r).iter().take(m.ncols() - 1).all(|e| e.is_zero());
 
     if !has_solution {
         return AffineLattice::empty();
@@ -136,7 +139,11 @@ pub fn solve(a: &IMatrixView, b: &IVectorView) -> AffineLattice {
 
 /// Solves a linear system of equations Ax=b mod n.
 /// The solution lattice consists of all integer solutions to the equations.
-pub fn solve_modular(a: &IMatrixView, b: &IVectorView, n: &Integer) -> AffineLattice {
+pub fn solve_modular(
+    a: &IMatrixView,
+    b: &IVectorView,
+    n: &BigInt
+) -> AffineLattice {
     //
     // Concatenate an n times the identity matrix to the right of A.
     //
@@ -165,12 +172,13 @@ pub fn solve_modular(a: &IMatrixView, b: &IVectorView, n: &Integer) -> AffineLat
     // of the n's and then removing (now) linearly dependent basis vectors.
 
     let offset = IOwnedVector::from_entries(&l.offset.as_slice()[..a.ncols()])
-        .map(|i| i.div_rem_euc_ref(n).complete().1);
+        .map(|i| i.rem_euclid(n));
 
+    // This might be the worst code in the history of code.
     let iter = l.lattice.basis.rows()
         .flat_map(|e| e.iter().take(a.ncols()).map(|i| i.clone() % n))
         .chain((0..a.ncols()).flat_map(|i| (0..a.ncols()).map(
-            move |j| if j == i { n.clone() } else { Integer::new() }))
+            move |j| if j == i { n.clone() } else { Zero::zero() }))
         );
     let bm = Matrix::from_iter(l.lattice.rank() + a.ncols(), a.ncols(),
         iter
@@ -196,7 +204,9 @@ fn small_test() {
     let b = Vector::from_entries([0, 1, 1, 2]);
 
     let l = solve(a.view(), b.view());
-    assert_eq!(l.offset.as_slice(), [2, 1, 0, 0]);
+    assert_eq!(l.offset.as_slice(),
+        [2.into(), 1.into(), 0.into(), 0.into()]);
     assert_eq!(l.lattice.rank(), 1);
-    assert_eq!(l.lattice.basis.row(0).as_slice(), [0, 0, 1, 1]);
+    assert_eq!(l.lattice.basis.row(0).as_slice(),
+        [0.into(), 0.into(), 1.into(), 1.into()]);
 }

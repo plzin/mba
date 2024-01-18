@@ -1,8 +1,9 @@
 use itertools::Itertools;
-use rug::Integer;
 use mba::uniform_expr::{UExpr, LUExpr};
 use mba::linear_mba;
 use mba::expr::{Expr, ExprOp};
+use num_bigint::BigInt;
+use num_traits::{One, Euclid, Zero};
 
 
 // Rewrite a linear MBA expression using quadratic MBA.
@@ -43,7 +44,7 @@ fn main() {
     let obf = linear_mba::rewrite(&expr, ops, bits, true).unwrap();
 
     // Contains the linear combination of the multiplication.
-    let mut v: Vec<(Integer, UExpr, UExpr)> = Vec::new();
+    let mut v: Vec<(BigInt, UExpr, UExpr)> = Vec::new();
 
     // Obfuscate each coefficient.
     for (c, e) in &obf.0 {
@@ -66,12 +67,13 @@ fn main() {
         }
     }
 
+    let m = BigInt::one() << bits;
     for (c, _, _) in &mut v {
-        c.keep_bits_mut(bits);
+        *c = c.rem_euclid(&m);
     }
 
     // Convert a summand to an expression.
-    let term_to_expr = |c: &Integer, e: &UExpr, f: &UExpr| {
+    let term_to_expr = |c: &BigInt, e: &UExpr, f: &UExpr| {
         Expr::new(ExprOp::Mul(
             Expr::new(ExprOp::Const(c.clone())),
             Expr::new(ExprOp::Mul(Expr::new(e.to_expr()), Expr::new(f.to_expr())))
@@ -79,10 +81,10 @@ fn main() {
     };
 
     // Convert the linear combination to an `Expr`.
-    let mut iter = v.iter().filter(|(c, _, _)| c != &Integer::ZERO);
+    let mut iter = v.iter().filter(|(c, _, _)| !c.is_zero());
     let mut expr = match iter.next() {
         Some((c, e, f)) => term_to_expr(c, e, f),
-        None => Expr::new(ExprOp::Const(Integer::new())),
+        None => Expr::new(ExprOp::Const(Zero::zero())),
     };
 
     for (c, e, f) in iter {

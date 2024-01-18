@@ -1,7 +1,8 @@
 //! Basically a key-value store for variable names and their values,
 //! but you can specify what to do when a variable is not found.
 
-use rug::Integer;
+use num_bigint::{BigInt, RandBigInt};
+use num_traits::Zero;
 use crate::Symbol;
 
 /// Stores values that should be substituted into variables.
@@ -10,7 +11,7 @@ pub struct Valuation {
     /// The key value pairs are stored as a Vector
     /// because I doubt a hashmap/tree would be faster
     /// when there are so few variables.
-    vals: Vec<(Symbol, Integer)>,
+    vals: Vec<(Symbol, BigInt)>,
 
     /// A function that is called when the value of a variable
     /// is requested but not found in the valuation.
@@ -37,13 +38,13 @@ impl Valuation {
 
     /// Initializes a valuation from a list of pairs of variables and values.
     /// If a variable is requested that is not in the list, it will panic.
-    pub fn from_vec_panic(vals: Vec<(Symbol, Integer)>) -> Self {
+    pub fn from_vec_panic(vals: Vec<(Symbol, BigInt)>) -> Self {
         Self { vals, missing: MissingValue::panic() }
     }
 
     /// Initializes a valuation from a list of pairs of variables and values.
     /// If a variable is requested that is not in the list, it will return zero.
-    pub fn from_vec_zero(vals: Vec<(Symbol, Integer)>) -> Self {
+    pub fn from_vec_zero(vals: Vec<(Symbol, BigInt)>) -> Self {
         Self { vals, missing: MissingValue::zero() }
     }
 
@@ -52,16 +53,16 @@ impl Valuation {
     /// it will return a random value.
     /// The value will be consistent across multiple uses of the same variable.
     /// It will be stored in the valuation.
-    pub fn from_vec_random(vals: Vec<(Symbol, Integer)>, bits: u32) -> Self {
+    pub fn from_vec_random(vals: Vec<(Symbol, BigInt)>, bits: u32) -> Self {
         Self { vals, missing: MissingValue::random(bits) }
     }
 
     /// Returns the value of a variable.
-    pub fn value(&mut self, name: Symbol) -> &mut Integer {
+    pub fn value(&mut self, name: Symbol) -> &mut BigInt {
         // Feels like this is a borrow checker limitation,
         // rather than a me problem.
         let vals = unsafe {
-            std::mem::transmute::<_, &'static mut Vec<(Symbol, Integer)>>(
+            std::mem::transmute::<_, &'static mut Vec<(Symbol, BigInt)>>(
                 &mut self.vals
             )
         };
@@ -76,10 +77,10 @@ impl Valuation {
         let new_val = match &mut self.missing {
             MissingValue::Panic => panic!("Variable {} not found in valuation.", name),
             MissingValue::Zero => {
-                Integer::new()
+                BigInt::zero()
             },
             MissingValue::Random(bits, state) => {
-                Integer::from(Integer::random_bits(*bits, state))
+                state.gen_bigint(*bits as u64)
             },
         };
 
@@ -88,7 +89,7 @@ impl Valuation {
     }
 
     /// Sets the value of a variable.
-    pub fn set_value(&mut self, name: Symbol, value: Integer) {
+    pub fn set_value(&mut self, name: Symbol, value: BigInt) {
         for (n, v) in &mut self.vals {
             if *n == name {
                 *v = value;
@@ -109,7 +110,9 @@ enum MissingValue {
     Zero,
 
     /// Return a random value with the given number of bits.
-    Random(u32, rug::rand::RandState<'static>),
+    /// We use a box here, because the random number generator
+    /// can be quite large, and we want the [Valuation] to be small.
+    Random(u32, Box<dyn rand::RngCore>),
 }
 
 impl MissingValue {
@@ -126,12 +129,12 @@ impl MissingValue {
     /// Return a random value with the given number of bits.
     /// The value will be stored in the valuation so
     /// subsequent uses of the variable will have the same value.
+    /// This uses the [rand::rngs::StdRng] internally.
     pub fn random(bits: u32) -> Self {
+        use rand::{thread_rng, rngs::StdRng, SeedableRng};
         // Create a new random state and seed it.
-        let mut state = rug::rand::RandState::new();
-        state.seed(&rand::random::<u64>().into());
-
-        Self::Random(bits, state)
+        let rng = Box::new(StdRng::from_rng(thread_rng()).unwrap());
+        Self::Random(bits, rng)
     }
 }
 

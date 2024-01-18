@@ -1,10 +1,10 @@
 //! Integer lattices and algorithms.
 
 use crate::diophantine::hermite_normal_form;
-use crate::{matrix::*, vector::*};
-use rug::ops::NegAssign;
-use rug::{Integer, Rational, Float};
-use num_traits::Zero;
+use crate::{matrix::*, vector::*, keep_signed_bits_mut};
+use num_traits::{Zero, ToPrimitive, FromPrimitive};
+use num_bigint::{BigInt, RandBigInt};
+use num_rational::BigRational;
 use std::fmt::Debug;
 use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign, Neg};
 use std::cmp::Ordering;
@@ -63,8 +63,8 @@ impl Lattice {
 
     /// Returns the vector on the lattice that is the linear
     /// combination of the basis vectors with the given coefficients.
-    pub fn at<S: VectorStorage<Integer> + ?Sized>(
-        &self, coefficients: &Vector<Integer, S>
+    pub fn at<S: VectorStorage<BigInt> + ?Sized>(
+        &self, coefficients: &Vector<BigInt, S>
     ) -> IOwnedVector {
         assert!(coefficients.dim() == self.rank());
 
@@ -79,16 +79,15 @@ impl Lattice {
         assert!(!self.is_empty(), "Lattice is empty.");
         assert!(initial.dim() == self.ambient_dim());
 
-        let mut rand = rug::rand::RandState::new();
-        rand.seed(&rand::random::<u64>().into());
+        let rng = &mut rand::thread_rng();
 
         let mut s = initial;
         for b in self.basis.rows() {
-            let f = Integer::from(Integer::random_bits(bits, &mut rand));
+            let f = rng.gen_bigint(bits as u64);
             s += &(b * &f);
         }
 
-        s.map_mut(|i| i.keep_signed_bits_mut(bits));
+        s.map_mut(|i| keep_signed_bits_mut(i, bits));
         s
     }
 
@@ -208,7 +207,16 @@ pub fn size_reduce(basis: &mut IOwnedMatrix) {
         for j in 0..i {
             let b_i = &basis[i];
             let b_j = &basis[j];
-            let q = b_i.dot(b_j).div_rem_round(b_j.norm_sqr()).0;
+            let dot = b_i.dot(b_j);
+            let b_j_norm_sqr = b_j.norm_sqr();
+
+            // Rounded div. rug has a function for this.
+            let q: BigInt = if dot.sign() != b_j_norm_sqr.sign() {
+                (dot + &b_j_norm_sqr / 2) / &b_j_norm_sqr
+            } else {
+                (dot - &b_j_norm_sqr / 2) / &b_j_norm_sqr
+            };
+
             if q.is_zero() {
                 continue;
             }
@@ -479,7 +487,7 @@ where
 
             // Compute the index offset of the next plane.
             // Negate the offset first.
-            offset.neg_assign();
+            offset = -offset;
 
             // If we negate the offsets, i.e. 0, -1, 1, -2, ...,
             // then if we are <= 0, we need to subtract 1.
@@ -619,7 +627,6 @@ pub trait WorkingType: Copy
         + for<'a> MulAssign<&'a Self::Scalar>
         + for<'a> DivAssign<&'a Self::Scalar>
         + Neg<Output = Self::Scalar>
-        + NegAssign
         + PartialOrd
         + InnerProduct;
 
@@ -636,9 +643,9 @@ pub trait WorkingType: Copy
     fn cmp_abs(a: &Self::Scalar, b: &Self::Scalar) -> Ordering;
 
     #[allow(clippy::wrong_self_convention)]
-    fn from_int(self, i: &Integer) -> Self::Scalar;
+    fn from_int(self, i: &BigInt) -> Self::Scalar;
 
-    fn to_int(s: &Self::Scalar) -> Integer;
+    fn to_int(s: &Self::Scalar) -> BigInt;
 
     fn round(s: Self::Scalar) -> Self::Scalar;
 
@@ -679,12 +686,12 @@ impl WorkingType for F64 {
         a.abs().partial_cmp(&b.abs()).unwrap()
     }
 
-    fn from_int(self, i: &Integer) -> Self::Scalar {
-        i.to_f64()
+    fn from_int(self, i: &BigInt) -> Self::Scalar {
+        i.to_f64().unwrap()
     }
 
-    fn to_int(s: &Self::Scalar) -> Integer {
-        Integer::from_f64(s.round()).unwrap()
+    fn to_int(s: &Self::Scalar) -> BigInt {
+        BigInt::from_f64(s.round()).unwrap()
     }
 
     fn round(s: Self::Scalar) -> Self::Scalar {
@@ -724,12 +731,12 @@ impl WorkingType for F32 {
         a.abs().partial_cmp(&b.abs()).unwrap()
     }
 
-    fn from_int(self, i: &Integer) -> Self::Scalar {
-        i.to_f32()
+    fn from_int(self, i: &BigInt) -> Self::Scalar {
+        i.to_f32().unwrap()
     }
 
-    fn to_int(s: &Self::Scalar) -> Integer {
-        Integer::from_f32(s.round()).unwrap()
+    fn to_int(s: &Self::Scalar) -> BigInt {
+        BigInt::from_f32(s.round()).unwrap()
     }
 
     fn round(s: Self::Scalar) -> Self::Scalar {
@@ -746,60 +753,15 @@ impl WorkingType for F32 {
 }
 
 #[derive(Copy, Clone)]
-pub struct FP(u32);
-impl WorkingType for FP {
-    type Scalar = Float;
-    fn zero(self) -> Self::Scalar {
-        Float::new(self.0)
-    }
-
-    fn eps(self) -> Self::Scalar {
-        Float::with_val(self.0, 1) >> (self.0 - 1)
-    }
-
-    fn infinity(self) -> Self::Scalar {
-        Float::with_val(self.0, rug::float::Special::Infinity)
-    }
-
-    fn is_zero(s: &Self::Scalar) -> bool {
-        s.is_zero()
-    }
-
-    fn cmp_abs(a: &Self::Scalar, b: &Self::Scalar) -> Ordering {
-        a.cmp_abs(b).unwrap()
-    }
-
-    fn from_int(self, i: &Integer) -> Self::Scalar {
-        Float::with_val(self.0, i)
-    }
-
-    fn to_int(s: &Self::Scalar) -> Integer {
-        s.to_integer().unwrap()
-    }
-
-    fn round(s: Self::Scalar) -> Self::Scalar {
-        s.round()
-    }
-
-    fn square(s: Self::Scalar) -> Self::Scalar {
-        s.square()
-    }
-
-    fn add_isize(s: Self::Scalar, i: isize) -> Self::Scalar {
-        s + i
-    }
-}
-
-#[derive(Copy, Clone)]
 pub struct Rat;
 impl WorkingType for Rat {
-    type Scalar = Rational;
+    type Scalar = BigRational;
     fn zero(self) -> Self::Scalar {
-        Rational::new()
+        BigRational::zero()
     }
 
     fn eps(self) -> Self::Scalar {
-        Rational::new()
+        BigRational::zero()
     }
 
     fn is_zero(s: &Self::Scalar) -> bool {
@@ -807,15 +769,18 @@ impl WorkingType for Rat {
     }
 
     fn cmp_abs(a: &Self::Scalar, b: &Self::Scalar) -> Ordering {
-        a.cmp_abs(b)
+        //use num_traits::Signed;
+        //a.abs().cmp(&b.abs())
+        (a.numer().magnitude() * b.denom().magnitude()).cmp(
+            &(b.numer().magnitude() * a.denom().magnitude()))
     }
 
-    fn from_int(self, i: &Integer) -> Self::Scalar {
-        Rational::from(i)
+    fn from_int(self, i: &BigInt) -> Self::Scalar {
+        BigRational::from_integer(i.clone())
     }
 
-    fn to_int(s: &Self::Scalar) -> Integer {
-        s.round_ref().into()
+    fn to_int(s: &Self::Scalar) -> BigInt {
+        s.round().to_integer()
     }
 
     fn round(s: Self::Scalar) -> Self::Scalar {
@@ -823,11 +788,11 @@ impl WorkingType for Rat {
     }
 
     fn square(s: Self::Scalar) -> Self::Scalar {
-        s.square()
+        &s * &s
     }
 
     fn add_isize(s: Self::Scalar, i: isize) -> Self::Scalar {
-        s + i
+        s + BigRational::from_isize(i).unwrap()
     }
 }
 
@@ -877,22 +842,22 @@ fn cvp_exact_dim20() {
     ]));
     let t = IOwnedVector::from_entries([-48, 69, -76, 36, -72, 31, -53,
         -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97]);
-    assert_eq!(l.cvp_planes(t.view(), None, FP(53)).unwrap(), [-30i32, 35, -98,
-        61, -27, 75, -32, -3, 70, 8, 3, -77, -29, -103, 61, 58, -71, 41, 37, -40]);
+    assert_eq!(l.cvp_planes(t.view(), None, F64).unwrap(), [-30i32, 35, -98,
+        61, -27, 75, -32, -3, 70, 8, 3, -77, -29, -103, 61, 58, -71, 41, 37, -40]
+        .iter().map(|i| BigInt::from(*i)).collect::<Vec<_>>());
 }
 
 #[test]
 fn gram_schmidt_test() {
-    let a = OwnedMatrix::<i32>::from_rows(&[
-        [1, 2, 3],
-        [3, 4, 5],
+    let a = OwnedMatrix::<f64>::from_rows(&[
+        [1., 2., 3.],
+        [3., 4., 5.],
     ]);
-    let a = a.to_float(53);
     let (r, q) = rq_decomposition(&a);
     println!("q: {:?}\nr: {:?}", q, r);
     println!("{:?}", &r * &q);
-    println!("{:?}", &q * FVectorView::from_slice(&[
-        Float::with_val(53, 5), Float::with_val(53, 6), Float::with_val(53, 7)
+    println!("{:?}", &q * VectorView::from_slice(&[
+        5., 6., 7.
     ]));
 }
 
@@ -923,7 +888,7 @@ fn babai_rounding_example() {
 
     let mut lattice = Lattice::from_generating_set(gen);
     println!("{:?}", lattice);
-    lattice.lll(&Rational::from((99, 100)), Rat);
+    lattice.lll(&BigRational::new(99.into(), 100.into()), Rat);
     println!("{:?}", lattice);
     let lattice = AffineLattice {
         offset: Vector::from_entries([1, 1, 0, 0, 0]),
@@ -976,8 +941,8 @@ fn babai_rounding_linear_dim_3() {
 
     assert_eq!(lattice.cvp_rounding_coeff(
         Vector::from_entries([2, 2, 2]).view(), F64
-    ), [1]);
+    ), [BigInt::from(1)]);
     assert_eq!(lattice.cvp_rounding_coeff(
         Vector::from_entries([2, -2, 0]).view(), F64
-    ), [0]);
+    ), [BigInt::from(0)]);
 }

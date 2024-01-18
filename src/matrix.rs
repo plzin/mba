@@ -4,8 +4,8 @@ use std::ops::{Index, IndexMut};
 use std::{marker::PhantomData, fmt::Debug, ops::Mul};
 use itertools::iproduct;
 use num_traits::{Zero, One};
-use rug::ops::NegAssign;
-use rug::{Integer, Complete, Float, Rational};
+use num_bigint::BigInt;
+use num_rational::BigRational;
 use crate::vector::*;
 
 /// How are the entries of a matrix stored?
@@ -144,12 +144,6 @@ impl<T, S: MatrixStorage<T> + ?Sized> Matrix<T, S> {
             self.entries_row_major().map(f),
         )
     }
-
-    pub fn to_float(&self, prec: u32) -> OwnedMatrix<Float>
-        where for<'a> Float: rug::Assign<&'a T>
-    {
-        self.transform(|e| Float::with_val(prec, e))
-    }
 }
 
 impl<T, S: MatrixStorage<T>> Matrix<T, S> {
@@ -181,77 +175,38 @@ impl<T: Clone, S: MatrixStorage<T> + ?Sized> Matrix<T, S> {
     }
 }
 
-impl<S: MatrixStorage<Integer> + ?Sized> Matrix<Integer, S> {
+impl<S: MatrixStorage<BigInt> + ?Sized> Matrix<BigInt, S> {
     /// Flip the sign of a row.
     pub fn flip_sign_row(&mut self, row: usize) {
         for e in self.row_mut(row) {
-            e.neg_assign();
+            crate::neg_mut(e);
         }
     }
 
     /// Flip the sign of a column.
     pub fn flip_sign_column(&mut self, col: usize) {
         for e in self.col_mut(col) {
-            e.neg_assign();
+            crate::neg_mut(e);
         }
     }
 
     /// Add a scaled row to another row. N = c * M.
-    pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
+    pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &BigInt) {
         debug_assert!(n < self.nrows() && m < self.nrows());
         for i in 0..self.ncols() {
-            let c = (&self[(n, i)] * c).complete();
+            let c = &self[(n, i)] * c;
             self[(m, i)] += c;
         }
     }
 
     /// Add a scaled column to another column. N = c * M.
-    pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &Integer) {
+    pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &BigInt) {
         debug_assert!(n < self.ncols() && m < self.ncols());
         for i in 0..self.nrows() {
-            let c = (&self[(i, n)] * c).complete();
+            let c = &self[(i, n)] * c;
             self[(i, m)] += c;
         }
     }
-}
-
-impl<S: MatrixStorage<Float> + ?Sized> Matrix<Float, S> {
-    /// Returns the precision of the entries of the matrix.
-    pub fn precision(&self) -> u32 {
-        assert!(!self.is_empty(), "Can't get precision of empty matrix.");
-        if cfg!(debug_assert) {
-            self.assert_precision();
-        }
-
-        self.entry(0, 0).prec()
-    }
-
-    /// Asserts that all entries have the same precision.
-    pub fn assert_precision(&self) {
-        let mut iter = self.entries_row_major();
-        let Some(prec) = iter.next().map(|f| f.prec()) else {
-            return
-        };
-        assert!(iter.all(|f| f.prec() == prec),
-            "Matrix contains entries of different precision.");
-    }
-}
-
-impl FOwnedMatrix {
-    /// Zero matrix with a certain precision.
-    pub fn zero_prec(r: usize, c: usize, prec: u32) -> Self {
-        OwnedMatrix::from_iter(r, c, std::iter::repeat(Float::new(prec)))
-    }
-
-    /// Returns an nxn identity matrix.
-    pub fn identity_prec(n: usize, prec: u32) -> Self {
-        let mut m = Self::zero_prec(n, n, prec);
-        for i in 0..n {
-            m[(i, i)] = Float::with_val(prec, 1);
-        }
-        m
-    }
-
 }
 
 impl<T, S: MatrixStorage<T> + ?Sized> Index<usize> for Matrix<T, S> {
@@ -284,9 +239,8 @@ impl<T, S: MatrixStorage<T> + ?Sized> IndexMut<(usize, usize)> for Matrix<T, S> 
 }
 
 pub type OwnedMatrix<T> = Matrix<T, OwnedMatrixStorage<T>>;
-pub type IOwnedMatrix = OwnedMatrix<Integer>;
-pub type QOwnedMatrix = OwnedMatrix<Rational>;
-pub type FOwnedMatrix = OwnedMatrix<Float>;
+pub type IOwnedMatrix = OwnedMatrix<BigInt>;
+pub type QOwnedMatrix = OwnedMatrix<BigRational>;
 
 impl<T> OwnedMatrix<T> {
     /// Return an empty matrix.
@@ -607,9 +561,8 @@ impl<T> MatrixStorage<T> for OwnedMatrixStorage<T> {
 }
 
 pub type MatrixView<T> = Matrix<T, SliceMatrixStorage<T>>;
-pub type IMatrixView = MatrixView<Integer>;
-pub type RMatrixView = MatrixView<Rational>;
-pub type FMatrixView = MatrixView<Float>;
+pub type IMatrixView = MatrixView<BigInt>;
+pub type RMatrixView = MatrixView<BigRational>;
 
 impl<T> MatrixView<T> {
     /// Returns a view of the matrix transposed.

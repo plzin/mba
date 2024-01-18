@@ -460,7 +460,7 @@ fn verify_boolean_equivalences() {
 
         for i in 0..(1 << vars.len()) {
             for (j, v) in vars.iter().enumerate() {
-                val.set_value(*v, -rug::Integer::from((i >> j) & 1));
+                val.set_value(*v, -num_bigint::BigInt::from((i >> j) & 1));
             }
 
             assert_eq!(lhs.eval(&mut val), rhs.eval(&mut val),

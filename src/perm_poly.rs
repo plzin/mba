@@ -1,9 +1,10 @@
 //! Binary permutation polynomials.
 
-use rug::{Integer, Complete};
-use rand::distributions::{Distribution, Uniform};
-
-use crate::poly::Poly;
+use num_traits::Zero;
+use rand::distributions::{Uniform, Distribution};
+use num_bigint::{BigInt, RandBigInt};
+use num_integer::Integer;
+use crate::{poly::Poly, keep_bits_mut};
 
 /// Returns a pair of permutation polynomials mod 2^n.
 /// The functions are inverses of each other.
@@ -23,17 +24,16 @@ pub fn perm_pair(zi: &ZeroIdeal, degree: usize) -> (Poly, Poly) {
 
 /// Returns a random permutation polynomial.
 fn random_perm_poly(zi: &ZeroIdeal, degree: usize) -> Poly {
-    let mut rng = rug::rand::RandState::new();
-    rng.seed(&rand::random::<u64>().into());
+    let rng = &mut rand::thread_rng();
     let mut p: Vec<_> =  (0..=degree)
-        .map(|_| Integer::from(Integer::random_bits(zi.n, &mut rng)))
+        .map(|_| rng.gen_bigint(zi.n as u64))
         .collect();
 
     // Make sure that this is a permutation polynomial.
     // The coefficient of degree 1 has to be odd.
     if p[1].is_even() {
         p[1] += 1;
-        p[1].keep_bits_mut(zi.n);
+        keep_bits_mut(&mut p[1], zi.n);
     }
 
     let mut rng = rand::thread_rng();
@@ -43,7 +43,7 @@ fn random_perm_poly(zi: &ZeroIdeal, degree: usize) -> Poly {
         let dist = Uniform::from(1..=degree/2);
         let i = dist.sample(&mut rng);
         p[2*i] += 1;
-        p[2*i].keep_bits_mut(zi.n);
+        keep_bits_mut(&mut p[2*i], zi.n);
     }
 
     // Make sure the sum of the odd coefficients (except 1) is even.
@@ -51,7 +51,7 @@ fn random_perm_poly(zi: &ZeroIdeal, degree: usize) -> Poly {
         let dist = Uniform::from(1..=(degree-1)/2);
         let i = dist.sample(&mut rng);
         p[2*i+1] += 1;
-        p[2*i+1].keep_bits_mut(zi.n);
+        keep_bits_mut(&mut p[2*i+1], zi.n);
     }
 
     Poly { coeffs: p }.truncated()
@@ -66,7 +66,7 @@ pub fn compose(p: &Poly, q: &Poly, zi: &ZeroIdeal) -> Poly {
     let mut iter = p.coeffs.iter().rev();
 
     let mut r = Poly::constant(
-        iter.next().map_or_else(Integer::new, |c| c.clone())
+        iter.next().map_or_else(Zero::zero, |c| c.clone())
     );
 
     // The last coefficient is the initial value.
@@ -98,14 +98,12 @@ pub fn compute_inverse(f: &Poly, zi: &ZeroIdeal) -> Poly {
         // to stop after a certain number of iterations.
         assert!(it <= zi.n * 2, "Failed to compute the inverse \
                 in a reasonable number of iterations.");
-        //println!("compute_inverse: it={}: {}", it, q);
         // Compute the composition.
         let mut comp = compose(&p, &q, zi)
             .simplified(zi);
 
         // Do we already have p(q(x)) = x?
         if comp.is_id() {
-            //println!("compute_inverse: Found the inverse after {} iterations.", it);
             return q;
         }
 
@@ -238,9 +236,9 @@ pub fn zero_ideal_redundant(n: u32) -> Vec<Poly> {
 
 /// Used internally as a fold function.
 /// Computes the "parity" of a list of integers,
-/// that is whether they are even or odd,
+/// that is whether their sum is even or odd,
 /// depending on the initial value of the accumulator.
-fn parity(acc: bool, i: &Integer) -> bool {
+fn parity(acc: bool, i: &BigInt) -> bool {
     i.is_odd() ^ acc
 }
 
@@ -266,12 +264,7 @@ impl ZeroIdeal {
     /// Initializes the zero ideal.
     pub fn init(n: u32) -> Self {
         assert!(n > 0, "Not a valid ring.");
-        let zi = zero_ideal(n);
-        //for (i, g) in zi.iter().enumerate() {
-        //    println!("{}: {}", i, g);
-        //}
-
-        Self { n, gen: zi }
+        Self { n, gen: zero_ideal(n) }
     }
 
     /// Get generators for the zero ideal.
@@ -306,9 +299,8 @@ impl Poly {
             let gen_len = gen.len();
 
             while coeff + 1 >= gen_len {
-                let m = (&self.coeffs[coeff] / &gen.coeffs[gen_len-1])
-                    .complete();
-                if m != 0 {
+                let m = &self.coeffs[coeff] / &gen.coeffs[gen_len-1];
+                if !m.is_zero() {
                     let iter = self.coeffs[coeff+1-gen_len..=coeff]
                         .iter_mut().zip(gen.coeffs.iter());
 
@@ -342,7 +334,7 @@ impl Poly {
         while self.len() >= gen_len {
             let p_len = self.len();
             let (c, rest) = self.coeffs.split_last_mut().unwrap();
-            if *c != 0 {
+            if !c.is_zero() {
                 let iter = rest[p_len-gen_len..].iter_mut()
                     .zip(gen.coeffs.iter());
 
@@ -421,7 +413,7 @@ pub fn zero_ideal_test() {
         println!("{}: {}", i, g);
         for x in 0..16 {
             let y = g.eval_bits(&x.into(), 4);
-            if y != 0 {
+            if !y.is_zero() {
                 panic!("f({}) = {}", x, y);
             }
         }

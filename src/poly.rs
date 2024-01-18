@@ -1,10 +1,9 @@
 //! Polynomials.
 
 use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign};
-
-use rug::{Integer, Complete};
-
-use crate::expr::{ExprOp, Expr};
+use num_bigint::BigInt;
+use num_traits::{Zero, One};
+use crate::{expr::{ExprOp, Expr}, keep_bits, keep_bits_mut};
 
 /// Represents a polynomial with integer coefficients.
 ///
@@ -13,7 +12,7 @@ use crate::expr::{ExprOp, Expr};
 /// The coefficients should maybe be stored in reverse order.
 #[derive(Clone, Debug)]
 pub struct Poly {
-    pub coeffs: Vec<Integer>,
+    pub coeffs: Vec<BigInt>,
 }
 
 impl Poly {
@@ -30,7 +29,7 @@ impl Poly {
     }
 
     /// Returns the constant polynomial.
-    pub fn constant(a: Integer) -> Self {
+    pub fn constant(a: BigInt) -> Self {
         Self {
             coeffs: vec![a]
         }
@@ -41,7 +40,7 @@ impl Poly {
     /// the coefficients are passed in the reverse order of what
     /// you are used to.
     /// Another reason to change the representation sometime.
-    pub fn from_vec<T: Into<Integer>>(v: Vec<T>) -> Self {
+    pub fn from_vec<T: Into<BigInt>>(v: Vec<T>) -> Self {
         Self {
             coeffs: v.into_iter().map(|e| e.into()).collect()
         }
@@ -69,18 +68,18 @@ impl Poly {
 
     /// Checks whether a truncated polynomial is the identity polynomial.
     pub fn is_id(&self) -> bool {
-        debug_assert!(self.coeffs.last().map_or(true, |i| *i != 0),
+        debug_assert!(self.coeffs.last().map_or(true, |i| !i.is_zero()),
             "Truncate the polynomial before checking if it is the identity");
-        self.coeffs == [0, 1]
+        matches!(&self.coeffs[..], [z, o] if z.is_zero() && o.is_one())
     }
 
     /// Evaluate the polynomial at a using Horner's method.
-    pub fn eval(&self, a: &Integer) -> Integer {
+    pub fn eval(&self, a: &BigInt) -> BigInt {
         // Iterate over the coefficients in reverse order.
         let mut iter = self.coeffs.iter().rev();
 
         // The last coefficient is the initial value.
-        let mut v = iter.next().map_or_else(Integer::new, |c| c.clone());
+        let mut v = iter.next().map_or_else(BigInt::zero, |c| c.clone());
         for c in iter {
             // Multiply the current value by a and add the next coefficient.
             v *= a;
@@ -91,19 +90,18 @@ impl Poly {
     }
 
     /// Evaluate the polynomial mod 2^n.
-    pub fn eval_bits(&self, a: &Integer, n: u32) -> Integer {
+    pub fn eval_bits(&self, a: &BigInt, n: u32) -> BigInt {
         // Iterate over the coefficients in reverse order.
         let mut iter = self.coeffs.iter().rev();
 
         // The last coefficient is the initial value.
         let mut v = iter.next()
-            .map_or_else(Integer::new, |c| c.clone().keep_bits(n));
+            .map_or_else(BigInt::zero, |c| keep_bits(c, n));
         for c in iter {
             // Multiply the current value by a and add the next coefficient.
             v *= a;
-            v.keep_bits_mut(n);
             v += c;
-            v.keep_bits_mut(n);
+            keep_bits_mut(&mut v, n);
         }
 
         v
@@ -112,7 +110,7 @@ impl Poly {
     /// Truncates leading zero coefficients.
     pub fn truncate(&mut self) {
         for i in (0..self.len()).rev() {
-            if self.coeffs[i] == 0 {
+            if self.coeffs[i].is_zero() {
                 self.coeffs.pop();
             } else {
                 break;
@@ -127,16 +125,16 @@ impl Poly {
     }
 
     /// Multiplies the polynomial by a linear factor (x-a).
-    pub fn mul_linfac(&mut self, a: &Integer) {
+    pub fn mul_linfac(&mut self, a: &BigInt) {
         // p(x) * (x-a) = p(x) * x - p(x) * a
 
         // Shift every coefficient to the left
         // which corresponds to a multiplication by x.
-        self.coeffs.insert(0, Integer::new());
+        self.coeffs.insert(0, BigInt::zero());
 
         // Now subtract a times the original polynomial.
         for i in 0..self.coeffs.len()-1 {
-            let m = (a * &self.coeffs[i+1]).complete();
+            let m = a * &self.coeffs[i+1];
             self.coeffs[i] -= m;
         }
     }
@@ -150,7 +148,7 @@ impl Poly {
         let mut coeffs = Vec::with_capacity(self.len()-1);
 
         for (e, c) in self.coeffs[1..].iter().enumerate() {
-            coeffs.push((c * (e + 1) as u64).complete());
+            coeffs.push(c * (e + 1) as u64);
         }
 
         Self { coeffs }
@@ -159,7 +157,7 @@ impl Poly {
     /// Reduces all coefficients mod 2^n.
     pub fn mod_coeff(&mut self, n: u32) {
         for c in &mut self.coeffs {
-            c.keep_bits_mut(n);
+            keep_bits_mut(c, n);
         }
     }
 
@@ -183,7 +181,7 @@ impl Poly {
 
         for c in it {
             e = ExprOp::Mul(x.clone(), e.into());
-            if c != &Integer::ZERO {
+            if !c.is_zero() {
                 e = ExprOp::Add(ExprOp::Const(c.clone()).into(), e.into());
             }
         }
@@ -207,7 +205,7 @@ impl Add for &Poly {
         // Add up all coefficients that exist in both.
         self.coeffs.iter()
             .zip(rhs.coeffs.iter())
-            .for_each(|(l, r)| coeffs.push((l + r).complete()));
+            .for_each(|(l, r)| coeffs.push(l + r));
 
         // Push the remaining coefficients.
         for c in &max.coeffs[min.len()..] {
@@ -232,8 +230,8 @@ impl AddAssign<&Poly> for Poly {
     }
 }
 
-impl AddAssign<&Integer> for Poly {
-    fn add_assign(&mut self, rhs: &Integer) {
+impl AddAssign<&BigInt> for Poly {
+    fn add_assign(&mut self, rhs: &BigInt) {
         match self.coeffs.is_empty() {
             true => self.coeffs.push(rhs.clone()),
             false => self.coeffs[0] += rhs,
@@ -248,7 +246,7 @@ impl Sub for &Poly {
         let mut coeffs = Vec::with_capacity(self.len());
         self.coeffs.iter()
             .zip(rhs.coeffs.iter())
-            .for_each(|(l, r)| coeffs.push((l - r).complete()));
+            .for_each(|(l, r)| coeffs.push(l - r));
 
         // Push the remaining coefficients or their additive inverses
         // depending on what polynomial has the more coefficients.
@@ -281,8 +279,8 @@ impl SubAssign<&Poly> for Poly {
     }
 }
 
-impl SubAssign<&Integer> for Poly {
-    fn sub_assign(&mut self, rhs: &Integer) {
+impl SubAssign<&BigInt> for Poly {
+    fn sub_assign(&mut self, rhs: &BigInt) {
         match self.coeffs.is_empty() {
             true => self.coeffs.push(-rhs.clone()),
             false => self.coeffs[0] -= rhs,
@@ -293,10 +291,10 @@ impl SubAssign<&Integer> for Poly {
 impl Mul for &Poly {
     type Output = Poly;
     fn mul(self, rhs: Self) -> Self::Output {
-        let mut coeffs = vec![Integer::new(); self.len() + rhs.len() - 1];
+        let mut coeffs = vec![BigInt::zero(); self.len() + rhs.len() - 1];
         for (i, c) in rhs.coeffs.iter().enumerate() {
             for (j, d)  in self.coeffs.iter().enumerate() {
-                coeffs[i + j] += (c * d).complete();
+                coeffs[i + j] += c * d;
             }
         }
 
@@ -311,17 +309,17 @@ impl MulAssign<&Poly> for Poly {
     }
 }
 
-impl Mul<&Integer> for &Poly {
+impl Mul<&BigInt> for &Poly {
     type Output = Poly;
-    fn mul(self, rhs: &Integer) -> Self::Output {
+    fn mul(self, rhs: &BigInt) -> Self::Output {
         let mut r = self.clone();
         r *= rhs;
         r
     }
 }
 
-impl MulAssign<&Integer> for Poly {
-    fn mul_assign(&mut self, rhs: &Integer) {
+impl MulAssign<&BigInt> for Poly {
+    fn mul_assign(&mut self, rhs: &BigInt) {
         for c in &mut self.coeffs {
             *c *= rhs;
         }
@@ -337,7 +335,7 @@ impl std::fmt::Display for Poly {
             None => write!(f, "0")?,
             Some((e, c)) => if e == 0 {
                 write!(f, "{}", c)?
-            } else if *c != 0 {
+            } else if !c.is_zero() {
                 write!(f, "{}x^{}", c, e)?;
                 has_terms = true;
             },
@@ -345,10 +343,10 @@ impl std::fmt::Display for Poly {
 
         for (e, c) in iter {
             if e == 0 {
-                if *c != 0 || !has_terms {
+                if !c.is_zero() || !has_terms {
                     write!(f, " + {}", c)?;
                 }
-            } else if *c != 0 {
+            } else if !c.is_zero() {
                 write!(f, " + {}x^{}", c, e)?;
                 has_terms = true;
             }
@@ -367,7 +365,7 @@ impl std::fmt::LowerHex for Poly {
             None => write!(f, "0")?,
             Some((e, c)) => if e == 0 {
                 write!(f, "{:x}", c)?
-            } else if *c != 0 {
+            } else if !c.is_zero() {
                 write!(f, "{:x}x^{}", c, e)?;
                 has_terms = true;
             },
@@ -375,10 +373,10 @@ impl std::fmt::LowerHex for Poly {
 
         for (e, c) in iter {
             if e == 0 {
-                if *c != 0 || !has_terms {
+                if !c.is_zero() || !has_terms {
                     write!(f, " + {:x}", c)?;
                 }
-            } else if *c != 0 {
+            } else if !c.is_zero() {
                 write!(f, " + {:x}x^{}", c, e)?;
                 has_terms = true;
             }
@@ -397,7 +395,7 @@ impl std::fmt::UpperHex for Poly {
             None => write!(f, "0")?,
             Some((e, c)) => if e == 0 {
                 write!(f, "{:X}", c)?
-            } else if *c != 0 {
+            } else if !c.is_zero() {
                 write!(f, "{:X}x^{}", c, e)?;
                 has_terms = true;
             },
@@ -405,10 +403,10 @@ impl std::fmt::UpperHex for Poly {
 
         for (e, c) in iter {
             if e == 0 {
-                if *c != 0 || !has_terms {
+                if !c.is_zero() || !has_terms {
                     write!(f, " + {:X}", c)?;
                 }
-            } else if *c != 0 {
+            } else if !c.is_zero() {
                 write!(f, " + {:X}x^{}", c, e)?;
                 has_terms = true;
             }
@@ -427,7 +425,7 @@ impl std::fmt::Binary for Poly {
             None => write!(f, "0")?,
             Some((e, c)) => if e == 0 {
                 write!(f, "{:b}", c)?
-            } else if *c != 0 {
+            } else if !c.is_zero() {
                 write!(f, "{:b}x^{}", c, e)?;
                 has_terms = true;
             },
@@ -435,10 +433,10 @@ impl std::fmt::Binary for Poly {
 
         for (e, c) in iter {
             if e == 0 {
-                if *c != 0 || !has_terms {
+                if !c.is_zero() || !has_terms {
                     write!(f, " + {:b}", c)?;
                 }
-            } else if *c != 0 {
+            } else if !c.is_zero() {
                 write!(f, " + {:b}x^{}", c, e)?;
                 has_terms = true;
             }

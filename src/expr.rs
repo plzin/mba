@@ -4,10 +4,10 @@ use std::rc::Rc;
 use std::collections::BTreeSet;
 use std::ops::Deref;
 use std::fmt::Display;
-use num_traits::One;
-use rug::Integer;
+use num_traits::{One, Zero, ToPrimitive};
+use num_bigint::BigInt;
 use crate::valuation::Valuation;
-use crate::Symbol;
+use crate::{Symbol, keep_bits};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Expr(Rc<ExprOp>);
@@ -161,7 +161,7 @@ impl Expr {
     }
 
     /// Evaluate an expression.
-    pub fn eval(&self, v: &mut Valuation, bits: u32) -> Integer {
+    pub fn eval(&self, v: &mut Valuation, bits: u32) -> BigInt {
         let mut cache = Vec::new();
         return eval_impl(self, v, bits, &mut cache);
 
@@ -169,8 +169,8 @@ impl Expr {
             e: &Expr,
             v: &mut Valuation,
             bits: u32,
-            cache: &mut Vec<(*const ExprOp, Integer)>
-        ) -> Integer {
+            cache: &mut Vec<(*const ExprOp, BigInt)>
+        ) -> BigInt {
             if e.strong_count() > 1 {
                 // This is a common subexpression.
                 // We don't want to evaluate it twice.
@@ -194,7 +194,7 @@ impl Expr {
                     // We don't want division by zero to panic,
                     // so we define it as zero.
                     if r.is_zero() {
-                        Integer::from(0)
+                        Zero::zero()
                     } else {
                         eval_impl(l, v, bits, cache) / r
                     }
@@ -205,14 +205,14 @@ impl Expr {
                 ExprOp::Xor(l, r) => eval_impl(l, v, bits, cache) ^ eval_impl(r, v, bits, cache),
                 ExprOp::Not(i) => !eval_impl(i, v, bits, cache),
                 ExprOp::Shl(l, r) => eval_impl(l, v, bits, cache)
-                    << (eval_impl(r, v, bits, cache) % bits).to_u32_wrapping(),
+                    << (eval_impl(r, v, bits, cache) % bits).to_u64().unwrap(),
                 ExprOp::Shr(l, r) => eval_impl(l, v, bits, cache)
-                    >> (eval_impl(r, v, bits, cache) % bits).to_u32_wrapping(),
-                ExprOp::Sar(l, r) => eval_impl(l, v, bits, cache).keep_signed_bits(bits)
-                    >> (eval_impl(r, v, bits, cache) % bits).to_u32_wrapping(),
+                    >> (eval_impl(r, v, bits, cache) % bits).to_u64().unwrap(),
+                ExprOp::Sar(l, r) => crate::keep_signed_bits(&eval_impl(l, v, bits, cache), bits)
+                    >> (eval_impl(r, v, bits, cache) % bits).to_u64().unwrap(),
             };
 
-            let v = v.keep_bits(bits);
+            let v = keep_bits(&v, bits);
 
             if e.strong_count() > 1 {
                 // This is a common subexpression.
@@ -445,9 +445,10 @@ impl Display for Expr {
 
 /// A general expression.
 /// We use Rc instead of Box in order to avoid copying common subexpressions.
+/// The semantics of this as used in [Expr::eval] are questionable.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ExprOp {
-    Const(Integer),
+    Const(BigInt),
     Var(Symbol),
     Add(Expr, Expr),
     Sub(Expr, Expr),
@@ -471,8 +472,8 @@ pub enum ExprOp {
 
 impl ExprOp {
     /// Returns the zero constant.
-    pub const fn zero() -> Self {
-        Self::Const(Integer::new())
+    pub fn zero() -> Self {
+        Self::Const(Zero::zero())
     }
 
     /// Is this the constant zero?
@@ -716,12 +717,12 @@ fn parse_expr_test() {
 #[test]
 fn expr_eval_test() {
     let e = Expr::from_string("1 + 2 * 3").unwrap();
-    assert_eq!(e.eval(&mut Valuation::empty(), 8), 7);
+    assert_eq!(e.eval(&mut Valuation::empty(), 8), 7.into());
 
     let e = Expr::from_string("(x << y) + z").unwrap();
     assert_eq!(e.eval(&mut Valuation::from_vec_panic(vec![
         ("x".into(), 1.into()),
         ("y".into(), 3.into()),
         ("z".into(), 7.into()),
-    ]), 8), 15);
+    ]), 8), 15.into());
 }

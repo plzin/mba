@@ -2,7 +2,8 @@
 //! on n bits, and linear combinations of uniform expressions ([LUExpr]).
 
 use std::{ops::Neg, collections::BTreeSet};
-use rug::{Integer, Complete};
+use num_bigint::BigInt;
+use num_traits::{Zero, One};
 use crate::valuation::Valuation;
 use crate::{Symbol, ExprOp, int_from_it};
 
@@ -10,7 +11,7 @@ use crate::{Symbol, ExprOp, int_from_it};
 /// These are the expressions for which rewrite rules can be efficiently
 /// generated.
 #[derive(Clone, Debug)]
-pub struct LUExpr(pub Vec<(Integer, UExpr)>);
+pub struct LUExpr(pub Vec<(BigInt, UExpr)>);
 
 impl LUExpr {
     /// Create the empty linear combination.
@@ -20,7 +21,7 @@ impl LUExpr {
     }
 
     /// Creates an expression that equals a constant.
-    pub fn constant(c: Integer) -> Self {
+    pub fn constant(c: BigInt) -> Self {
         Self(vec![(-c, UExpr::Ones)])
     }
 
@@ -49,18 +50,20 @@ impl LUExpr {
     }
 
     /// Evaluate an expression with a valuation for the occurring variables.
-    pub fn eval(&self, v: &mut Valuation, bits: u32) -> Integer {
+    pub fn eval(&self, v: &mut Valuation, bits: u32) -> BigInt {
         self.0.iter()
             .map(|(i, e)| i * e.eval(v))
-            .fold(Integer::new(), |acc, x| (acc + x).keep_bits(bits))
+            .fold(BigInt::zero(), |acc, x| crate::keep_bits(&(acc + x), bits))
     }
 
     /// Returns a measure of the complexity of the expression.
     pub fn complexity(&self, bits: u32) -> u32 {
         // Complexity of a coefficient.
-        let coeff_complexity = |i: &Integer| {
-            let abs = i.keep_signed_bits_ref(bits).complete().abs();
-            abs.count_ones().unwrap() / 2 + abs.significant_bits()
+        let coeff_complexity = |i: &BigInt| {
+            let signed = crate::keep_signed_bits(i, bits);
+            let abs = signed.magnitude();
+            (0..abs.bits()).filter(|j| i.bit(*j)).count() as u32 / 2
+                + abs.bits() as u32
         };
 
         self.0.iter()
@@ -151,11 +154,11 @@ impl LUExpr {
     pub fn to_expr(&self) -> ExprOp {
         let mut it = self.0.iter();
         let s = match it.next() {
-            None => return ExprOp::Const(Integer::new()),
+            None => return ExprOp::Const(Zero::zero()),
             Some(s) => s,
         };
 
-        let from_summand = |(i, e): &(Integer, UExpr)| {
+        let from_summand = |(i, e): &(BigInt, UExpr)| {
             if let UExpr::Ones = e {
                 ExprOp::Const(-i.clone())
             } else {
@@ -180,13 +183,13 @@ impl From<UExpr> for LUExpr {
 
 impl std::fmt::Display for LUExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.0.iter().filter(|(i, _)| *i != 0);
+        let mut iter = self.0.iter().filter(|(i, _)| !i.is_zero());
         let (i, e) = match iter.next() {
             Some(t) => t,
             None => return write!(f, "0"),
         };
 
-        if *i == 1 {
+        if i.is_one() {
             write!(f, "{}", e)?;
         } else {
             write!(f, "{}*({})", i, e)?;
@@ -194,7 +197,7 @@ impl std::fmt::Display for LUExpr {
 
         for (i, e) in iter {
             write!(f, " + ")?;
-            if *i == 1 {
+            if i.is_one() {
                 write!(f, "{}", e)?;
             } else {
                 write!(f, "{}*({})", i, e)?;
@@ -261,7 +264,7 @@ impl UExpr {
     }
 
     /// Evaluate an expression with a valuation for the occurring variables.
-    pub fn eval(&self, v: &mut Valuation) -> Integer {
+    pub fn eval(&self, v: &mut Valuation) -> BigInt {
         use UExpr::*;
         match self {
             Ones            => (-1).into(),

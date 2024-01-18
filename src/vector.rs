@@ -9,7 +9,8 @@ use std::ops::{
 };
 use std::fmt::Debug;
 use num_traits::{Zero, Signed};
-use rug::{Integer, Complete, Float, Rational, ops::NegAssign};
+use num_bigint::BigInt;
+use num_rational::BigRational;
 use crate::matrix::{RowVector, ColumnVector};
 
 /// How are the entries of a vector stored?
@@ -144,14 +145,6 @@ impl<T, S: VectorStorage<T> + ?Sized> Vector<T, S> {
         #[allow(clippy::clone_on_copy)]
         self.transform(|e| e.clone().into())
     }
-
-    /// Converts the entries of this vector to rug::Floats.
-    pub fn to_float(&self, prec: u32) -> OwnedVector<Float>
-    where
-        for<'a> Float: rug::Assign<&'a T>
-    {
-        self.transform(|e| Float::with_val(prec, e))
-    }
 }
 
 impl<T, S: ContiguousVectorStorage<T> + ?Sized> Vector<T, S> {
@@ -185,25 +178,6 @@ impl<T, S: VectorStorage<T>> Vector<T, S> {
             phantom: std::marker::PhantomData,
             storage,
         }
-    }
-}
-
-impl<S: VectorStorage<Float> + ?Sized> Vector<Float, S> {
-    pub fn precision(&self) -> u32 {
-        assert!(self.dim() > 0,
-            "Cannot get precision of an empty vector");
-        if cfg!(debug_assert) {
-            self.assert_precision();
-        }
-        self.entry(0).prec()
-    }
-
-    pub fn assert_precision(&self) {
-        let mut iter = self.iter();
-        let Some(prec) = iter.next().map(|f| f.prec()) else {
-            return
-        };
-        assert!(iter.all(|f| f.prec() == prec));
     }
 }
 
@@ -275,9 +249,8 @@ impl<T: Eq, S: VectorStorage<T> + ?Sized> Eq for Vector<T, S> {}
 /// the elements. However, you can only get references
 /// to this type, which are the views.
 pub type VectorView<T> = Vector<T, SliceVectorStorage<T>>;
-pub type FVectorView = VectorView<Float>;
-pub type IVectorView = VectorView<Integer>;
-pub type RVectorView = VectorView<Rational>;
+pub type IVectorView = VectorView<BigInt>;
+pub type RVectorView = VectorView<BigRational>;
 
 impl<T> VectorView<T> {
     /// Get a vector view from a slice.
@@ -355,9 +328,8 @@ impl<T> ContiguousVectorStorage<T> for SliceVectorStorage<T> {
 }
 
 pub type OwnedVector<T> = Vector<T, OwnedVectorStorage<T>>;
-pub type FOwnedVector = OwnedVector<Float>;
-pub type IOwnedVector = OwnedVector<Integer>;
-pub type ROwnedVector = OwnedVector<Rational>;
+pub type IOwnedVector = OwnedVector<BigInt>;
+pub type ROwnedVector = OwnedVector<BigRational>;
 
 impl<T> OwnedVector<T> {
     /// Returns a view of the owned vector.
@@ -448,12 +420,6 @@ impl<T> OwnedVector<T> {
         };
 
         Self::from_raw_parts(entries, dim)
-    }
-}
-
-impl OwnedVector<Float> {
-    pub fn zero_prec(dim: usize, prec: u32) -> Self {
-        Self::from_iter(dim, core::iter::repeat(Float::new(prec)))
     }
 }
 
@@ -583,9 +549,8 @@ impl<T> Drop for OwnedVectorStorage<T> {
 /// The stride is the amount of elements to skip
 /// not the number of bytes to skip.
 pub type StrideVectorView<T> = Vector<T, StrideStorage<T>>;
-pub type FStrideVectorView = StrideVectorView<Float>;
-pub type IStrideVectorView = StrideVectorView<Integer>;
-pub type RStrideVectorView = StrideVectorView<Rational>;
+pub type IStrideVectorView = StrideVectorView<BigInt>;
+pub type RStrideVectorView = StrideVectorView<BigRational>;
 
 impl<T> StrideVectorView<T> {
     /// Returns a vector view with stride from a raw pointer and dimension.
@@ -809,7 +774,7 @@ where
     }
 }
 
-impl InnerProduct for Integer {
+impl InnerProduct for BigInt {
     fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
     where
         R: VectorStorage<Self> + ?Sized,
@@ -824,11 +789,11 @@ impl InnerProduct for Integer {
     fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
         where S: VectorStorage<Self> + ?Sized,
     {
-        v.iter().map(|x| x.square_ref()).sum()
+        v.iter().map(|x| x * x).sum()
     }
 }
 
-impl InnerProduct for Rational {
+impl InnerProduct for BigRational {
     fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
     where
         R: VectorStorage<Self> + ?Sized,
@@ -836,47 +801,14 @@ impl InnerProduct for Rational {
     {
         assert!(v.dim() == w.dim());
         v.iter().zip(w.iter())
-            .map(|(c, d)| (c * d).complete())
+            .map(|(c, d)| c * d)
             .sum()
     }
 
     fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
         where S: VectorStorage<Self> + ?Sized,
     {
-        v.iter().map(|x| x.square_ref().complete()).sum()
-    }
-}
-
-impl InnerProduct for Float {
-    fn dot<R, S>(v: &Vector<Self, R>, w: &Vector<Self, S>) -> Self
-    where
-        R: VectorStorage<Self> + ?Sized,
-        S: VectorStorage<Self> + ?Sized,
-    {
-        assert!(v.dim() == w.dim());
-        let prec = v.precision();
-        debug_assert_eq!(prec, w.precision(), "Cannot compute the \
-            inner product of two vectors of different precision.");
-        v.iter().zip(w.iter())
-            .map(|(a, b)| a * b)
-            .fold(Float::new(prec), |acc, x| acc + x)
-    }
-
-    fn norm_sqr<S>(v: &Vector<Self, S>) -> Self
-        where S: VectorStorage<Self> + ?Sized,
-    {
-        let prec = v.precision();
-        v.iter()
-            .map(|x| x * x)
-            .fold(Float::new(prec), |acc, x| acc + x)
-    }
-}
-
-impl VectorNorm for Float {
-    fn norm<S>(v: &Vector<Self, S>) -> Self
-        where S: VectorStorage<Self> + ?Sized,
-    {
-        v.norm_sqr().sqrt()
+        v.iter().map(|x| x * x).sum()
     }
 }
 
@@ -920,28 +852,11 @@ pub trait L1Norm: Sized {
         where S: VectorStorage<Self> + ?Sized;
 }
 
-impl L1Norm for Float {
+impl L1Norm for BigInt {
     fn l1_norm<S>(v: &Vector<Self, S>) -> Self
         where S: VectorStorage<Self> + ?Sized,
     {
-        let mut n = Float::new(v.precision());
-        for e in v.iter() {
-            if e.is_sign_negative() {
-                n -= e;
-            } else {
-                n += e;
-            }
-        }
-
-        n
-    }
-}
-
-impl L1Norm for Integer {
-    fn l1_norm<S>(v: &Vector<Self, S>) -> Self
-        where S: VectorStorage<Self> + ?Sized,
-    {
-        let mut n = Integer::new();
+        let mut n = BigInt::zero();
         for e in v.iter() {
             if e.is_negative() {
                 n -= e;
@@ -953,13 +868,13 @@ impl L1Norm for Integer {
     }
 }
 
-impl L1Norm for Rational {
+impl L1Norm for BigRational {
     fn l1_norm<S>(v: &Vector<Self, S>) -> Self
         where S: VectorStorage<Self> + ?Sized,
     {
-        let mut n = Rational::new();
+        let mut n = BigRational::zero();
         for e in v.iter() {
-            if e.cmp0().is_le() {
+            if e.is_negative() {
                 n -= e;
             } else {
                 n += e;
@@ -1095,7 +1010,7 @@ where
 
 impl<T, S> Sub<OwnedVector<T>> for &Vector<T, S>
 where
-    T: for<'a> AddAssign<&'a T> + NegAssign,
+    T: for<'a> AddAssign<&'a T> + Neg<Output = T>,
     S: VectorStorage<T> + ?Sized,
 {
     type Output = OwnedVector<T>;
@@ -1103,7 +1018,7 @@ where
         assert!(self.dim() == rhs.dim(),
             "Can not add/subtract vectors of different dimensions.");
         for (a, b) in self.iter().zip(rhs.iter_mut()) {
-            b.neg_assign();
+            crate::neg_mut(b);
             *b += a;
         }
         rhs
@@ -1174,11 +1089,15 @@ where
     }
 }
 
-impl<T: NegAssign, S: VectorStorage<T>> Neg for Vector<T, S> {
+impl<T, S> Neg for Vector<T, S>
+where
+    T: Neg<Output = T>,
+    S: VectorStorage<T>,
+{
     type Output = Self;
     fn neg(mut self) -> Self::Output {
         for e in self.iter_mut() {
-            e.neg_assign();
+            crate::neg_mut(e);
         }
         self
     }

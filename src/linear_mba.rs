@@ -1,11 +1,12 @@
 //! Linear Mixed Boolean-Arithmetic.
 
-use rug::ops::DivRounding;
-use rug::{Integer, Complete};
+use num_bigint::BigInt;
+use num_integer::Integer;
+use num_traits::{Zero, One, Euclid};
 
 use crate::simplify_boolean::{simplify_from_truth_table, SimplificationConfig};
 use crate::valuation::Valuation;
-use crate::diophantine;
+use crate::{diophantine, keep_signed_bits, keep_signed_bits_mut};
 use crate::expr::{ExprOp, Expr};
 use crate::lattice::{self, AffineLattice};
 use crate::uniform_expr::*;
@@ -255,14 +256,15 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
         for i in 0..entries {
             // Initialize the valuation.
             for (j, c) in vars.iter().enumerate() {
-                val.set_value(*c, -Integer::from((i >> j) & 1));
+                val.set_value(*c, -BigInt::from((i >> j) & 1));
             }
 
             // Evaluate the expression.
-            let r = e.eval(&mut val, bits).keep_signed_bits(bits);
-            let r = if r == 0 {
+            let r = keep_signed_bits(&e.eval(&mut val, bits), bits);
+            let r = if r.is_zero() {
                 false
-            } else if r == -1 {
+            } else if r.sign() == num_bigint::Sign::Minus
+                && r.magnitude().is_one() {
                 true
             } else {
                 break
@@ -331,7 +333,7 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
     if cfg.alg == LeastComplexTerms {
         for i in 0..l.offset.dim() {
             assert!(!l.lattice.basis[i][i].is_zero());
-            let q = l.offset[i].clone().div_euc(&l.lattice.basis[i][i]);
+            let q = l.offset[i].clone().div_euclid(&l.lattice.basis[i][i]);
             if !q.is_zero() {
                 l.offset -= &(&l.lattice.basis[i] * &q);
             }
@@ -361,13 +363,13 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
     // Scale the lattice basis...
     for v in l.lattice.basis.rows_mut() {
         for (e, c) in v.iter_mut().zip(&complexity) {
-            *e *= c;
+            *e *= *c;
         }
     }
 
     // ... and offset.
     for (e, c) in l.offset.iter_mut().zip(&complexity) {
-        *e *= c;
+        *e *= *c;
     }
 
     // Run LLL because it improves the speed of the CVP algorithm.
@@ -380,8 +382,8 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
 
     // Divide the solution by the complexity.
     for (e, c) in solution.iter_mut().zip(&complexity) {
-        debug_assert!(e.is_divisible_u(*c));
-        e.div_exact_u_mut(*c);
+        debug_assert!(e.is_multiple_of(&BigInt::from(*c)));
+        *e /= *c;
     }
 
     // Collect it into an LUExpr.
@@ -416,19 +418,19 @@ fn solve_linear_system(
 
         // Initialize the valuation.
         for (j, c) in vars.iter().enumerate() {
-            val.set_value(*c, -Integer::from((i >> j) & 1));
+            val.set_value(*c, -BigInt::from((i >> j) & 1));
         }
 
         // Write the values of the operations into this row of the matrix.
         for (j, e) in ops.iter().enumerate() {
-            row[j] = e.eval(&mut val, bits).keep_signed_bits(bits);
+            row[j] = keep_signed_bits(&e.eval(&mut val, bits), bits);
         }
 
         // Write the desired result into the vector.
-        b[i] = expr.eval(&mut val, bits).keep_signed_bits(bits);
+        b[i] = keep_signed_bits(&expr.eval(&mut val, bits), bits);
     }
 
-    diophantine::solve_modular(a.view(), b.view(), &(Integer::from(1) << bits))
+    diophantine::solve_modular(a.view(), b.view(), &(BigInt::one() << bits))
 }
 
 /// Converts a solution to the linear system and the operations
@@ -445,13 +447,13 @@ fn collect_solution(
             // Is the UExpr already in the linear combination?
             match l.0.iter_mut().find(|(_, f)| f == e) {
                 Some((f, _)) => *f += c * d,
-                None => l.0.push(((c * d).complete(), e.clone())),
+                None => l.0.push((c * d, e.clone())),
             }
         }
     }
 
     for (i, _) in &mut l.0 {
-        i.keep_signed_bits_mut(bits);
+        keep_signed_bits_mut(i, bits);
     }
 
     l.remove_zero_terms();
@@ -532,7 +534,7 @@ fn expr_to_uexpr(
 /// Tries to convert an expression into a factor and a UExpr.
 fn parse_term(
     e: &Expr, subs: &mut Subs, force: bool
-) -> Option<(Integer, UExpr)> {
+) -> Option<(BigInt, UExpr)> {
     if let ExprOp::Mul(l, r) = e.as_ref() {
         if let ExprOp::Const(i) = l.as_ref() {
             return expr_to_uexpr(r, subs, force).map(|u| (i.clone(), u));
@@ -543,7 +545,7 @@ fn parse_term(
         return Some((-c.clone(), UExpr::Ones));
     }
 
-    expr_to_uexpr(e, subs, force).map(|u| (Integer::from(1), u))
+    expr_to_uexpr(e, subs, force).map(|u| (One::one(), u))
 }
 
 /// Converts part of an expression to an [LUExpr].
@@ -726,7 +728,8 @@ fn deobfuscate_linear_test() {
         *v.value(x) = xv.into();
         for yv in 0..15 {
             *v.value(y) = yv.into();
-            assert_eq!(e.eval(&mut v).keep_signed_bits(4), d.eval(&mut v, 4).keep_signed_bits(4));
+            assert_eq!(keep_signed_bits(&e.eval(&mut v), 4),
+                keep_signed_bits(&d.eval(&mut v, 4), 4));
         }
     }
 }

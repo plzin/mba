@@ -8,7 +8,9 @@ lazy_static = "1.4"
 itertools = "0.12"
 rand = "0.8"
 num-traits = "0.2"
-rug = { version = "1", features = ["integer", "rational", "rand", "num-traits"] }
+num-integer = "0.1"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-rational = "0.4"
 egg = "0.9"
 z3 = { version = "0.12", optional = true }
 z3-sys = { version = "0.8", optional = true }
