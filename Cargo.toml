@@ -17,3 +17,4 @@ z3-sys = { version = "0.8", optional = true }
 
 [features]
 z3 = ["dep:z3", "dep:z3-sys"]
+wasm = ["egg/wasm-bindgen"]

@@ -32,4 +32,4 @@ You can find some examples of how to use this crate in `examples/`.
 
 \[3\] [Binary Permutation Polynomial Inversion and Application to Obfuscation Techniques](https://dl.acm.org/doi/10.1145/2995306.2995310)
 
-\[4\] [Soving AX = B using the Hermite normal form](http://www.numbertheory.org/PDFS/ax=b.pdf)
+\[4\] [Solving AX = B using the Hermite normal form](http://www.numbertheory.org/PDFS/ax=b.pdf)

@@ -255,8 +255,7 @@ pub struct ZeroIdeal {
     /// The coefficients are mod 2^n.
     n: u32,
 
-    /// The generators of the "zero ideal".
-    /// The zero ideal contains all polynomials P s.t. P(x) = 0 for all x.
+    /// The generators.
     gen: Vec<Poly>,
 }
 

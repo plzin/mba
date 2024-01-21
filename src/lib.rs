@@ -1,12 +1,7 @@
 //! Mixed Boolean-Arithmetic expressions and operations on them.
 
+// See [CustomMetadataSlice] for an explanation of why I use this.
 #![feature(ptr_metadata)]
-
-// You can only compile this for 64-bits because I use some hacky stuff
-// with vector views. This can be removed once rust allows supports
-// custom dynamically sized types.
-#[cfg(not(target_pointer_width = "64"))]
-compile_error!("This crate only works on 64-bit systems.");
 
 // It would be nicer to import the symbol_table crate ourselves,
 // and re-export GlobalSymbol, but we don't want to run into
@@ -23,7 +18,6 @@ pub mod expr;
 
 pub mod uniform_expr;
 
-
 pub mod diophantine;
 pub mod lattice;
 pub mod poly;
@@ -35,6 +29,94 @@ use std::ops::Neg;
 use num_bigint::BigInt;
 use num_traits::{One, Euclid};
 use expr::*;
+
+/// I do some hacky stuff with vector and matrix views.
+/// The other option would be having two structs for immutable and mutable
+/// views, but that is just annoying and rust also doesn't have two structs for
+/// immutable and mutable slices. Whether you can mutate the data is determined
+/// by whether you have a mutable reference to it.
+/// The way this is implemented in rust is that a pointer (and thus reference)
+/// has metadata attached to it. In the case of a slice, this is the length.
+/// But in the case of more complicated view types, this data could be much
+/// more complicated, like a stride and a size, or in the case of a matrix
+/// just the number of rows and columns. Unfortunately, rust doesn't let you
+/// choose the metadata type and in our case it is a usize
+/// (see https://doc.rust-lang.org/stable/std/ptr/trait.Pointee.html),
+/// which is not enough space to store the data we need.
+/// So I am abusing the usize to store a pointer to the data.
+struct CustomMetadataSlice<T, M> {
+    phantom: std::marker::PhantomData<M>,
+    data: [T]
+}
+
+trait CustomMetadata {
+    /// The size of the slice.
+    fn size(&self) -> usize;
+}
+
+impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
+    pub fn new<'a>(data: *const T, metadata: M) -> &'a Self {
+        let metadata = Box::into_raw(Box::new(metadata));
+        unsafe {
+            &*std::ptr::from_raw_parts(
+                data as _,
+                metadata as usize
+            )
+        }
+    }
+
+    pub fn new_mut<'a>(data: *mut T, metadata: M) -> &'a mut Self {
+        let metadata = Box::into_raw(Box::new(metadata));
+        unsafe {
+            &mut *std::ptr::from_raw_parts_mut(
+                data as _,
+                metadata as usize
+            )
+        }
+    }
+
+    pub fn metadata(&self) -> &M {
+        unsafe {
+            &*(std::ptr::metadata(self) as *const M)
+        }
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.data.as_ptr()
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.data.as_mut_ptr()
+    }
+
+    pub fn slice(&self) -> &[T] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self.data.as_ptr() as _,
+                self.metadata().size()
+            )
+        }
+    }
+
+    pub fn slice_mut(&mut self) -> &mut [T] {
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                self.data.as_mut_ptr() as _,
+                self.metadata().size()
+            )
+        }
+    }
+}
+
+impl<T, M> Drop for CustomMetadataSlice<T, M> {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = Box::from_raw(
+                self.data.as_ptr() as *mut M
+            );
+        }
+    }
+}
 
 // The following functions were supported by rug but not num_bigint.
 // They are way more inefficient than the rug versions, so they should

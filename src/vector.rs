@@ -12,6 +12,7 @@ use num_traits::{Zero, Signed};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use crate::matrix::{RowVector, ColumnVector};
+use crate::{CustomMetadata, CustomMetadataSlice};
 
 /// How are the entries of a vector stored?
 pub trait VectorStorage<T> {
@@ -554,23 +555,21 @@ pub type RStrideVectorView = StrideVectorView<BigRational>;
 
 impl<T> StrideVectorView<T> {
     /// Returns a vector view with stride from a raw pointer and dimension.
-    pub fn from_raw_parts<'a>(ptr: *const T, dim: usize, stride: usize) -> &'a Self {
-        unsafe {
-            &*std::ptr::from_raw_parts(
-                ptr as _,
-                Self::metadata(dim, stride)
-            )
-        }
+    pub fn from_raw_parts<'a>(
+        ptr: *const T,
+        dim: usize,
+        stride: usize
+    ) -> &'a Self {
+        Self::from_storage_ref(StrideStorage::new(ptr, dim, stride))
     }
 
     /// Returns a mutable vector view with stride from a raw pointer and dimension.
-    pub fn from_raw_parts_mut<'a>(ptr: *mut T, dim: usize, stride: usize) -> &'a mut Self {
-        unsafe {
-            &mut *std::ptr::from_raw_parts_mut(
-                ptr as _,
-                Self::metadata(dim, stride)
-            )
-        }
+    pub fn from_raw_parts_mut<'a>(
+        ptr: *mut T,
+        dim: usize,
+        stride: usize
+    ) -> &'a mut Self {
+        Self::from_storage_ref_mut(StrideStorage::new_mut(ptr, dim, stride))
     }
 
     /// Returns a vector view with stride from a slice.
@@ -579,12 +578,7 @@ impl<T> StrideVectorView<T> {
     pub fn from_stride_slice(s: &[T], stride: usize) -> &Self {
         assert!(stride > 0);
         let dim = (s.len() + (stride - 1)) / stride;
-        unsafe {
-            &*std::ptr::from_raw_parts(
-                s.as_ptr() as _,
-                Self::metadata(dim, stride)
-            )
-        }
+        Self::from_raw_parts(s.as_ptr(), dim, stride)
     }
 
     /// Returns a vector view with stride from a slice.
@@ -593,21 +587,8 @@ impl<T> StrideVectorView<T> {
     pub fn from_stride_slice_mut(s: &mut [T], stride: usize) -> &mut Self {
         assert!(stride > 0);
         let dim = s.len() + (stride - 1) / stride;
-        unsafe {
-            &mut *std::ptr::from_raw_parts_mut(
-                s.as_mut_ptr() as _,
-                Self::metadata(dim, stride)
-            )
-        }
+        Self::from_raw_parts_mut(s.as_mut_ptr(), dim, stride)
     }
-
-    /// Returns the pointer metadata for the given dimension and stride.
-    fn metadata(dim: usize, stride: usize) -> usize {
-        assert!(dim <= u32::MAX as usize);
-        assert!(stride <= u32::MAX as usize);
-        dim | stride << 32
-    }
-
 }
 
 /// This is extremely hacky, because rust currently does not support
@@ -620,12 +601,33 @@ impl<T> StrideVectorView<T> {
 /// stride. As I said, very hacky, but in practice the both the dimension and
 /// stride should fit into 32 bits.
 #[repr(transparent)]
-pub struct StrideStorage<T>([T]);
+pub struct StrideStorage<T>(CustomMetadataSlice<T, StrideStorageMetadata>);
+
+struct StrideStorageMetadata {
+    dim: usize,
+    stride: usize,
+}
+
+impl CustomMetadata for StrideStorageMetadata {
+    fn size(&self) -> usize {
+        self.dim * self.stride
+    }
+}
 
 impl<T> StrideStorage<T> {
+    pub fn new<'a>(data: *const T, dim: usize, stride: usize) -> &'a Self {
+        let metadata = StrideStorageMetadata { dim, stride };
+        unsafe { std::mem::transmute(CustomMetadataSlice::new(data, metadata)) }
+    }
+
+    pub fn new_mut<'a>(data: *mut T, dim: usize, stride: usize) -> &'a mut Self {
+        let metadata = StrideStorageMetadata { dim, stride };
+        unsafe { std::mem::transmute(CustomMetadataSlice::new_mut(data, metadata)) }
+    }
+
     /// The stride of the vector.
     pub fn stride(&self) -> usize {
-        self.0.len() >> 32
+        self.0.metadata().stride
     }
 }
 
@@ -634,27 +636,24 @@ impl<T> VectorStorage<T> for StrideStorage<T> {
     type IterMut<'a> = StrideStorageIterMut<'a, T> where T: 'a;
 
     fn dim(&self) -> usize {
-        self.0.len() & 0xffff_ffff
+        self.0.metadata().dim
     }
 
     fn entry(&self, idx: usize) -> &T {
-        assert!(idx < self.dim());
-        unsafe {
-            self.0.get_unchecked(idx * self.stride())
-        }
+        self.0.slice().index(idx * self.stride())
     }
 
     fn entry_mut(&mut self, idx: usize) -> &mut T {
-        assert!(idx < self.dim());
-        unsafe {
-            self.0.get_unchecked_mut(idx * self.stride())
-        }
+        let stride = self.stride();
+        self.0.slice_mut().index_mut(idx * stride)
     }
 
     fn iter(&self) -> Self::Iter<'_> {
         StrideStorageIter {
-            ptr: self.0.as_ptr(),
-            end: unsafe { self.0.as_ptr().add(self.dim() * self.stride()) },
+            ptr: self.0.slice().as_ptr(),
+            end: unsafe {
+                self.0.slice().as_ptr().add(self.dim() * self.stride())
+            },
             stride: self.stride(),
             marker: PhantomData,
         }
@@ -662,8 +661,10 @@ impl<T> VectorStorage<T> for StrideStorage<T> {
 
     fn iter_mut(&mut self) -> Self::IterMut<'_> {
         StrideStorageIterMut {
-            ptr: self.0.as_mut_ptr(),
-            end: unsafe { self.0.as_mut_ptr().add(self.dim() * self.stride()) },
+            ptr: self.0.slice_mut().as_mut_ptr(),
+            end: unsafe {
+                self.0.slice_mut().as_mut_ptr().add(self.dim() * self.stride())
+            },
             stride: self.stride(),
             marker: PhantomData,
         }

@@ -6,7 +6,7 @@ use itertools::iproduct;
 use num_traits::{Zero, One};
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use crate::vector::*;
+use crate::{vector::*, CustomMetadataSlice, CustomMetadata};
 
 /// How are the entries of a matrix stored?
 pub trait MatrixStorage<T> {
@@ -580,46 +580,48 @@ impl<T> MatrixView<T> {
     }
 
     pub fn from_raw_parts<'a>(entries: *const T, rows: usize, cols: usize) -> &'a Self {
+        let metadata = SliceMatrixStorageMetadata { rows, cols };
         unsafe {
-            &*std::ptr::from_raw_parts(
-                entries as _,
-                Self::metadata(rows, cols)
-            )
+            std::mem::transmute(CustomMetadataSlice::new(entries, metadata))
         }
     }
 
     pub fn from_raw_parts_mut<'a>(entries: *mut T, rows: usize, cols: usize) -> &'a mut Self {
+        let metadata = SliceMatrixStorageMetadata { rows, cols };
         unsafe {
-            &mut *std::ptr::from_raw_parts_mut(
-                entries as _,
-                Self::metadata(rows, cols)
-            )
+            std::mem::transmute(CustomMetadataSlice::new_mut(entries, metadata))
         }
-    }
-
-    /// The pointer metadata.
-    fn metadata(rows: usize, cols: usize) -> usize {
-        assert!(rows <= u32::MAX as usize);
-        assert!(cols <= u32::MAX as usize);
-        rows | cols << 32
     }
 }
 
 /// Very hacky, see [StrideStorage] for explanation.
 /// Metadata stores the number of rows (in the least significant 4 bytes)
 /// and columns (in the most significant 4 bytes).
-pub struct SliceMatrixStorage<T>([T]);
+pub struct SliceMatrixStorage<T>(
+    CustomMetadataSlice<T, SliceMatrixStorageMetadata>
+);
+
+struct SliceMatrixStorageMetadata {
+    rows: usize,
+    cols: usize,
+}
+
+impl CustomMetadata for SliceMatrixStorageMetadata {
+    fn size(&self) -> usize {
+        self.rows * self.cols
+    }
+}
 
 impl<T> MatrixStorage<T> for SliceMatrixStorage<T> {
     type RowVecStorage = SliceVectorStorage<T>;
     type ColVecStorage = StrideStorage<T>;
 
     fn rows(&self) -> usize {
-        self.0.len() & 0xffff_ffff
+        self.0.metadata().rows
     }
 
     fn cols(&self) -> usize {
-        self.0.len() >> 32
+        self.0.metadata().cols
     }
 
     fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
@@ -684,17 +686,30 @@ impl<T> TransposedMatrixView<T> {
 /// and rows (in the most significant 4 bytes).
 /// This allows you to transmute a [SliceMatrixStorage] reference into a
 /// [TransposedMatrixStorage] reference while transposing the view.
-pub struct TransposedMatrixStorage<T>([T]);
+pub struct TransposedMatrixStorage<T>(
+    CustomMetadataSlice<T, TransposedMatrixStorageMetadata>
+);
+
+struct TransposedMatrixStorageMetadata {
+    cols: usize,
+    rows: usize,
+}
+
+impl CustomMetadata for TransposedMatrixStorageMetadata {
+    fn size(&self) -> usize {
+        self.rows * self.cols
+    }
+}
 
 impl<T> MatrixStorage<T> for TransposedMatrixStorage<T> {
     type RowVecStorage = StrideStorage<T>;
     type ColVecStorage = SliceVectorStorage<T>;
     fn rows(&self) -> usize {
-        self.0.len() >> 32
+        self.0.metadata().rows
     }
 
     fn cols(&self) -> usize {
-        self.0.len() & 0xffff_ffff
+        self.0.metadata().cols
     }
 
     fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
