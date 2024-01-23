@@ -6,7 +6,7 @@ use itertools::iproduct;
 use num_traits::{Zero, One};
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use crate::{vector::*, CustomMetadataSlice, CustomMetadata};
+use crate::{keep_bits_mut, keep_signed_bits_mut, vector::*, CustomMetadata, CustomMetadataSlice, Half};
 
 /// How are the entries of a matrix stored?
 pub trait MatrixStorage<T> {
@@ -58,6 +58,11 @@ impl<T, S: MatrixStorage<T> + ?Sized> Matrix<T, S> {
     /// The number of columns of the matrix.
     pub fn ncols(&self) -> usize {
         self.storage.cols()
+    }
+
+    /// Returns the smaller of the two dimensions.
+    pub fn min_dim(&self) -> usize {
+        std::cmp::min(self.nrows(), self.ncols())
     }
 
     /// Is the matrix empty, i.e. has it zero rows or columns?
@@ -144,6 +149,41 @@ impl<T, S: MatrixStorage<T> + ?Sized> Matrix<T, S> {
             self.entries_row_major().map(f),
         )
     }
+
+    /// Call a function on each entry.
+    pub fn map_mut<F: FnMut(&mut T)>(&mut self, f: F) {
+        self.entries_row_major_mut().for_each(f)
+    }
+
+    /// Swap two rows.
+    pub fn swap_rows(&mut self, i: usize, j: usize) {
+        if i == j {
+            return;
+        }
+
+        unsafe {
+            core::ptr::swap_nonoverlapping(
+                self.entry_mut(i, 0),
+                self.entry_mut(j, 0),
+                self.ncols()
+            )
+        }
+    }
+
+    /// Swap two columns.
+    pub fn swap_columns(&mut self, i: usize, j: usize) {
+        if i == j {
+            return;
+        }
+
+        for k in 0..self.nrows() {
+            unsafe {
+                core::ptr::swap(
+                    self.entry_mut(k, i), self.entry_mut(k, j)
+                );
+            }
+        }
+    }
 }
 
 impl<T, S: MatrixStorage<T>> Matrix<T, S> {
@@ -190,22 +230,30 @@ impl<S: MatrixStorage<BigInt> + ?Sized> Matrix<BigInt, S> {
         }
     }
 
-    /// Add a scaled row to another row. N = c * M.
+    /// Add a scaled row to another row. N += M * c.
     pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &BigInt) {
         debug_assert!(n < self.nrows() && m < self.nrows());
         for i in 0..self.ncols() {
-            let c = &self[(n, i)] * c;
-            self[(m, i)] += c;
+            let c = &self[(m, i)] * c;
+            self[(n, i)] += c;
         }
     }
 
-    /// Add a scaled column to another column. N = c * M.
+    /// Add a scaled column to another column. N += M * c.
     pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &BigInt) {
         debug_assert!(n < self.ncols() && m < self.ncols());
         for i in 0..self.nrows() {
-            let c = &self[(i, n)] * c;
-            self[(i, m)] += c;
+            let c = &self[(i, m)] * c;
+            self[(i, n)] += c;
         }
+    }
+
+    pub fn keep_bits(&mut self, bits: u32) {
+        self.map_mut(|e| keep_bits_mut(e, bits));
+    }
+
+    pub fn keep_signed_bits(&mut self, bits: u32) {
+        self.map_mut(|e| keep_signed_bits_mut(e, bits));
     }
 }
 
@@ -375,36 +423,6 @@ impl<T> OwnedMatrix<T> {
         self.view_mut().transpose_mut()
     }
 
-    /// Swap two rows.
-    pub fn swap_rows(&mut self, i: usize, j: usize) {
-        if i == j {
-            return;
-        }
-
-        unsafe {
-            core::ptr::swap_nonoverlapping(
-                self.entry_mut(i, 0),
-                self.entry_mut(j, 0),
-                self.ncols()
-            )
-        }
-    }
-
-    /// Swap two columns.
-    pub fn swap_columns(&mut self, i: usize, j: usize) {
-        if i == j {
-            return;
-        }
-
-        for k in 0..self.ncols() {
-            unsafe {
-                core::ptr::swap_nonoverlapping(
-                    self.entry_mut(i, k), self.entry_mut(j, k), 1
-                );
-            }
-        }
-    }
-
     /// Removes rows at the end of the matrix.
     pub fn shrink(&mut self, new_nrows: usize) {
         self.storage.shrink(new_nrows);
@@ -424,6 +442,15 @@ impl<T: Zero + One> OwnedMatrix<T> {
             m[(i, i)] = T::one();
         }
         m
+    }
+
+    /// Remove rows of zeros at the end of the matrix.
+    pub fn remove_zero_rows(&mut self) {
+        let num = self.rows().rev()
+            .take_while(|r| r.is_zero())
+            .count();
+
+        self.shrink(self.nrows() - num);
     }
 }
 
@@ -580,14 +607,14 @@ impl<T> MatrixView<T> {
     }
 
     pub fn from_raw_parts<'a>(entries: *const T, rows: usize, cols: usize) -> &'a Self {
-        let metadata = SliceMatrixStorageMetadata { rows, cols };
+        let metadata = SliceMatrixStorageMetadata::new(rows, cols);
         unsafe {
             std::mem::transmute(CustomMetadataSlice::new(entries, metadata))
         }
     }
 
     pub fn from_raw_parts_mut<'a>(entries: *mut T, rows: usize, cols: usize) -> &'a mut Self {
-        let metadata = SliceMatrixStorageMetadata { rows, cols };
+        let metadata = SliceMatrixStorageMetadata::new(rows, cols);
         unsafe {
             std::mem::transmute(CustomMetadataSlice::new_mut(entries, metadata))
         }
@@ -602,13 +629,22 @@ pub struct SliceMatrixStorage<T>(
 );
 
 struct SliceMatrixStorageMetadata {
-    rows: usize,
-    cols: usize,
+    rows: Half,
+    cols: Half,
+}
+
+impl SliceMatrixStorageMetadata {
+    pub fn new(rows: usize, cols: usize) -> Self {
+        Self {
+            rows: rows.try_into().unwrap(),
+            cols: cols.try_into().unwrap(),
+        }
+    }
 }
 
 impl CustomMetadata for SliceMatrixStorageMetadata {
     fn size(&self) -> usize {
-        self.rows * self.cols
+        self.rows as usize * self.cols as usize
     }
 }
 
@@ -617,11 +653,11 @@ impl<T> MatrixStorage<T> for SliceMatrixStorage<T> {
     type ColVecStorage = StrideStorage<T>;
 
     fn rows(&self) -> usize {
-        self.0.metadata().rows
+        self.0.metadata().rows as usize
     }
 
     fn cols(&self) -> usize {
-        self.0.metadata().cols
+        self.0.metadata().cols as usize
     }
 
     fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {
@@ -691,13 +727,13 @@ pub struct TransposedMatrixStorage<T>(
 );
 
 struct TransposedMatrixStorageMetadata {
-    cols: usize,
-    rows: usize,
+    cols: Half,
+    rows: Half,
 }
 
 impl CustomMetadata for TransposedMatrixStorageMetadata {
     fn size(&self) -> usize {
-        self.rows * self.cols
+        self.rows as usize * self.cols as usize
     }
 }
 
@@ -705,11 +741,11 @@ impl<T> MatrixStorage<T> for TransposedMatrixStorage<T> {
     type RowVecStorage = StrideStorage<T>;
     type ColVecStorage = SliceVectorStorage<T>;
     fn rows(&self) -> usize {
-        self.0.metadata().rows
+        self.0.metadata().rows as usize
     }
 
     fn cols(&self) -> usize {
-        self.0.metadata().cols
+        self.0.metadata().cols as usize
     }
 
     fn row(&self, r: usize) -> &Vector<T, Self::RowVecStorage> {

@@ -2,6 +2,7 @@
 
 // See [CustomMetadataSlice] for an explanation of why I use this.
 #![feature(ptr_metadata)]
+#![feature(core_intrinsics)]
 
 // It would be nicer to import the symbol_table crate ourselves,
 // and re-export GlobalSymbol, but we don't want to run into
@@ -30,6 +31,13 @@ use num_bigint::BigInt;
 use num_traits::{One, Euclid};
 use expr::*;
 
+// Also used for the hacky vector/matrix views.
+// See below.
+#[cfg(target_pointer_width = "64")]
+type Half = u32;
+#[cfg(target_pointer_width = "32")]
+type Half = u16;
+
 /// I do some hacky stuff with vector and matrix views.
 /// The other option would be having two structs for immutable and mutable
 /// views, but that is just annoying and rust also doesn't have two structs for
@@ -56,28 +64,28 @@ trait CustomMetadata {
 
 impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
     pub fn new<'a>(data: *const T, metadata: M) -> &'a Self {
-        let metadata = Box::into_raw(Box::new(metadata));
+        assert!(std::mem::size_of::<M>() == 8);
         unsafe {
             &*std::ptr::from_raw_parts(
                 data as _,
-                metadata as usize
+                core::intrinsics::transmute_unchecked(metadata)
             )
         }
     }
 
     pub fn new_mut<'a>(data: *mut T, metadata: M) -> &'a mut Self {
-        let metadata = Box::into_raw(Box::new(metadata));
+        assert!(std::mem::size_of::<M>() == 8);
         unsafe {
             &mut *std::ptr::from_raw_parts_mut(
                 data as _,
-                metadata as usize
+                core::intrinsics::transmute_unchecked(metadata)
             )
         }
     }
 
-    pub fn metadata(&self) -> &M {
+    pub fn metadata(&self) -> M {
         unsafe {
-            &*(std::ptr::metadata(self) as *const M)
+            core::intrinsics::transmute_unchecked(std::ptr::metadata(self))
         }
     }
 
@@ -104,16 +112,6 @@ impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
                 self.data.as_mut_ptr() as _,
                 self.metadata().size()
             )
-        }
-    }
-}
-
-impl<T, M> Drop for CustomMetadataSlice<T, M> {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = Box::from_raw(
-                self.data.as_ptr() as *mut M
-            );
         }
     }
 }

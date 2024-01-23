@@ -110,11 +110,10 @@ impl Poly {
     /// Truncates leading zero coefficients.
     pub fn truncate(&mut self) {
         for i in (0..self.len()).rev() {
-            if self.coeffs[i].is_zero() {
-                self.coeffs.pop();
-            } else {
+            if !self.coeffs[i].is_zero() {
                 break;
             }
+            self.coeffs.pop();
         }
     }
 
@@ -187,6 +186,132 @@ impl Poly {
         }
 
         e
+    }
+
+    /// Parse an expression from a string.
+    /// This can either be a "normalized" expression:
+    /// ```
+    /// use mba::poly::Poly;
+    /// // The variable has to be called x or X.
+    /// // There may only be one term per monomial, e.g. not `3x + 4x`.
+    /// // Spaces are optional.
+    /// Poly::parse("3x^2 + 4x + 5").unwrap();
+    /// ```
+    /// Or a space-separated list of coefficients a_d ... a_0:
+    /// ```
+    /// use mba::poly::Poly;
+    /// Poly::parse("3 4 5").unwrap();
+    /// ```
+    pub fn parse<T: Into<String>>(str: T) -> Result<Self, String> {
+        let mut str = str.into();
+
+        // It should all be ascii.
+        if !str.is_ascii() {
+            return Err("The string contains non-ascii characters.".to_owned());
+        }
+
+        // Make everything lowercase so you can use x or X.
+        str.make_ascii_lowercase();
+
+        let mut coeffs = Vec::new();
+        let mut str = str.into_bytes();
+
+        if str.contains(&b'x') {
+            str.retain(|c| *c != b' ');
+
+            let mut i = 0;
+            let mut last_i = usize::MAX;
+            while i < str.len() {
+                if i == last_i {
+                    return Err(format!(
+                        "Unexpected input at {i}: {}.", str[i] as char
+                    ).into());
+                }
+                last_i = i;
+
+                // Parse the sign.
+                let sign = match str[i] {
+                    b'+' => { i += 1; false },
+                    b'-' => { i += 1; true },
+                    _ => false,
+                };
+
+                // Parse the coefficient.
+                let mut c = BigInt::one();
+
+                // Is there a coefficient?
+                let is_digit = str.get(i)
+                    .ok_or("Unexpected end of input.")?
+                    .is_ascii_digit();
+
+                if is_digit {
+                    c = Zero::zero();
+
+                    // Parse the number.
+                    while str.get(i).map_or(false, u8::is_ascii_digit) {
+                        c *= 10;
+                        c += str[i] - b'0';
+                        i += 1;
+                    }
+
+                    // Skip the `*` if it exists.
+                    if str.get(0).is_some_and(|c| *c == b'*') {
+                        i += 1;
+                    }
+                }
+
+                if sign {
+                    c = -c;
+                }
+
+                // Parse the exponent.
+                let mut e = 0;
+
+                if str.get(i).is_some_and(|c| *c == b'x') {
+                    // Skip past the `x`.
+                    i += 1;
+                    e = 1;
+
+                    // If there is an exponent, parse it.
+                    if str.get(i).is_some_and(|c| *c == b'^') {
+                        i += 1;
+                        // Is there a number?
+                        let is_digit = str.get(i)
+                            .ok_or("Unexpected end of input.")?
+                            .is_ascii_digit();
+                        if !is_digit {
+                            return Err(format!(
+                                "Failed to parse exponent at {i}: {}.",
+                                str[i] as char
+                            ));
+                        }
+
+                        // Parse the number.
+                        e = 0;
+                        while str.get(i).map_or(false, u8::is_ascii_digit) {
+                            e *= 10;
+                            e += (str[i] - b'0') as usize;
+                            i += 1;
+                        }
+                    }
+                }
+
+                if e >= coeffs.len() {
+                    coeffs.resize(e + 1, Zero::zero());
+                }
+
+                coeffs[e] = c;
+            }
+        } else {
+            for c in str.split(|c| *c == b' ') {
+                let c = BigInt::parse_bytes(c, 10)
+                    .ok_or("Failed to parse coefficient.")?;
+                coeffs.push(c);
+            }
+            coeffs.reverse();
+        }
+
+        Ok(Poly { coeffs }.truncated())
     }
 }
 
@@ -328,118 +453,42 @@ impl MulAssign<&BigInt> for Poly {
 
 impl std::fmt::Display for Poly {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.coeffs.iter().enumerate().rev();
+        let mut iter = self.coeffs
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(_, c)| !c.is_zero());
 
-        let mut has_terms = false;
-        match iter.next() {
-            None => write!(f, "0")?,
-            Some((e, c)) => if e == 0 {
-                write!(f, "{}", c)?
-            } else if !c.is_zero() {
-                write!(f, "{}x^{}", c, e)?;
-                has_terms = true;
-            },
-        };
-
-        for (e, c) in iter {
+        fn write_term(
+            f: &mut std::fmt::Formatter<'_>,
+            e: usize,
+            c: &BigInt
+        ) -> std::fmt::Result {
             if e == 0 {
-                if !c.is_zero() || !has_terms {
-                    write!(f, " + {}", c)?;
-                }
-            } else if !c.is_zero() {
-                write!(f, " + {}x^{}", c, e)?;
-                has_terms = true;
+                return write!(f, "{c}");
             }
+
+            if !c.is_one() {
+                write!(f, "{c}")?;
+            }
+
+            write!(f, "x")?;
+
+            if e > 1 {
+                write!(f, "^{e}")?;
+            }
+
+            Ok(())
         }
 
-        Ok(())
-    }
-}
-
-impl std::fmt::LowerHex for Poly {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.coeffs.iter().enumerate().rev();
-
-        let mut has_terms = false;
         match iter.next() {
             None => write!(f, "0")?,
-            Some((e, c)) => if e == 0 {
-                write!(f, "{:x}", c)?
-            } else if !c.is_zero() {
-                write!(f, "{:x}x^{}", c, e)?;
-                has_terms = true;
-            },
+            Some((e, c)) => write_term(f, e, c)?,
         };
 
         for (e, c) in iter {
-            if e == 0 {
-                if !c.is_zero() || !has_terms {
-                    write!(f, " + {:x}", c)?;
-                }
-            } else if !c.is_zero() {
-                write!(f, " + {:x}x^{}", c, e)?;
-                has_terms = true;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl std::fmt::UpperHex for Poly {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.coeffs.iter().enumerate().rev();
-
-        let mut has_terms = false;
-        match iter.next() {
-            None => write!(f, "0")?,
-            Some((e, c)) => if e == 0 {
-                write!(f, "{:X}", c)?
-            } else if !c.is_zero() {
-                write!(f, "{:X}x^{}", c, e)?;
-                has_terms = true;
-            },
-        };
-
-        for (e, c) in iter {
-            if e == 0 {
-                if !c.is_zero() || !has_terms {
-                    write!(f, " + {:X}", c)?;
-                }
-            } else if !c.is_zero() {
-                write!(f, " + {:X}x^{}", c, e)?;
-                has_terms = true;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl std::fmt::Binary for Poly {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.coeffs.iter().enumerate().rev();
-
-        let mut has_terms = false;
-        match iter.next() {
-            None => write!(f, "0")?,
-            Some((e, c)) => if e == 0 {
-                write!(f, "{:b}", c)?
-            } else if !c.is_zero() {
-                write!(f, "{:b}x^{}", c, e)?;
-                has_terms = true;
-            },
-        };
-
-        for (e, c) in iter {
-            if e == 0 {
-                if !c.is_zero() || !has_terms {
-                    write!(f, " + {:b}", c)?;
-                }
-            } else if !c.is_zero() {
-                write!(f, " + {:b}x^{}", c, e)?;
-                has_terms = true;
-            }
+            f.write_str(" + ")?;
+            write_term(f, e, c)?;
         }
 
         Ok(())

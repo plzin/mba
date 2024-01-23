@@ -12,7 +12,7 @@ use num_traits::{Zero, Signed};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use crate::matrix::{RowVector, ColumnVector};
-use crate::{CustomMetadata, CustomMetadataSlice};
+use crate::{keep_bits_mut, keep_signed_bits_mut, CustomMetadata, CustomMetadataSlice, Half};
 
 /// How are the entries of a vector stored?
 pub trait VectorStorage<T> {
@@ -145,6 +145,22 @@ impl<T, S: VectorStorage<T> + ?Sized> Vector<T, S> {
     pub fn to<U>(&self) -> OwnedVector<U> where T: Copy + Into<U> {
         #[allow(clippy::clone_on_copy)]
         self.transform(|e| e.clone().into())
+    }
+}
+
+impl<T: Zero, S: VectorStorage<T> + ?Sized> Vector<T, S> {
+    pub fn is_zero(&self) -> bool {
+        self.iter().all(Zero::is_zero)
+    }
+}
+
+impl<S: VectorStorage<BigInt> + ?Sized> Vector<BigInt, S> {
+    pub fn keep_bits(&mut self, bits: u32) {
+        self.map_mut(|i| keep_bits_mut(i, bits));
+    }
+
+    pub fn keep_signed_bits(&mut self, bits: u32) {
+        self.map_mut(|i| keep_signed_bits_mut(i, bits));
     }
 }
 
@@ -604,30 +620,39 @@ impl<T> StrideVectorView<T> {
 pub struct StrideStorage<T>(CustomMetadataSlice<T, StrideStorageMetadata>);
 
 struct StrideStorageMetadata {
-    dim: usize,
-    stride: usize,
+    dim: Half,
+    stride: Half,
+}
+
+impl StrideStorageMetadata {
+    pub fn new(dim: usize, stride: usize) -> Self {
+        Self {
+            dim: dim.try_into().unwrap(),
+            stride: stride.try_into().unwrap(),
+        }
+    }
 }
 
 impl CustomMetadata for StrideStorageMetadata {
     fn size(&self) -> usize {
-        self.dim * self.stride
+        self.dim as usize * self.stride as usize
     }
 }
 
 impl<T> StrideStorage<T> {
     pub fn new<'a>(data: *const T, dim: usize, stride: usize) -> &'a Self {
-        let metadata = StrideStorageMetadata { dim, stride };
+        let metadata = StrideStorageMetadata::new(dim, stride);
         unsafe { std::mem::transmute(CustomMetadataSlice::new(data, metadata)) }
     }
 
     pub fn new_mut<'a>(data: *mut T, dim: usize, stride: usize) -> &'a mut Self {
-        let metadata = StrideStorageMetadata { dim, stride };
+        let metadata = StrideStorageMetadata::new(dim, stride);
         unsafe { std::mem::transmute(CustomMetadataSlice::new_mut(data, metadata)) }
     }
 
     /// The stride of the vector.
     pub fn stride(&self) -> usize {
-        self.0.metadata().stride
+        self.0.metadata().stride as usize
     }
 }
 
@@ -636,7 +661,7 @@ impl<T> VectorStorage<T> for StrideStorage<T> {
     type IterMut<'a> = StrideStorageIterMut<'a, T> where T: 'a;
 
     fn dim(&self) -> usize {
-        self.0.metadata().dim
+        self.0.metadata().dim as usize
     }
 
     fn entry(&self, idx: usize) -> &T {

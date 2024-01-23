@@ -325,6 +325,7 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
 
     // Solve the system.
     let mut l = solve_linear_system(&e, &ops, &vars, bits);
+    println!("solution: {l:?}");
 
     // If I did everything correctly,
     // this system should always have a solution.
@@ -342,7 +343,6 @@ pub fn deobfuscate_luexpr(e: LUExpr, bits: u32, cfg: &DeobfuscationConfig) -> LU
 
     // If this should be fast, just use the particular solution
     // from the solver. In practice, this seems to work well.
-    //if fast {
     if matches!(cfg.alg, Fast | LeastComplexTerms) {
         return collect_solution(l.offset.view(), &ops, bits);
     }
@@ -430,6 +430,7 @@ fn solve_linear_system(
         b[i] = keep_signed_bits(&expr.eval(&mut val, bits), bits);
     }
 
+    //diophantine::solve_congruences(a, b, bits)
     diophantine::solve_modular(a.view(), b.view(), &(BigInt::one() << bits))
 }
 
