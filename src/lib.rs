@@ -1,6 +1,7 @@
 //! Mixed Boolean-Arithmetic expressions and operations on them.
 
 // See [CustomMetadataSlice] for an explanation of why I use this.
+#![allow(internal_features)]
 #![feature(ptr_metadata)]
 #![feature(core_intrinsics)]
 
