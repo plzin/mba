@@ -376,7 +376,7 @@ pub fn diagonalize(
         }
     }
 
-    return (s, t);
+    (s, t)
 }
 
 /// Solves a system of linear congruences Ax=b.
@@ -479,7 +479,7 @@ pub fn solve_scalar_congruence(
         return None;
     }
     let x = &b / &gcd * &old_t;
-    let x = x.rem_euclid(&n);
+    let x = x.rem_euclid(n);
 
     if t.is_negative() {
         t = -t;

@@ -62,7 +62,10 @@ impl Valuation {
         // Feels like this is a borrow checker limitation,
         // rather than a me problem.
         let vals = unsafe {
-            std::mem::transmute::<_, &'static mut Vec<(Symbol, BigInt)>>(
+            std::mem::transmute::<
+                &mut std::vec::Vec<(egg::Symbol, num_bigint::BigInt)>,
+                &'static mut std::vec::Vec<(egg::Symbol, num_bigint::BigInt)>
+            >(
                 &mut self.vals
             )
         };
@@ -75,12 +78,12 @@ impl Valuation {
 
         // If not, use the missing valuation.
         let new_val = match &mut self.missing {
-            MissingValue::Panic => panic!("Variable {} not found in valuation.", name),
+            MissingValue::Panic => panic!("Variable {name} not found in valuation."),
             MissingValue::Zero => {
                 BigInt::zero()
             },
             MissingValue::Random(bits, state) => {
-                state.gen_bigint(*bits as u64)
+                state.random_bigint(*bits as u64)
             },
         };
 
@@ -131,9 +134,9 @@ impl MissingValue {
     /// subsequent uses of the variable will have the same value.
     /// This uses the [rand::rngs::StdRng] internally.
     pub fn random(bits: u32) -> Self {
-        use rand::{thread_rng, rngs::StdRng, SeedableRng};
+        use rand::{rngs::StdRng, SeedableRng};
         // Create a new random state and seed it.
-        let rng = Box::new(StdRng::from_rng(thread_rng()).unwrap());
+        let rng = Box::new(StdRng::from_rng(&mut rand::rng()));
         Self::Random(bits, rng)
     }
 }
@@ -143,7 +146,7 @@ impl std::fmt::Debug for MissingValue {
         match self {
             MissingValue::Panic => write!(f, "Panic"),
             MissingValue::Zero => write!(f, "Zero"),
-            MissingValue::Random(bits, _) => write!(f, "Random({})", bits),
+            MissingValue::Random(bits, _) => write!(f, "Random({bits})"),
         }
     }
 }

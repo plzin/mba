@@ -1,7 +1,7 @@
 //! Binary permutation polynomials.
 
 use num_traits::{Zero, One, Euclid};
-use rand::distributions::{Uniform, Distribution};
+use rand::distr::{Uniform, Distribution};
 use num_bigint::{BigInt, RandBigInt};
 use num_integer::Integer;
 use crate::{poly::Poly, keep_bits_mut, matrix::IOwnedMatrix, vector::IOwnedVector, diophantine};
@@ -24,9 +24,9 @@ pub fn perm_pair(zi: &ZeroIdeal, degree: usize) -> (Poly, Poly) {
 
 /// Returns a random permutation polynomial.
 pub fn random_perm_poly(zi: &ZeroIdeal, degree: usize) -> Poly {
-    let rng = &mut rand::thread_rng();
+    let rng = &mut rand::rng();
     let mut p: Vec<_> =  (0..=degree)
-        .map(|_| rng.gen_bigint(zi.bits as u64))
+        .map(|_| rng.random_bigint(zi.bits as u64))
         .collect();
 
     // Make sure that this is a permutation polynomial.
@@ -36,11 +36,11 @@ pub fn random_perm_poly(zi: &ZeroIdeal, degree: usize) -> Poly {
         keep_bits_mut(&mut p[1], zi.bits);
     }
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Make sure the sum of the even coefficients (except 0) is even.
     if p.iter().skip(2).step_by(2).fold(false, parity) {
-        let dist = Uniform::from(1..=degree/2);
+        let dist = Uniform::new_inclusive(1, degree / 2).unwrap();
         let i = dist.sample(&mut rng);
         p[2*i] += 1;
         keep_bits_mut(&mut p[2*i], zi.bits);
@@ -48,7 +48,7 @@ pub fn random_perm_poly(zi: &ZeroIdeal, degree: usize) -> Poly {
 
     // Make sure the sum of the odd coefficients (except 1) is even.
     if p.iter().skip(3).step_by(2).fold(false, parity) {
-        let dist = Uniform::from(1..=(degree-1)/2);
+        let dist = Uniform::new_inclusive(1, (degree - 1) / 2).unwrap();
         let i = dist.sample(&mut rng);
         p[2*i+1] += 1;
         keep_bits_mut(&mut p[2*i+1], zi.bits);
@@ -147,8 +147,8 @@ pub fn compute_inverse_generator(f: &Poly, zi: &ZeroIdeal) -> Poly {
 /// Compute the inverse using interpolation.
 pub fn compute_inverse_interpolation(f: &Poly, zi: &ZeroIdeal) -> Poly {
     // Construct a system of linear congruences.
-    let rows = zi.gen.last().unwrap().len();
-    let cols = zi.gen.last().unwrap().len();
+    let rows = zi.generators.last().unwrap().len();
+    let cols = zi.generators.last().unwrap().len();
 
     // Construct the Vandermonde matrix.
     let mut a = IOwnedMatrix::zero(rows, cols);
@@ -191,7 +191,7 @@ pub fn compute_inverse_interpolation(f: &Poly, zi: &ZeroIdeal) -> Poly {
 /// specifically in mul_linfac.
 /// Or calculate with n bit integers the whole time, instead of rug::Integers.
 fn zero_ideal(n: u32) -> Vec<Poly> {
-    let mut gen = Vec::new();
+    let mut generators = Vec::new();
 
     // div stores how often 2 divides i!.
     // It is successively updated.
@@ -200,7 +200,7 @@ fn zero_ideal(n: u32) -> Vec<Poly> {
         div += i.trailing_zeros();
 
         // Compute the exponent.
-        let e = if n <= div { 0 } else { n - div };
+        let e = n.saturating_sub(div);
 
         // Let's build the polynomial.
         let mut p = Poly::one();
@@ -214,21 +214,21 @@ fn zero_ideal(n: u32) -> Vec<Poly> {
         p.mod_coeff(n);
         p.truncate();
 
-        gen.push(p);
+        generators.push(p);
 
         if e == 0 {
             break;
         }
     }
 
-    gen
+    generators
 }
 
 /// This is the zero ideal usually specified in papers,
 /// but it is not minimal.
 #[allow(dead_code)]
 fn zero_ideal_redundant(n: u32) -> Vec<Poly> {
-    let mut gen = Vec::new();
+    let mut generators = Vec::new();
 
     // div stores how often 2 divides i!.
     // It is successively updated.
@@ -249,7 +249,7 @@ fn zero_ideal_redundant(n: u32) -> Vec<Poly> {
             p.mod_coeff(n);
             p.truncate();
 
-            gen.push(p);
+            generators.push(p);
             break;
         }
 
@@ -268,10 +268,10 @@ fn zero_ideal_redundant(n: u32) -> Vec<Poly> {
         p.mod_coeff(n);
         p.truncate();
 
-        gen.push(p);
+        generators.push(p);
     }
 
-    gen
+    generators
 }
 
 /// Used internally as a fold function.
@@ -284,9 +284,9 @@ fn parity(acc: bool, i: &BigInt) -> bool {
 
 /// Is this function a permutation polynomial?
 pub fn is_perm_poly(f: &Poly) -> bool {
-    return f.coeffs.get(1).map_or(false, |i| i.is_odd())
+    f.coeffs.get(1).is_some_and(|i| i.is_odd())
         && f.coeffs.iter().skip(2).step_by(2).fold(true, parity)
-        && f.coeffs.iter().skip(3).step_by(2).fold(true, parity);
+        && f.coeffs.iter().skip(3).step_by(2).fold(true, parity)
 }
 
 /// The zero ideal is the ideal of all polynomials
@@ -296,14 +296,14 @@ pub struct ZeroIdeal {
     bits: u32,
 
     /// The generators.
-    gen: Vec<Poly>,
+    generators: Vec<Poly>,
 }
 
 impl ZeroIdeal {
     /// Initializes the zero ideal.
     pub fn init(bits: u32) -> Self {
         assert!(bits > 0, "Not a valid ring.");
-        Self { bits, gen: zero_ideal(bits) }
+        Self { bits, generators: zero_ideal(bits) }
     }
 
     /// The number of bits.
@@ -313,7 +313,7 @@ impl ZeroIdeal {
 
     /// Get generators for the zero ideal.
     pub fn generators(&self) -> &[Poly] {
-        &self.gen
+        &self.generators
     }
 }
 
@@ -339,14 +339,14 @@ impl Poly {
 
         let mut coeff = self.len() - 1;
 
-        for gen in zi.gen.iter().rev() {
-            let gen_len = gen.len();
+        for g in zi.generators.iter().rev() {
+            let gen_len = g.len();
 
             while coeff + 1 >= gen_len {
-                let m = self.coeffs[coeff].div_euclid(&gen.coeffs[gen_len-1]);
+                let m = self.coeffs[coeff].div_euclid(&g.coeffs[gen_len-1]);
                 if !m.is_zero() {
                     let iter = self.coeffs[coeff+1-gen_len..=coeff]
-                        .iter_mut().zip(gen.coeffs.iter());
+                        .iter_mut().zip(g.coeffs.iter());
 
                     for (p, g) in iter {
                         *p -= &m * g;
@@ -373,14 +373,14 @@ impl Poly {
             return;
         }
 
-        let gen = zi.gen.last().unwrap();
-        let gen_len = gen.len();
+        let g = zi.generators.last().unwrap();
+        let gen_len = g.len();
         while self.len() >= gen_len {
             let p_len = self.len();
             let (c, rest) = self.coeffs.split_last_mut().unwrap();
             if !c.is_zero() {
                 let iter = rest[p_len-gen_len..].iter_mut()
-                    .zip(gen.coeffs.iter());
+                    .zip(g.coeffs.iter());
 
                 for (p, g) in iter {
                     *p -= &*c * g;
@@ -400,8 +400,8 @@ impl Poly {
 #[test]
 fn check_inverse_8() {
     let zi = ZeroIdeal::init(8);
-    let deg = Uniform::from(1..16);
-    let mut rng = rand::thread_rng();
+    let deg = Uniform::new(1, 16).unwrap();
+    let mut rng = rand::rng();
     for _ in 0..10 {
         let d = deg.sample(&mut rng);
         let (p, q) = perm_pair(&zi, d);
@@ -413,8 +413,8 @@ fn check_inverse_8() {
 #[test]
 fn check_inverse_16() {
     let zi = ZeroIdeal::init(8);
-    let deg = Uniform::from(1..16);
-    let mut rng = rand::thread_rng();
+    let deg = Uniform::new(1, 16).unwrap();
+    let mut rng = rand::rng();
     for _ in 0..10 {
         let d = deg.sample(&mut rng);
         let (p, q) = perm_pair(&zi, d);
@@ -426,8 +426,8 @@ fn check_inverse_16() {
 #[test]
 fn check_inverse_32() {
     let zi = ZeroIdeal::init(32);
-    let deg = Uniform::from(1..16);
-    let mut rng = rand::thread_rng();
+    let deg = Uniform::new(1, 16).unwrap();
+    let mut rng = rand::rng();
     for _ in 0..10 {
         let d = deg.sample(&mut rng);
         let (p, q) = perm_pair(&zi, d);
@@ -439,8 +439,8 @@ fn check_inverse_32() {
 #[test]
 pub fn check_inverse_64() {
     let zi = ZeroIdeal::init(64);
-    let deg = Uniform::from(1..16);
-    let mut rng = rand::thread_rng();
+    let deg = Uniform::new(1, 16).unwrap();
+    let mut rng = rand::rng();
     for _ in 0..10 {
         let d = deg.sample(&mut rng);
         let (p, q) = perm_pair(&zi, d);
@@ -452,12 +452,12 @@ pub fn check_inverse_64() {
 #[test]
 pub fn zero_ideal_test() {
     let zi = ZeroIdeal::init(4);
-    for (i, g) in zi.gen.iter().enumerate() {
-        println!("{}: {}", i, g);
+    for (i, g) in zi.generators.iter().enumerate() {
+        println!("{i}: {g}");
         for x in 0..16 {
             let y = g.eval_bits(&x.into(), 4);
             if !y.is_zero() {
-                panic!("f({}) = {}", x, y);
+                panic!("f({x}) = {y}");
             }
         }
     }
@@ -491,18 +491,18 @@ pub fn test_order() {
     for d in 0..10usize {
         let p = random_perm_poly(&zi, d % 10 + 1);
         let o = order(&p, &zi);
-        assert!(o.is_power_of_two(), "Order of {} is {}!", p, o);
+        assert!(o.is_power_of_two(), "Order of {p} is {o}!");
     }
 }
 
-//#[test]
-//pub fn test_inverse_generator() {
-//    let zi = ZeroIdeal::init(64);
-//    for d in 0..10usize {
-//        let p = random_perm_poly(&zi, d % 10 + 1).simplified(&zi);
-//        let q = compute_inverse_generator(&p, &zi);
-//        //let q = compute_inverse(&p, &zi);
-//        assert!(compose(&p, &q, &zi).simplified(&zi).is_id(),
-//            "compute_inverse_generator returned wrong inverse {} of {}", q, p);
-//    }
-//}
+#[test]
+#[ignore = "very slow and `compute_inverse_generator` shouldn't be used"]
+pub fn test_inverse_generator() {
+    let zi = ZeroIdeal::init(64);
+    for d in 0..10usize {
+        let p = random_perm_poly(&zi, d % 10 + 1).simplified(&zi);
+        let q = compute_inverse_generator(&p, &zi);
+        assert!(compose(&p, &q, &zi).simplified(&zi).is_id(),
+            "compute_inverse_generator returned wrong inverse {q} of {p}");
+    }
+}

@@ -13,7 +13,7 @@ fn main() {
     };
 
     let alg = args.next();
-    let alg = match alg.as_ref().map(String::as_str) {
+    let alg = match alg.as_deref() {
         None | Some("newton") => compute_inverse,
         Some("fermat") => compute_inverse_generator,
         Some("lagrange") => compute_inverse_interpolation,

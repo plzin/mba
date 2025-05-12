@@ -15,7 +15,7 @@ fn main() {
     } else {
         println!("Off: {:?}\nBasis:", solution.offset);
         for b in solution.lattice.basis.rows() {
-            println!("{:?}", b);
+            println!("{b:?}");
         }
     }
 }

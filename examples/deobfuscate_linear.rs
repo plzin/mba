@@ -10,5 +10,5 @@ fn main() {
     let d = linear_mba::deobfuscate_luexpr(
         e, 8, &cfg
     );
-    println!("{}", d);
+    println!("{d}");
 }

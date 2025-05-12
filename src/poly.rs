@@ -68,7 +68,7 @@ impl Poly {
 
     /// Checks whether a truncated polynomial is the identity polynomial.
     pub fn is_id(&self) -> bool {
-        debug_assert!(self.coeffs.last().map_or(true, |i| !i.is_zero()),
+        debug_assert!(self.coeffs.last().is_none_or(|i| !i.is_zero()),
             "Truncate the polynomial before checking if it is the identity");
         matches!(&self.coeffs[..], [z, o] if z.is_zero() && o.is_one())
     }
@@ -225,7 +225,7 @@ impl Poly {
                 if i == last_i {
                     return Err(format!(
                         "Unexpected input at {i}: {}.", str[i] as char
-                    ).into());
+                    ));
                 }
                 last_i = i;
 
@@ -248,14 +248,14 @@ impl Poly {
                     c = Zero::zero();
 
                     // Parse the number.
-                    while str.get(i).map_or(false, u8::is_ascii_digit) {
+                    while str.get(i).is_some_and(u8::is_ascii_digit) {
                         c *= 10;
                         c += str[i] - b'0';
                         i += 1;
                     }
 
                     // Skip the `*` if it exists.
-                    if str.get(0).is_some_and(|c| *c == b'*') {
+                    if str.get(i).is_some_and(|c| *c == b'*') {
                         i += 1;
                     }
                 }
@@ -288,7 +288,7 @@ impl Poly {
 
                         // Parse the number.
                         e = 0;
-                        while str.get(i).map_or(false, u8::is_ascii_digit) {
+                        while str.get(i).is_some_and(u8::is_ascii_digit) {
                             e *= 10;
                             e += (str[i] - b'0') as usize;
                             i += 1;

@@ -572,7 +572,7 @@ impl ExprOp {
                 ExprOp::print_simple_rc(r, vars)
             };
 
-            format!("{} {} {}", l, op, r)
+            format!("{l} {op} {r}")
         };
 
         let un_op = |
@@ -588,8 +588,8 @@ impl ExprOp {
 
         use ExprOp::*;
         match self {
-            Const(i) => format!("{}", i),
-            Var(n) => format!("{}", n),
+            Const(i) => format!("{i}"),
+            Var(n) => format!("{n}"),
             Add(l, r) => bin_op("+", l, r, vars),
             Sub(l, r) => bin_op("-", l, r, vars),
             Mul(l, r) => bin_op("*", l, r, vars),
@@ -653,10 +653,10 @@ impl Display for ExprOp {
         let l = self.print_simple_impl(&mut vars);
 
         for (_, var, init) in vars.iter().rev() {
-            writeln!(f, "{} = {}", var, init)?;
+            writeln!(f, "{var} = {init}")?;
         }
 
-        writeln!(f, "{}", l)
+        writeln!(f, "{l}")
     }
 }
 

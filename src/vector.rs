@@ -593,7 +593,7 @@ impl<T> StrideVectorView<T> {
     /// that fits into the slice.
     pub fn from_stride_slice(s: &[T], stride: usize) -> &Self {
         assert!(stride > 0);
-        let dim = (s.len() + (stride - 1)) / stride;
+        let dim = s.len().div_ceil(stride);
         Self::from_raw_parts(s.as_ptr(), dim, stride)
     }
 

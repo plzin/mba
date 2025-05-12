@@ -53,7 +53,7 @@ pub fn obfuscate(e: &mut Expr, bits: u32, cfg: &ObfuscationConfig) {
     // Find all variables we have access to.
     let mut vars = e.vars();
     for i in 0..(cfg.rewrite_vars - vars.len() as isize) {
-        vars.push(format!("aux{}", i).into());
+        vars.push(format!("aux{i}").into());
     }
 
     let mut v = Vec::new();
@@ -145,7 +145,7 @@ pub fn obfuscate(e: &mut Expr, bits: u32, cfg: &ObfuscationConfig) {
                 obfuscate_impl(r, visited, vars, bits, cfg);
             }
             _ => panic!("Expression should be linear MBA, \
-                but expr_to_luexpr failed ({:?}).", e),
+                but expr_to_luexpr failed ({e:?})."),
         }
     }
 }
@@ -200,7 +200,7 @@ pub fn deobfuscate(e: &mut Expr, bits: u32) {
                 deobfuscate_impl(r, visited, bits, cfg);
             }
             _ => panic!("Expression should be linear MBA, \
-                but expr_to_luexpr failed ({:?}).", e),
+                but expr_to_luexpr failed ({e:?})."),
         }
     }
 }
@@ -623,9 +623,12 @@ fn expr_to_luexpr_impl(
 fn random_bool_expr(vars: &[Symbol], max_depth: usize) -> UExpr {
     assert!(!vars.is_empty(), "There needs to be \
         at least one variable for the random expression.");
+    let num_vars = vars.len() as u32;
+    assert_eq!(num_vars as usize, vars.len(),
+        "Not more than `u32::MAX` variables allowed.");
 
     let rand_var = || UExpr::Var(
-        vars[rand::random::<usize>() % vars.len()]
+        vars[(rand::random::<u32>() % num_vars) as usize]
     );
 
     if max_depth == 0 {
@@ -634,7 +637,7 @@ fn random_bool_expr(vars: &[Symbol], max_depth: usize) -> UExpr {
 
     // Generate one of the four variants uniformly at random.
     let d = max_depth - 1;
-    match rand::random::<usize>() % 5 {
+    match rand::random::<u8>() % 5 {
         0 => rand_var(),
         1 => UExpr::not(random_bool_expr(vars, d)),
         2 => UExpr::and(random_bool_expr(vars, d), random_bool_expr(vars, d)),

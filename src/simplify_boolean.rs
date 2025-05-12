@@ -1,11 +1,11 @@
 //! Simplify boolean expressions using egg.
 //! There are some obvious improvements you could make:
 //! - Given a truth table, find a minimal expression
-//!  using e.g. the Quine-McCluskey algorithm, before handing
-//!  it to egg.
+//!   using e.g. the Quine-McCluskey algorithm, before handing
+//!   it to egg.
 //! - Use a custom RewriteSchedular that is aware of
-//!  the cost function, i.e. tries cost reducing rewrites
-//!  more aggressively.
+//!   the cost function, i.e. tries cost reducing rewrites
+//!   more aggressively.
 //! - Maybe a more refined cost function.
 //! - More refined rewrite rules.
 
@@ -489,13 +489,13 @@ fn n_vars(n: usize) -> Vec<Symbol> {
             .collect();
     }
 
-    (1..=n).map(|i| Symbol::from(format!("x{}", i))).collect()
+    (1..=n).map(|i| Symbol::from(format!("x{i}"))).collect()
 }
 
 // Used during development and I didn't want to delete it.
 #[allow(dead_code)]
 fn short_from_rand_truth_table() {
-    let n = rand::random::<usize>() % 5 + 1;
+    let n = (rand::random::<u8>() % 5 + 1) as usize;
     let vars = n_vars(n);
 
     let truth_table: Vec<_> = std::iter::repeat_with(rand::random::<bool>)

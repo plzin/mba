@@ -79,11 +79,11 @@ impl Lattice {
         assert!(!self.is_empty(), "Lattice is empty.");
         assert!(initial.dim() == self.ambient_dim());
 
-        let rng = &mut rand::thread_rng();
+        let rng = &mut rand::rng();
 
         let mut s = initial;
         for b in self.basis.rows() {
-            let f = rng.gen_bigint(bits as u64);
+            let f = rng.random_bigint(bits as u64);
             s += &(b * &f);
         }
 
@@ -398,7 +398,7 @@ pub fn cvp_nearest_plane<WT: WorkingType>(
 /// - `t` is the target vector.
 /// - `prec` is the precision of the floating point numbers used.
 /// - `rad_sqr` is an optional float that contains the square of the maximum
-/// distance to search for.
+///   distance to search for.
 ///
 /// The returned vector is the vector of coefficients.
 /// This will always return some vector unless no vector is within `r` of the target.
@@ -854,7 +854,7 @@ fn gram_schmidt_test() {
         [3., 4., 5.],
     ]);
     let (r, q) = rq_decomposition(&a);
-    println!("q: {:?}\nr: {:?}", q, r);
+    println!("q: {q:?}\nr: {r:?}");
     println!("{:?}", &r * &q);
     println!("{:?}", &q * VectorView::from_slice(&[
         5., 6., 7.
@@ -871,12 +871,12 @@ fn nearest_plane_example() {
 
     let t = IOwnedVector::from_entries([4, 2, 7]);
     let c = l.cvp_nearest_plane(t.view(), F64);
-    println!("{:?}", c);
+    println!("{c:?}");
 }
 
 #[test]
 fn babai_rounding_example() {
-    let gen = Matrix::from_rows(&[
+    let generators = Matrix::from_rows(&[
         [-97, 75, -97, 75, 22],
         [101, 38, 101, 38, 117],
         [256, 0, 0, 0, 0],
@@ -886,19 +886,19 @@ fn babai_rounding_example() {
         [0, 0, 0, 0, 256],
     ]);
 
-    let mut lattice = Lattice::from_generating_set(gen);
-    println!("{:?}", lattice);
+    let mut lattice = Lattice::from_generating_set(generators);
+    println!("{lattice:?}");
     lattice.lll(&BigRational::new(99.into(), 100.into()), Rat);
-    println!("{:?}", lattice);
+    println!("{lattice:?}");
     let lattice = AffineLattice {
         offset: Vector::from_entries([1, 1, 0, 0, 0]),
         lattice,
     };
 
     let sample = lattice.sample_point(8);
-    println!("{:?}", sample);
+    println!("{sample:?}");
     let closest = lattice.lattice.cvp_rounding(sample.view(), F64);
-    println!("{:?}", closest);
+    println!("{closest:?}");
 }
 
 #[test]

@@ -190,17 +190,17 @@ impl std::fmt::Display for LUExpr {
         };
 
         if i.is_one() {
-            write!(f, "{}", e)?;
+            write!(f, "{e}")?;
         } else {
-            write!(f, "{}*({})", i, e)?;
+            write!(f, "{i}*({e})")?;
         }
 
         for (i, e) in iter {
             write!(f, " + ")?;
             if i.is_one() {
-                write!(f, "{}", e)?;
+                write!(f, "{e}")?;
             } else {
-                write!(f, "{}*({})", i, e)?;
+                write!(f, "{i}*({e})")?;
             }
         }
 
@@ -306,15 +306,15 @@ impl UExpr {
         e1: &Self, e2: &Self, op: char, f: &mut std::fmt::Formatter<'_>
     ) -> std::fmt::Result {
         if let Self::Var(c) = e1 {
-            write!(f, "{} {}", c, op)?;
+            write!(f, "{c} {op}")?;
         } else {
-            write!(f, "({}) {}", e1, op)?;
+            write!(f, "({e1}) {op}")?;
         }
 
         if let Self::Var(c) = e2 {
-            write!(f, " {}", c)
+            write!(f, " {c}")
         } else {
-            write!(f, " ({})", e2)
+            write!(f, " ({e2})")
         }
     }
 
@@ -421,15 +421,15 @@ impl std::fmt::Display for UExpr {
         use UExpr::*;
         match self {
             Ones => write!(f, "-1"),
-            Var(c) => write!(f, "{}", c),
+            Var(c) => write!(f, "{c}"),
             And(e1, e2)   => Self::write_safe(e1, e2, '&', f),
             Or(e1, e2)    => Self::write_safe(e1, e2, '|', f),
             Xor(e1, e2)   => Self::write_safe(e1, e2, '^', f),
             Not(e) =>
                 if let Self::Var(c) = e.as_ref() {
-                    write!(f, "~{}", c)
+                    write!(f, "~{c}")
                 } else {
-                    write!(f, "~({})", e)
+                    write!(f, "~({e})")
                 },
         }
     }

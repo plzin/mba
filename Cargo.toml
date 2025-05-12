@@ -1,20 +1,25 @@
 [package]
 name = "mba"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
 lazy_static = "1.4"
-itertools = "0.12"
-rand = "0.8"
+itertools = "0.14"
+rand = "0.9"
 num-traits = "0.2"
 num-integer = "0.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-rational = "0.4"
-egg = "0.9"
+egg = "0.10"
 z3 = { version = "0.12", optional = true }
 z3-sys = { version = "0.8", optional = true }
+
+[patch.crates-io]
+# Use this `num-bigint` with rand 0.9 that I forked from a pull request and
+# changed the version back from 0.5.0-pre. This can be removed if it is ever merged.
+num-bigint = { git = "https://github.com/plzin/num-bigint.git", branch = "rand-0.9" }
 
 [features]
 z3 = ["dep:z3", "dep:z3-sys"]
