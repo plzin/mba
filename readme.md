@@ -47,3 +47,12 @@ If someone wants to implement that, be my guest.
 \[3\] [Binary Permutation Polynomial Inversion and Application to Obfuscation Techniques](https://dl.acm.org/doi/10.1145/2995306.2995310)
 
 \[4\] [Solving AX = B using the Hermite normal form](http://www.numbertheory.org/PDFS/ax=b.pdf)
+
+### License
+
+Licensed under either of
+
+ * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or https://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or https://opensource.org/licenses/MIT)
+
+at your option.
