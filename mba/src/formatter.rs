@@ -67,7 +67,7 @@ impl Formatter {
 impl BExpr {
     /// Creates a wrapper struct that implements [`Display`] and uses the given
     /// `formatter` to format the expression.
-    pub fn display(&self, formatter: Formatter) -> DisplayableBExpr {
+    pub fn display(&self, formatter: Formatter) -> DisplayableBExpr<'_> {
         DisplayableBExpr {
             expr: self,
             formatter,
@@ -78,7 +78,7 @@ impl BExpr {
     /// formatter to format the expression. It will wrap the output in
     /// parentheses if the expression is not a topmost unary. This is basically
     /// a helper function.
-    pub fn display_wrapped(&self, formatter: Formatter) -> DisplayableBExprWrapped {
+    pub fn display_wrapped(&self, formatter: Formatter) -> DisplayableBExprWrapped<'_> {
         DisplayableBExprWrapped {
             expr: self,
             formatter,

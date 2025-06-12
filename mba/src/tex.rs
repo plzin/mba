@@ -52,7 +52,7 @@ where
 }
 
 impl<R: Ring> Poly<R> {
-    pub fn to_tex(&self) -> TexPoly<R> {
+    pub fn to_tex(&self) -> TexPoly<'_, R> {
         TexPoly { poly: self }
     }
 }
@@ -107,7 +107,7 @@ impl<'a, R: Ring> std::fmt::Display for TexPoly<'a, R> {
 
 
 impl<R: Ring, S: VectorStorage<R> + ?Sized> Vector<R, S> {
-    pub fn to_tex(&self) -> TexVector<R, S> {
+    pub fn to_tex(&self) -> TexVector<'_, R, S> {
         TexVector { vector: self }
     }
 }
@@ -127,7 +127,7 @@ impl<'a, R: Ring, S: VectorStorage<R> + ?Sized> std::fmt::Display for TexVector<
 }
 
 impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
-    pub fn to_tex(&self) -> TexMatrix<R, S> {
+    pub fn to_tex(&self) -> TexMatrix<'_, R, S> {
         TexMatrix { matrix: self }
     }
 }
@@ -156,7 +156,7 @@ impl<'a, R: Ring, S: MatrixStorage<R> + ?Sized> std::fmt::Display for TexMatrix<
 }
 
 impl<R: Ring> Lattice<R> {
-    pub fn to_tex(&self) -> TexLattice<R> {
+    pub fn to_tex(&self) -> TexLattice<'_, R> {
         TexLattice { lattice: self }
     }
 }
@@ -182,7 +182,7 @@ impl<'a, R: Ring> std::fmt::Display for TexLattice<'a, R> {
 
 
 impl<R: Ring> AffineLattice<R> {
-    pub fn to_tex(&self) -> TexAffineLattice<R> {
+    pub fn to_tex(&self) -> TexAffineLattice<'_, R> {
         TexAffineLattice { lattice: self }
     }
 }

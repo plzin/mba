@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:wasm": "wasm-pack build ../mba-wasm --target web --out-dir ../web/src/mba/wasm",
+    "build:wasm": "RUSTFLAGS='--cfg getrandom_backend=\"wasm_js\"' wasm-pack build ../mba-wasm --target web --out-dir ../web/src/mba/wasm",
     "build": "bun run build:wasm && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
