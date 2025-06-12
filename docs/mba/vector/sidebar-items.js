@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["OwnedVectorStorage","SliceVectorStorage","StrideStorage","StrideStorageIter","StrideStorageIterMut","Vector"],"trait":["ContiguousVectorStorage","VectorStorage"],"type":["OwnedVector","StrideVectorView","VectorView"]};

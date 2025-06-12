@@ -1,0 +1,36 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Simplify boolean expressions using egg. There are some obvious improvements you could make:"><title>mba::simplify_boolean - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="mba" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0-nightly (e703dff8f 2025-06-11)" data-channel="nightly" data-search-js="search-f7877310.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../mba/index.html">mba</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module simplify_<wbr>boolean</a></h2><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate mba</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">mba</a></div><h1>Module <span>simplify_boolean</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/mba/simplify_boolean.rs.html#1-546">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Simplify boolean expressions using egg.
+There are some obvious improvements you could make:</p>
+<ul>
+<li>Given a truth table, find a minimal expression
+using e.g. the Quine-McCluskey algorithm, before handing
+it to egg.</li>
+<li>Use a custom RewriteScheduler that is aware of
+the cost function, i.e. tries cost reducing rewrites
+more aggressively.</li>
+<li>Maybe a more refined cost function.</li>
+<li>More refined rewrite rules.</li>
+</ul>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.SimplificationConfig.html" title="struct mba::simplify_boolean::SimplificationConfig">Simplification<wbr>Config</a></dt><dd>The way we simplify is by running equality saturation
+on the expression. The egraph for the expression would be
+prohibitively large, so that full equality saturation
+would take too long. egg has a lot of parameters that
+change the behavior of when it stops.
+See <a href="https://docs.rs/egg/0.10.0/egg/struct.Runner.html">here</a>
+for the documentation of most of these fields.
+When equality saturation stops without the actual
+saturation being complete, we start again with the
+current best expression. If we do not find a better
+expression in the next <code>retry_same_cost</code> iterations,
+we will stop. We will do this for <code>retry_limit</code> times
+and return the best expression we found.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.simplify.html" title="fn mba::simplify_boolean::simplify">simplify</a></dt><dd>Simplify a boolean expression.</dd><dt><a class="fn" href="fn.simplify_from_truth_table.html" title="fn mba::simplify_boolean::simplify_from_truth_table">simplify_<wbr>from_<wbr>truth_<wbr>table</a></dt><dd>Returns a simplified boolean expression for a given truth table.
+The truth table is an iterator over the value of the rows.
+This function iterates once over the table to determine
+whether the DNF or the CNF is smaller and then calls
+<code>simplify_from_truth_table_dnf</code> or <code>simplify_from_truth_table_cnf</code>.
+Thus the iterator needs to be cloneable.</dd><dt><a class="fn" href="fn.simplify_from_truth_table_cnf.html" title="fn mba::simplify_boolean::simplify_from_truth_table_cnf">simplify_<wbr>from_<wbr>truth_<wbr>table_<wbr>cnf</a></dt><dd>Returns a simplified boolean expression for a given truth table.
+The truth table is an iterator over the indices of the rows
+that have a value of 0.
+This constructs the DNF and then simplifies it using algebra.</dd><dt><a class="fn" href="fn.simplify_from_truth_table_dnf.html" title="fn mba::simplify_boolean::simplify_from_truth_table_dnf">simplify_<wbr>from_<wbr>truth_<wbr>table_<wbr>dnf</a></dt><dd>Returns a simplified boolean expression for a given truth table.
+The truth table is an iterator over the indices of the rows
+that have a value of 1.
+This constructs the DNF and then simplifies it using algebra.</dd></dl></section></div></main></body></html>

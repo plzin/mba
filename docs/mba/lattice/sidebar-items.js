@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["cvp_nearest_plane","cvp_planes","cvp_rounding","gram_schmidt","gram_schmidt_orthonormal","lll","rq_decomposition","size_reduce"],"struct":["AffineLattice","Lattice"],"trait":["WorkingType","WorkingTypeFor"]};

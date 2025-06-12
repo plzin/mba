@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["mba",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"enum\" href=\"mba/formatter/enum.Formatter.html\" title=\"enum mba::formatter::Formatter\">Formatter</a>"],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"enum\" href=\"mba/linear_mba/enum.SolutionAlgorithm.html\" title=\"enum mba::linear_mba::SolutionAlgorithm\">SolutionAlgorithm</a>"]]],["num_bigint",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"enum\" href=\"num_bigint/enum.Sign.html\" title=\"enum num_bigint::Sign\">Sign</a>"],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"struct\" href=\"num_bigint/struct.RandomBits.html\" title=\"struct num_bigint::RandomBits\">RandomBits</a>"],["impl&lt;T: <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a>&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"struct\" href=\"num_bigint/struct.TryFromBigIntError.html\" title=\"struct num_bigint::TryFromBigIntError\">TryFromBigIntError</a>&lt;T&gt;"]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[561,965]}

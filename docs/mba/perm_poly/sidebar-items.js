@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["compose","compute_inverse","compute_inverse_generator","compute_inverse_interpolation","is_perm_poly","perm_pair","random_perm_poly"],"struct":["ZeroIdeal"]};

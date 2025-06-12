@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["mba",[["impl&lt;R&gt; !<a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Sized.html\" title=\"trait core::marker::Sized\">Sized</a> for <a class=\"struct\" href=\"mba/matrix/struct.SliceMatrixStorage.html\" title=\"struct mba::matrix::SliceMatrixStorage\">SliceMatrixStorage</a>&lt;R&gt;",1,["mba::matrix::SliceMatrixStorage"]],["impl&lt;R&gt; !<a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Sized.html\" title=\"trait core::marker::Sized\">Sized</a> for <a class=\"struct\" href=\"mba/matrix/struct.TransposedMatrixStorage.html\" title=\"struct mba::matrix::TransposedMatrixStorage\">TransposedMatrixStorage</a>&lt;R&gt;",1,["mba::matrix::TransposedMatrixStorage"]],["impl&lt;R&gt; !<a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Sized.html\" title=\"trait core::marker::Sized\">Sized</a> for <a class=\"struct\" href=\"mba/vector/struct.SliceVectorStorage.html\" title=\"struct mba::vector::SliceVectorStorage\">SliceVectorStorage</a>&lt;R&gt;",1,["mba::vector::SliceVectorStorage"]],["impl&lt;R&gt; !<a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Sized.html\" title=\"trait core::marker::Sized\">Sized</a> for <a class=\"struct\" href=\"mba/vector/struct.StrideStorage.html\" title=\"struct mba::vector::StrideStorage\">StrideStorage</a>&lt;R&gt;",1,["mba::vector::StrideStorage"]]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[1409]}

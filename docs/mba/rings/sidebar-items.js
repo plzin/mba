@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["BigIntModN","BigIntModNDataType","BinaryBigInt","BinaryBigIntDataType","F32","F64","I128","I16","I32","I64","I8","Q","U128","U16","U32","U64","U8","VarBitsPrimitiveIntDataType","VarU128","VarU16","VarU32","VarU64","VarU8","Z"],"trait":["BinaryRing","Field","IntDivRing","OrderedRing","Ring","RingElement","SqrtRing"]};

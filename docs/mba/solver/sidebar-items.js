@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["hermite_normal_form","integer_diagonalize","modular_diagonalize","modular_hermite_form","solve_modular_via_integer_hnf","solve_scalar_congruence","solve_via_integer_diagonalize","solve_via_modular_diagonalize"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["ColumnVectorStorage","Matrix","MatrixSliceIter","MatrixSliceIterMut","MatrixStridedIter","MatrixStridedIterMut","OwnedMatrixStorage","RowVectorStorage","SliceMatrixStorage","TransposedMatrixStorage"],"trait":["MatrixStorage"],"type":["ColumnVector","MatrixView","OwnedMatrix","RowVector","TransposedMatrixView"]};

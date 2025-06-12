@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["bold","parens","underbrace"],"struct":["TexAffineLattice","TexBold","TexLattice","TexMatrix","TexParens","TexPoly","TexUnderbrace","TexVector"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":["choose_binary_ring"],"mod":["bitwise_expr","expr","formatter","lattice","linear_mba","matrix","perm_poly","poly","rings","simplify_boolean","solver","tex","valuation","vector"],"struct":["Symbol"]};

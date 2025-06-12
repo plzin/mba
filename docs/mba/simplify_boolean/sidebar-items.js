@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["simplify","simplify_from_truth_table","simplify_from_truth_table_cnf","simplify_from_truth_table_dnf"],"struct":["SimplificationConfig"]};
