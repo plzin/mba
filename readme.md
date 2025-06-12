@@ -20,6 +20,8 @@ so in order to use this with Rust you will have to use the [Wrapping](https://do
 ### Usage
 If you want to try this for yourself, check out the web interface [here](https://plzin.github.io/mba/).
 
+You can find the crate documentation [here](https://plzin.github.io/mba/docs/mba/index.html).
+
 You can also find examples how to use this crate in `examples/`.
 
 ### TODO
@@ -28,6 +30,11 @@ You can also find examples how to use this crate in `examples/`.
   so we always compute the full results and then mod at the end. Obviously computing a full `2 * bits` product when
   you only need `bits` is extremely wasteful. Less importantly, `num_bigint` does currently not expose a function to
   multiply two numbers and add the result to another number, so we have to allocate a new number in those cases.
+- The expressions (`Expr`, `BExpr`) should probably not be represented as trees/DAGs (acyclicity is not enforced by `Expr`) using `Box` and `Rc`,
+  but instead in some SSA format as an array where the operands are indicies of previous array entries.
+  You should probably avoid using `Expr` and instead only use the library to obfuscate/deobfuscate linear MBA expressions.
+- I am hesitant to release this crate to crates.io because of the [`CustomMetadataSlice`](https://github.com/plzin/mba/blob/68c42cd33f831fb9fefb2a1418c35c3001d5ec0c/mba/src/lib.rs#L37-L119)
+  which is definitely UB. Should you want to use this crate regardless, do it like this: `mba = { git = "https://github.com/plzin/mba.git" }`.
 
 ### References
 \[1\] [Information Hiding in Software with Mixed Boolean-Arithmetic Transforms](https://link.springer.com/chapter/10.1007/978-3-540-77535-5_5)
