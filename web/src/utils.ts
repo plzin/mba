@@ -3,6 +3,22 @@ import type { PlaygroundButtonProps } from './pages/shared';
 import { Formatter } from './mba';
 import katex from 'katex';
 
+/** Base shiki options for all invocations. */
+export const shikiOptions = {
+  themes: {
+    light: 'github-light-default',
+    dark: 'github-dark-default',
+  },
+  defaultColor: false,
+} as const;
+
+/** Shiki options for the example expressions in tooltips. */
+export const exampleShikiOptions = {
+  lang: 'c',
+  structure: 'inline',
+  ...shikiOptions,
+} as const;
+
 /**
  * Concatenates class names into a single string.
  * This currently doesn't use twMerge, because I didn't want to add a dependency.
@@ -91,11 +107,7 @@ export function handleDisplayCode(
   // Highlight the code.
   codeToHtml(code, {
     lang: Formatter[outputType].toLowerCase(),
-    themes: {
-      light: 'github-light-default',
-      dark: 'github-dark-default',
-    },
-    defaultColor: false,
+    ...shikiOptions,
   }).then(html => {
     setCode(html);
     setPlaygroundButton(playgroundButton);

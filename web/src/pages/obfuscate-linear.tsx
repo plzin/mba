@@ -3,7 +3,12 @@ import { CodeOutput, InputExpression, IntegerWidthInput, ActionButton, OutputTyp
 import Tooltip from '../ui/tooltip';
 import { codeToHtml } from 'shiki';
 import { Formatter, obfuscateLinear, parseAndPrintLBExpr } from '../mba';
-import { handleDisplayCode } from '../utils';
+import { exampleShikiOptions, handleDisplayCode } from '../utils';
+
+const exampleExpr1 = await codeToHtml('3*(x & ~y) + 4*(x | y) - 2*~x', exampleShikiOptions);
+const exampleExpr2 = await codeToHtml('x + y', exampleShikiOptions);
+const exampleExpr3 = await codeToHtml('x & ~y', exampleShikiOptions);
+const exampleExpr4 = await codeToHtml('1234', exampleShikiOptions);
 
 interface RewriteOp {
   expr: string;
@@ -73,7 +78,18 @@ export default function ObfuscateLinear() {
       <InfoCard>
         Rewrites a linear mixed-boolean expression using the set of rewrite operations.
       </InfoCard>
-      <InputExpression expression={expression} setExpression={setExpression} onEnter={obfuscate} />
+      <div className="tooltip tooltip-bottom w-full">
+        <div className="tooltip-content z-50 max-w-128">
+          This expression has to be a linear mixed boolean-arithmetic expression, i.e. a linear
+          combination of boolean expressions, e.g.{' '}
+          <span className="shiki" dangerouslySetInnerHTML={{ __html: exampleExpr1 }} />.
+          More commonly you will use expressions like{' '}
+          <span className="shiki" dangerouslySetInnerHTML={{ __html: exampleExpr2 }} />{' or '}
+          <span className="shiki" dangerouslySetInnerHTML={{ __html: exampleExpr3 }} />.
+          Constants (e.g. <span className="shiki" dangerouslySetInnerHTML={{ __html: exampleExpr4 }} />) are also supported.
+        </div>
+        <InputExpression expression={expression} setExpression={setExpression} onEnter={obfuscate} />
+      </div>
       <div className="grid px-2 grid-cols-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 pt-2">
         <div>
           <fieldset className="fieldset bg-base-200 border-base-300 rounded-box border p-4 pt-0">

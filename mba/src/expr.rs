@@ -276,7 +276,7 @@ impl<R: Ring> Expr<R> {
             let e = Self::parse(it, 0, r)?;
             match it.next() {
                 Some(')') => e,
-                _ => return Err("Expected closing parenthesis".to_string()),
+                _ => return Err("Expected closing parenthesis".to_owned()),
             }
         } else if c == '~' || c == '!' {
             it.next();
@@ -306,7 +306,7 @@ impl<R: Ring> Expr<R> {
         } else if c.is_ascii_digit() {
             Expr::new(Const(r.parse_element(it).ok_or("Expected number")?))
         } else {
-            return Err("Expected variable".to_string());
+            return Err("Expected variable".to_owned());
         };
 
         loop {
@@ -322,7 +322,7 @@ impl<R: Ring> Expr<R> {
                 '+' | '-' => 5,
                 '*' => 6,
                 ')' => return Ok(e),
-                _ => return Err("Unexpected character".to_string()),
+                _ => return Err(format!("Unsupported operator: {c}")),
             };
 
             if op_pre <= pre {
