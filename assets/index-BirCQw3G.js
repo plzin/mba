@@ -40846,7 +40846,7 @@ ${u}`);
       className: "tooltip tooltip-bottom",
       children: [
         L.jsx("div", {
-          className: "tooltip-content",
+          className: "tooltip-content z-50",
           children: r
         }),
         L.jsxs("svg", {
