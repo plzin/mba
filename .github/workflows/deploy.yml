@@ -15,11 +15,11 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Install bun
-        run: curl -fsSL https://bun.sh/install | bash
 
       - name: Install dependencies and Build
         working-directory: ./web
