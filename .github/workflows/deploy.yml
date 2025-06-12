@@ -1,0 +1,40 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install bun
+        run: curl -fsSL https://bun.sh/install | bash
+
+      - name: Install dependencies and Build
+        working-directory: ./web
+        run: |
+          bun install
+          bun run build
+
+      - name: Build documentation
+        run: |
+          cargo doc --no-deps -p mba -p num-bigint
+          cp -r target/doc ./web/dist/docs
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web/dist
+          publish_branch: pages

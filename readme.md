@@ -15,29 +15,19 @@ Rust itself will panic (at least in debug builds) when addition/multiplication o
 so in order to use this with Rust you will have to use the [Wrapping](https://doc.rust-lang.org/std/num/struct.Wrapping.html) types.
 
 ### How it works
-[See my blog post about it](https://plzin.github.io/posts/mba).
+[See my blog posts about it](https://plzin.github.io/posts/mba).
 
 ### Usage
-If you want to try this for yourself, check out my implementation that compiles to WASM
-[here](https://github.com/plzin/mba-wasm), and is hosted as a web interface [here](https://plzin.github.io/mba-wasm/).
-You can find examples how to use this crate in `examples/`.
+If you want to try this for yourself, check out the web interface [here](https://plzin.github.io/mba/).
+
+You can also find examples how to use this crate in `examples/`.
 
 ### TODO
-Eventually this crate should be used by the WASM crate.
-This crate used to use `rug::Integer`s which were not WASM compatible,
-but I replaced them with `num_bigint::BigInt`s, which are WASM compatible but have less features.
-Especially `keep_bits`, `keep_signed_bits` are missing and have a much slower implementation now.
-The current [mba-wasm](https://github.com/plzin/mba-wasm) crate uses generics (`u8`, `u16`, ...).
-When I made the WASM implementation use this crate, it was noticably slower, so I am holding off on pushing it.
-(Even if `keep_bits` had a fast implementation in `num_bigint`, you would also need a lot of operations to support
-only calculating n bits, because otherwise you are just wasting time on computing something that is not needed. Not even `rug` supported that.)
-(The WASM implementation also uses the faster diagonalization solver that I described in my
-[blog post](https://plzin.github.io/posts/linear-systems-mod-n)).
-Realistically, it would be best to just template everything in this crate the same way I do in the WASM implementation,
-but this comes at the cost of flexibility: The BigInt implementation works with any number of bits (e.g. 5 or 1000 bit integers),
-and while no one will ever use that, I think it'd be sad to lose that generality.
-You could also support both with some crazy templating, but I really can't be bothered writing that for a crate that few people will use.
-If someone wants to implement that, be my guest.
+- The `num_bigint::BigUint`-backed rings `BigIntModN` and even more so `BinaryBigInt` could be waaay faster.
+  `num_bigint` has just no support for the use case of performing arithmetic mod n or with a certain number of bits,
+  so we always compute the full results and then mod at the end. Obviously computing a full `2 * bits` product when
+  you only need `bits` is extremely wasteful. Less importantly, `num_bigint` does currently not expose a function to
+  multiply two numbers and add the result to another number, so we have to allocate a new number in those cases.
 
 ### References
 \[1\] [Information Hiding in Software with Mixed Boolean-Arithmetic Transforms](https://link.springer.com/chapter/10.1007/978-3-540-77535-5_5)

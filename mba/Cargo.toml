@@ -1,0 +1,20 @@
+[package]
+name = "mba"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+lazy_static.workspace = true
+itertools.workspace = true
+rand.workspace = true
+num-traits.workspace = true
+num-integer.workspace = true
+num-bigint.workspace = true
+num-rational.workspace = true
+egg.workspace = true
+z3 = { workspace = true, optional = true }
+z3-sys = { workspace = true, optional = true }
+
+[features]
+z3 = ["dep:z3", "dep:z3-sys"]

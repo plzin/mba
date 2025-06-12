@@ -1,0 +1,16 @@
+[package]
+name = "mba-wasm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+mba.workspace = true
+rand.workspace = true
+js-sys.workspace = true
+wasm-bindgen.workspace = true
+web-sys.workspace = true
+getrandom = { workspace = true, features = ["wasm_js"] }
+console_error_panic_hook.workspace = true
