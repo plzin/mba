@@ -41,7 +41,7 @@ export default function Obfuscate() {
         Feel free to implement something more sophisticated and send a pull request!
       </InfoCard>
       <div className="tooltip tooltip-bottom w-full">
-        <div className="tooltip-content z-50 max-w-128">
+        <div className="tooltip-content z-10 w-128 max-w-full">
           This expression can be any mixed boolean-arithmetic expression, e.g.{' '}
           <span className="shiki" dangerouslySetInnerHTML={{ __html: exampleExpr1 }} />{', '}
           <span className="shiki" dangerouslySetInnerHTML={{ __html: exampleExpr2 }} />{', also constants '}

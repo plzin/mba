@@ -72,7 +72,7 @@ export default function LinearSystem() {
           placeholder={'Enter the components of the linear system, e.g.\n3 4 5\n2 5 7'}
         />
         <div>
-          <IntegerWidthInput numBits={numBits} setNumBits={setNumBits} />
+          <IntegerWidthInput numBits={numBits} setNumBits={setNumBits} tooltipSide="left" />
           <ActionButton onClick={onSolve} label="Solve" />
         </div>
       </div>

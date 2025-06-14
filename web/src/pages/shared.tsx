@@ -61,15 +61,20 @@ export function InputExpression({
 interface IntegerWidthInputProps {
   numBits: number;
   setNumBits: (numBits: number) => void;
+  tooltipSide?: 'top' | 'bottom' | 'left' | 'right';
 }
 
-export function IntegerWidthInput({ numBits, setNumBits }: IntegerWidthInputProps) {
+export function IntegerWidthInput({
+  numBits,
+  setNumBits,
+  tooltipSide = 'bottom',
+}: IntegerWidthInputProps) {
   const [value, setValue] = React.useState(numBits.toString());
   return (
     <fieldset className="fieldset">
       <legend className="field-label">
         Integer width
-        <Tooltip>
+        <Tooltip side={tooltipSide}>
           This can be any positive integer but for common integer widths (i.e. 8, 16, 32, 64, 128) the implementation is more efficient.
         </Tooltip>
       </legend>

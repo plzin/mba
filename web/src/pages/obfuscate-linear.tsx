@@ -79,7 +79,7 @@ export default function ObfuscateLinear() {
         Rewrites a linear mixed-boolean expression using the set of rewrite operations.
       </InfoCard>
       <div className="tooltip tooltip-bottom w-full">
-        <div className="tooltip-content z-50 max-w-128">
+        <div className="tooltip-content z-10 w-128 max-w-full">
           This expression has to be a linear mixed boolean-arithmetic expression, i.e. a linear
           combination of boolean expressions, e.g.{' '}
           <span className="shiki" dangerouslySetInnerHTML={{ __html: exampleExpr1 }} />.
