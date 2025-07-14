@@ -15594,42 +15594,40 @@ ${r.stack}` : l;
     return ae.__externref_table_dealloc(r), t;
   }
   function Vg(r, t) {
-    let n, l;
-    try {
-      const f = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), d = ht, m = ae.invertPermutationPolynomial(f, d, t);
-      var u = m[0], o = m[1];
-      if (m[3]) throw u = 0, o = 0, yn(m[2]);
-      return n = u, l = o, jt(u, o);
-    } finally {
-      ae.__wbindgen_free(n, l, 1);
-    }
-  }
-  function Ug(r) {
-    let t, n;
-    try {
-      const l = ae.randomPermutationPolynomial(r);
-      return t = l[0], n = l[1], jt(l[0], l[1]);
-    } finally {
-      ae.__wbindgen_free(t, n, 1);
-    }
-  }
-  function jg(r) {
-    let t, n;
-    try {
-      const o = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), f = ht, d = ae.parseAndPrintLBExpr(o, f);
-      var l = d[0], u = d[1];
-      if (d[3]) throw l = 0, u = 0, yn(d[2]);
-      return t = l, n = u, jt(l, u);
-    } finally {
-      ae.__wbindgen_free(t, n, 1);
-    }
-  }
-  function Gg(r, t) {
     const n = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), l = ht, u = ae.solveLinearSystem(n, l, t);
     if (u[2]) throw yn(u[1]);
     return N1.__wrap(u[0]);
   }
-  function Ig(r, t, n, l, u, o) {
+  function Ug(r, t) {
+    const n = t(r.length * 4, 4) >>> 0;
+    for (let l = 0; l < r.length; l++) {
+      const u = wr(r[l]);
+      T0().setUint32(n + 4 * l, u, true);
+    }
+    return ht = r.length, n;
+  }
+  function jg(r, t, n, l, u) {
+    let o, f;
+    try {
+      const g = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), y = ht, S = Ug(t, ae.__wbindgen_malloc), E = ht, A = ae.obfuscateLinear(g, y, S, E, n, l, u);
+      var d = A[0], m = A[1];
+      if (A[3]) throw d = 0, m = 0, yn(A[2]);
+      return o = d, f = m, jt(d, m);
+    } finally {
+      ae.__wbindgen_free(o, f, 1);
+    }
+  }
+  function Gg(r, t, n) {
+    const l = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), u = ht, o = ae.probabilisticLinearMBACheck(l, u, t, n);
+    if (o[2]) throw yn(o[1]);
+    return o[0] !== 0;
+  }
+  function Ig(r, t) {
+    const n = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), l = ht, u = ae.fullLinearMBACheck(n, l, t);
+    if (u[2]) throw yn(u[1]);
+    return u[0] !== 0;
+  }
+  function Pg(r, t, n, l, u, o) {
     let f, d;
     try {
       const y = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), S = ht, E = ae.obfuscate(y, S, t, n, l, u, o);
@@ -15640,7 +15638,7 @@ ${r.stack}` : l;
       ae.__wbindgen_free(f, d, 1);
     }
   }
-  function Pg(r, t, n, l, u) {
+  function Yg(r, t, n, l, u) {
     let o, f;
     try {
       const g = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), y = ht, S = ae.deobfuscate(g, y, t, n, l, u);
@@ -15651,7 +15649,7 @@ ${r.stack}` : l;
       ae.__wbindgen_free(o, f, 1);
     }
   }
-  function Yg(r, t, n, l, u) {
+  function Xg(r, t, n, l, u) {
     let o, f;
     try {
       const g = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), y = ht, S = ae.deobfuscateLinear(g, y, t, n, l, u);
@@ -15662,34 +15660,36 @@ ${r.stack}` : l;
       ae.__wbindgen_free(o, f, 1);
     }
   }
-  function Xg(r, t) {
-    const n = t(r.length * 4, 4) >>> 0;
-    for (let l = 0; l < r.length; l++) {
-      const u = wr(r[l]);
-      T0().setUint32(n + 4 * l, u, true);
-    }
-    return ht = r.length, n;
-  }
-  function Qg(r, t, n, l, u) {
-    let o, f;
+  function Qg(r, t) {
+    let n, l;
     try {
-      const g = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), y = ht, S = Xg(t, ae.__wbindgen_malloc), E = ht, A = ae.obfuscateLinear(g, y, S, E, n, l, u);
-      var d = A[0], m = A[1];
-      if (A[3]) throw d = 0, m = 0, yn(A[2]);
-      return o = d, f = m, jt(d, m);
+      const f = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), d = ht, m = ae.invertPermutationPolynomial(f, d, t);
+      var u = m[0], o = m[1];
+      if (m[3]) throw u = 0, o = 0, yn(m[2]);
+      return n = u, l = o, jt(u, o);
     } finally {
-      ae.__wbindgen_free(o, f, 1);
+      ae.__wbindgen_free(n, l, 1);
     }
   }
-  function Zg(r, t, n) {
-    const l = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), u = ht, o = ae.probabilisticLinearMBACheck(l, u, t, n);
-    if (o[2]) throw yn(o[1]);
-    return o[0] !== 0;
+  function Zg(r) {
+    let t, n;
+    try {
+      const l = ae.randomPermutationPolynomial(r);
+      return t = l[0], n = l[1], jt(l[0], l[1]);
+    } finally {
+      ae.__wbindgen_free(t, n, 1);
+    }
   }
-  function Kg(r, t) {
-    const n = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), l = ht, u = ae.fullLinearMBACheck(n, l, t);
-    if (u[2]) throw yn(u[1]);
-    return u[0] !== 0;
+  function Kg(r) {
+    let t, n;
+    try {
+      const o = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), f = ht, d = ae.parseAndPrintLBExpr(o, f);
+      var l = d[0], u = d[1];
+      if (d[3]) throw l = 0, u = 0, yn(d[2]);
+      return t = l, n = u, jt(l, u);
+    } finally {
+      ae.__wbindgen_free(t, n, 1);
+    }
   }
   const Pa = Object.freeze({
     C: 0,
@@ -15882,7 +15882,7 @@ ${r.stack}` : l;
   }
   async function Q2(r) {
     if (ae !== void 0) return ae;
-    typeof r < "u" && (Object.getPrototypeOf(r) === Object.prototype ? { module_or_path: r } = r : console.warn("using deprecated parameters for the initialization function; pass a single object instead")), typeof r > "u" && (r = new URL("/mba/assets/mba_wasm_bg-D4TW3hK6.wasm", import.meta.url));
+    typeof r < "u" && (Object.getPrototypeOf(r) === Object.prototype ? { module_or_path: r } = r : console.warn("using deprecated parameters for the initialization function; pass a single object instead")), typeof r > "u" && (r = new URL("/mba/assets/mba_wasm_bg-HNiycgHo.wasm", import.meta.url));
     const t = Jg();
     (typeof r == "string" || typeof Request == "function" && r instanceof Request || typeof URL == "function" && r instanceof URL) && (r = fetch(r));
     const { instance: n, module: l } = await Fg(await r, t);
@@ -41025,7 +41025,7 @@ ${u}`);
   const ny = await Ya("x + y", Wn), ry = await Ya("x & ~y", Wn), ly = await Ya("1234", Wn), iy = await Ya("x * y + z", Wn);
   function sy() {
     const [r, t] = Fe.useState(""), [n, l] = Fe.useState(Pa.C), [u, o] = Fe.useState(8), [f, d] = Fe.useState(2), [m, g] = Fe.useState(24), [y, S] = Fe.useState(3), [E, A] = Fe.useState(), [D, G] = Fe.useState(), H = () => {
-      cu(() => Ig(r, u, f, y, m, n), A, n, G);
+      cu(() => Pg(r, u, f, y, m, n), A, n, G);
     };
     return N.jsxs("div", {
       children: [
@@ -41143,7 +41143,7 @@ ${u}`);
     const [r, t] = Fe.useState(""), [n, l] = Fe.useState(Pa.C), [u, o] = Fe.useState(8), [f, d] = Fe.useState(""), [m, g] = Fe.useState(), [y, S] = Fe.useState([]), [E, A] = Fe.useState(), [D, G] = Fe.useState(), H = () => {
       let Y;
       try {
-        Y = jg(f);
+        Y = Kg(f);
       } catch (se) {
         g(typeof se == "string" ? se : "Unknown error while parsing");
         return;
@@ -41170,7 +41170,7 @@ ${u}`);
     }, P = (Y) => {
       S(y.filter((se, W) => W !== Y));
     }, X = () => {
-      cu(() => Qg(r, y.map((se) => se.expr), u, true, n), A, n, G);
+      cu(() => jg(r, y.map((se) => se.expr), u, true, n), A, n, G);
     };
     return N.jsxs("div", {
       children: [
@@ -41344,7 +41344,7 @@ ${u}`);
   }
   function my() {
     const [r, t] = ot.useState(""), [n, l] = ot.useState(8), [u, o] = ot.useState(Qn.LeastComplexTerms), [f, d] = ot.useState(false), [m, g] = ot.useState(Pa.C), [y, S] = ot.useState(), [E, A] = ot.useState(), D = () => {
-      cu(() => Pg(r, n, u, f, m), S, m, A);
+      cu(() => Yg(r, n, u, f, m), S, m, A);
     };
     return N.jsxs("div", {
       children: [
@@ -41400,7 +41400,7 @@ ${u}`);
   }
   function dy() {
     const [r, t] = ot.useState(""), [n, l] = ot.useState(8), [u, o] = ot.useState(Qn.LeastComplexTerms), [f, d] = ot.useState(false), [m, g] = ot.useState(Pa.C), [y, S] = ot.useState(), [E, A] = ot.useState(), D = () => {
-      cu(() => Yg(r, n, u, f, m), S, m, A);
+      cu(() => Xg(r, n, u, f, m), S, m, A);
     };
     return N.jsxs("div", {
       children: [
@@ -41470,7 +41470,7 @@ ${u}`);
       n
     ]), g = () => {
       try {
-        const y = Gg(r, n);
+        const y = Vg(r, n);
         o({
           diag: A0(y.diag),
           scalarSystem: A0(y.scalarSystem),
@@ -41626,10 +41626,10 @@ ${u}`);
   }
   function vy() {
     const [r, t] = Fe.useState(""), [n, l] = Fe.useState(8), [u, o] = Fe.useState(""), f = () => {
-      t(Ug(n));
+      t(Zg(n));
     }, d = () => {
       try {
-        o(A0(Vg(r, n)));
+        o(A0(Qg(r, n)));
       } catch (m) {
         typeof m == "string" ? o(`<span class="text-error">${m}</span>`) : (o('<span class="text-error">Unknown error. Check console.</span>'), console.error(m));
       }
@@ -41677,7 +41677,7 @@ ${u}`);
       t(A), g(void 0), d(void 0);
     }, S = () => {
       try {
-        g(u === 4 ? Kg(r, n) : Zg(r, Math.pow(10, u + 2), n));
+        g(u === 4 ? Ig(r, n) : Gg(r, Math.pow(10, u + 2), n));
       } catch (A) {
         typeof A == "string" ? d(A) : (d("Unknown error"), console.error(A));
       }
