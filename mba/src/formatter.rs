@@ -248,10 +248,17 @@ impl<'a, R: Ring> Display for LBExprFormatter<'a, R> {
 }
 
 impl<R: Ring> Expr<R> {
+    /// Creates a wrapper struct that implements [`Display`] and uses the given
+    /// `formatter` to format the expression. Each line will be indented by
+    /// `tabs` spaces. Common subexpressions will be assigned to variables
+    /// with names `v1`, `v2`, etc. on their own lines. The final result will
+    /// be prefixed with `prefix`, which will usually be something like
+    /// `"return "` or `"uint8_t result = "`. There will be no trailing newline.
     pub fn display<'a>(
         &'a self,
         formatter: Formatter,
         tabs: usize,
+        prefix: &'a str,
         r: &'a R,
     ) -> ExprFormatter<'a, R> {
         let mut formatter = ExprFormatter {
@@ -260,6 +267,7 @@ impl<R: Ring> Expr<R> {
             buf: String::new(),
             subs: Vec::new(),
             tabs,
+            prefix,
             r,
         };
 
@@ -268,15 +276,24 @@ impl<R: Ring> Expr<R> {
         formatter
     }
 
+    /// Creates a wrapper struct that implements [`Display`] and uses the given
+    /// `formatter` to format the expression as a function with the given
+    /// `function_name`. This doesn't make sense for [`Formatter::Tex`] so it is
+    /// the same as as [`Self::display`] in that case, except that it is slower
+    /// because it computes the list of variables on construction.
     pub fn display_function<'a>(
         &'a self,
         formatter: Formatter,
         function_name: &'a str,
         r: &'a R,
     ) -> FunctionFormatter<'a, R, ExprFormatter<'a, R>> {
+        let prefix = match formatter {
+            Formatter::C => "return ",
+            _ => "",
+        };
         FunctionFormatter::new(
             self.vars(),
-            self.display(formatter, 1, r),
+            self.display(formatter, 1, prefix, r),
             formatter,
             function_name,
             r,
@@ -301,6 +318,7 @@ pub struct ExprFormatter<'a, R: Ring> {
     buf: String,
     subs: Vec<CommonSubExpr<R>>,
     tabs: usize,
+    prefix: &'a str,
     r: &'a R,
 }
 
@@ -327,7 +345,13 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
             write!(&mut self.buf, "{}", sub.var).unwrap();
         } else {
             // Otherwise, we need to create a new variable.
-            let v = Symbol::new(format!("v{}", self.subs.len() + 1));
+            // We can avoid the allocation by using our `self.buf` which we need
+            // to write the variable name into anyways, but subslicing it does
+            // involve some UTF-8 logic, which should be cheaper than allocating
+            // though.
+            let name_start = self.buf.len();
+            write!(&mut self.buf, "v{}", self.subs.len() + 1).unwrap();
+            let v = Symbol::new(&self.buf[name_start..]);
 
             let idx = self.subs.len();
 
@@ -442,10 +466,12 @@ impl<R: Ring> Display for ExprFormatter<'_, R> {
                 for sub in self.subs.iter().rev() {
                     writeln!(f, "{} = {}\\\\", sub.var, sub.init)?;
                 }
+                return write!(f, "{}{}", self.prefix, self.buf);
             },
         }
 
-        write!(f, "{}", self.buf)
+        write!(f, "{:\t>tabs$}{}{}",
+            "", self.prefix, self.buf, tabs = self.tabs)
     }
 }
 
@@ -497,7 +523,7 @@ impl<'a, R: Ring, D: Display> Display for FunctionFormatter<'a, R, D> {
                     }
                 }
 
-                write!(f, ") {{\n\treturn {};\n}}", self.inner)
+                write!(f, ") {{\n{};\n}}", self.inner)
             },
             Formatter::Rust => {
                 let ty = self.r.data_type_name(self.formatter).to_string();
@@ -512,7 +538,7 @@ impl<'a, R: Ring, D: Display> Display for FunctionFormatter<'a, R, D> {
                     }
                 }
 
-                write!(f, ") -> {ty} {{\n\t{}\n}}", self.inner)
+                write!(f, ") -> {ty} {{\n{}\n}}", self.inner)
             },
             Formatter::Tex => self.inner.fmt(f),
         }

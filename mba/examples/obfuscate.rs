@@ -14,5 +14,5 @@ fn main() {
     let mut e = Expr::from_string("x+y".to_owned(), r).unwrap();
     let cfg = ObfuscationConfig::default();
     obfuscate(&mut e, &cfg, &mut rng, r);
-    println!("{}", e.display_function(Formatter::Rust, "f", r));
+    println!("{}", e.display_function(Formatter::C, "f", r));
 }

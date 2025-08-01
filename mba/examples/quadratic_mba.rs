@@ -113,5 +113,5 @@ fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(
 
     expr.simplify();
 
-    println!("{}", expr.display(Formatter::C, 0, r));
+    println!("{}", expr.display(Formatter::C, 0, "", r));
 }

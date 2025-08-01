@@ -199,18 +199,18 @@ fn random_bool_expr<Rand: Rng>(
     assert_eq!(num_vars as usize, vars.len(),
         "Not more than `u32::MAX` variables allowed.");
 
-    let mut rand_var = || BExpr::Var(
-        vars[(rng.random::<u32>() % num_vars) as usize]
-    );
-
     if max_depth == 0 {
-        return rand_var();
+        return BExpr::Var(
+            vars[(rng.random::<u32>() % num_vars) as usize]
+        );
     }
 
     // Generate one of the four variants uniformly at random.
     let d = max_depth - 1;
-    match rand::random::<u8>() % 5 {
-        0 => rand_var(),
+    match rng.random::<u8>() % 5 {
+        0 => BExpr::Var(
+            vars[(rng.random::<u32>() % num_vars) as usize]
+        ),
         1 => BExpr::not(random_bool_expr(vars, d, rng)),
         2 => BExpr::and(
             random_bool_expr(vars, d, rng),
