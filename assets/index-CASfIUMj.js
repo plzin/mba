@@ -15593,10 +15593,16 @@ ${r.stack}` : l;
     const t = ae.__wbindgen_export_2.get(r);
     return ae.__externref_table_dealloc(r), t;
   }
-  function Vg(r, t) {
-    const n = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), l = ht, u = ae.solveLinearSystem(n, l, t);
-    if (u[2]) throw yn(u[1]);
-    return N1.__wrap(u[0]);
+  function Vg(r, t, n, l, u, o) {
+    let f, d;
+    try {
+      const y = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), S = ht, E = ae.obfuscate(y, S, t, n, l, u, o);
+      var m = E[0], g = E[1];
+      if (E[3]) throw m = 0, g = 0, yn(E[2]);
+      return f = m, d = g, jt(m, g);
+    } finally {
+      ae.__wbindgen_free(f, d, 1);
+    }
   }
   function Ug(r, t) {
     const n = t(r.length * 4, 4) >>> 0;
@@ -15617,28 +15623,7 @@ ${r.stack}` : l;
       ae.__wbindgen_free(o, f, 1);
     }
   }
-  function Gg(r, t, n) {
-    const l = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), u = ht, o = ae.probabilisticLinearMBACheck(l, u, t, n);
-    if (o[2]) throw yn(o[1]);
-    return o[0] !== 0;
-  }
-  function Ig(r, t) {
-    const n = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), l = ht, u = ae.fullLinearMBACheck(n, l, t);
-    if (u[2]) throw yn(u[1]);
-    return u[0] !== 0;
-  }
-  function Pg(r, t, n, l, u, o) {
-    let f, d;
-    try {
-      const y = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), S = ht, E = ae.obfuscate(y, S, t, n, l, u, o);
-      var m = E[0], g = E[1];
-      if (E[3]) throw m = 0, g = 0, yn(E[2]);
-      return f = m, d = g, jt(m, g);
-    } finally {
-      ae.__wbindgen_free(f, d, 1);
-    }
-  }
-  function Yg(r, t, n, l, u) {
+  function Gg(r, t, n, l, u) {
     let o, f;
     try {
       const g = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), y = ht, S = ae.deobfuscate(g, y, t, n, l, u);
@@ -15649,7 +15634,12 @@ ${r.stack}` : l;
       ae.__wbindgen_free(o, f, 1);
     }
   }
-  function Xg(r, t, n, l, u) {
+  function Ig(r, t) {
+    const n = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), l = ht, u = ae.solveLinearSystem(n, l, t);
+    if (u[2]) throw yn(u[1]);
+    return N1.__wrap(u[0]);
+  }
+  function Pg(r, t, n, l, u) {
     let o, f;
     try {
       const g = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), y = ht, S = ae.deobfuscateLinear(g, y, t, n, l, u);
@@ -15660,7 +15650,7 @@ ${r.stack}` : l;
       ae.__wbindgen_free(o, f, 1);
     }
   }
-  function Qg(r, t) {
+  function Yg(r, t) {
     let n, l;
     try {
       const f = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), d = ht, m = ae.invertPermutationPolynomial(f, d, t);
@@ -15671,7 +15661,7 @@ ${r.stack}` : l;
       ae.__wbindgen_free(n, l, 1);
     }
   }
-  function Zg(r) {
+  function Xg(r) {
     let t, n;
     try {
       const l = ae.randomPermutationPolynomial(r);
@@ -15680,7 +15670,7 @@ ${r.stack}` : l;
       ae.__wbindgen_free(t, n, 1);
     }
   }
-  function Kg(r) {
+  function Qg(r) {
     let t, n;
     try {
       const o = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), f = ht, d = ae.parseAndPrintLBExpr(o, f);
@@ -15690,6 +15680,16 @@ ${r.stack}` : l;
     } finally {
       ae.__wbindgen_free(t, n, 1);
     }
+  }
+  function Zg(r, t, n) {
+    const l = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), u = ht, o = ae.probabilisticLinearMBACheck(l, u, t, n);
+    if (o[2]) throw yn(o[1]);
+    return o[0] !== 0;
+  }
+  function Kg(r, t) {
+    const n = Lt(r, ae.__wbindgen_malloc, ae.__wbindgen_realloc), l = ht, u = ae.fullLinearMBACheck(n, l, t);
+    if (u[2]) throw yn(u[1]);
+    return u[0] !== 0;
   }
   const Pa = Object.freeze({
     C: 0,
@@ -15882,7 +15882,7 @@ ${r.stack}` : l;
   }
   async function Q2(r) {
     if (ae !== void 0) return ae;
-    typeof r < "u" && (Object.getPrototypeOf(r) === Object.prototype ? { module_or_path: r } = r : console.warn("using deprecated parameters for the initialization function; pass a single object instead")), typeof r > "u" && (r = new URL("/mba/assets/mba_wasm_bg-HNiycgHo.wasm", import.meta.url));
+    typeof r < "u" && (Object.getPrototypeOf(r) === Object.prototype ? { module_or_path: r } = r : console.warn("using deprecated parameters for the initialization function; pass a single object instead")), typeof r > "u" && (r = new URL("/mba/assets/mba_wasm_bg--yv_LLYz.wasm", import.meta.url));
     const t = Jg();
     (typeof r == "string" || typeof Request == "function" && r instanceof Request || typeof URL == "function" && r instanceof URL) && (r = fetch(r));
     const { instance: n, module: l } = await Fg(await r, t);
@@ -41025,7 +41025,7 @@ ${u}`);
   const ny = await Ya("x + y", Wn), ry = await Ya("x & ~y", Wn), ly = await Ya("1234", Wn), iy = await Ya("x * y + z", Wn);
   function sy() {
     const [r, t] = Fe.useState(""), [n, l] = Fe.useState(Pa.C), [u, o] = Fe.useState(8), [f, d] = Fe.useState(2), [m, g] = Fe.useState(24), [y, S] = Fe.useState(3), [E, A] = Fe.useState(), [D, G] = Fe.useState(), H = () => {
-      cu(() => Pg(r, u, f, y, m, n), A, n, G);
+      cu(() => Vg(r, u, f, y, m, n), A, n, G);
     };
     return N.jsxs("div", {
       children: [
@@ -41143,7 +41143,7 @@ ${u}`);
     const [r, t] = Fe.useState(""), [n, l] = Fe.useState(Pa.C), [u, o] = Fe.useState(8), [f, d] = Fe.useState(""), [m, g] = Fe.useState(), [y, S] = Fe.useState([]), [E, A] = Fe.useState(), [D, G] = Fe.useState(), H = () => {
       let Y;
       try {
-        Y = Kg(f);
+        Y = Qg(f);
       } catch (se) {
         g(typeof se == "string" ? se : "Unknown error while parsing");
         return;
@@ -41344,7 +41344,7 @@ ${u}`);
   }
   function my() {
     const [r, t] = ot.useState(""), [n, l] = ot.useState(8), [u, o] = ot.useState(Qn.LeastComplexTerms), [f, d] = ot.useState(false), [m, g] = ot.useState(Pa.C), [y, S] = ot.useState(), [E, A] = ot.useState(), D = () => {
-      cu(() => Yg(r, n, u, f, m), S, m, A);
+      cu(() => Gg(r, n, u, f, m), S, m, A);
     };
     return N.jsxs("div", {
       children: [
@@ -41400,7 +41400,7 @@ ${u}`);
   }
   function dy() {
     const [r, t] = ot.useState(""), [n, l] = ot.useState(8), [u, o] = ot.useState(Qn.LeastComplexTerms), [f, d] = ot.useState(false), [m, g] = ot.useState(Pa.C), [y, S] = ot.useState(), [E, A] = ot.useState(), D = () => {
-      cu(() => Xg(r, n, u, f, m), S, m, A);
+      cu(() => Pg(r, n, u, f, m), S, m, A);
     };
     return N.jsxs("div", {
       children: [
@@ -41470,7 +41470,7 @@ ${u}`);
       n
     ]), g = () => {
       try {
-        const y = Vg(r, n);
+        const y = Ig(r, n);
         o({
           diag: A0(y.diag),
           scalarSystem: A0(y.scalarSystem),
@@ -41626,10 +41626,10 @@ ${u}`);
   }
   function vy() {
     const [r, t] = Fe.useState(""), [n, l] = Fe.useState(8), [u, o] = Fe.useState(""), f = () => {
-      t(Zg(n));
+      t(Xg(n));
     }, d = () => {
       try {
-        o(A0(Qg(r, n)));
+        o(A0(Yg(r, n)));
       } catch (m) {
         typeof m == "string" ? o(`<span class="text-error">${m}</span>`) : (o('<span class="text-error">Unknown error. Check console.</span>'), console.error(m));
       }
@@ -41677,7 +41677,7 @@ ${u}`);
       t(A), g(void 0), d(void 0);
     }, S = () => {
       try {
-        g(u === 4 ? Ig(r, n) : Gg(r, Math.pow(10, u + 2), n));
+        g(u === 4 ? Kg(r, n) : Zg(r, Math.pow(10, u + 2), n));
       } catch (A) {
         typeof A == "string" ? d(A) : (d("Unknown error"), console.error(A));
       }
