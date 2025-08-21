@@ -1,10 +1,9 @@
 use itertools::Itertools;
-use mba::rings::BinaryRing;
-use mba::poly::Poly;
 use mba::perm_poly::{
-    ZeroIdeal, compute_inverse, compute_inverse_generator,
-    compute_inverse_interpolation,
+    ZeroIdeal, compute_inverse, compute_inverse_generator, compute_inverse_interpolation,
 };
+use mba::poly::Poly;
+use mba::rings::BinaryRing;
 
 enum InverseAlgorithm {
     Newton,
@@ -35,11 +34,7 @@ fn main() {
     mba::choose_binary_ring!(do_compute_inverse(poly, alg, &r), r = bits);
 }
 
-fn do_compute_inverse<R: BinaryRing>(
-    poly: String,
-    alg: InverseAlgorithm,
-    r: &R,
-) {
+fn do_compute_inverse<R: BinaryRing>(poly: String, alg: InverseAlgorithm, r: &R) {
     let p = match Poly::parse(poly, r) {
         Ok(p) => p,
         Err(e) => return println!("Invalid polynomial: {e}"),

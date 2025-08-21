@@ -134,10 +134,10 @@ impl std::fmt::Display for BigIntModNDataType {
 
 #[cfg(test)]
 mod test_mod_n {
-    use super::*;
     use super::test::*;
-    use rand::rngs::StdRng;
+    use super::*;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     #[test]
     fn test_inverse_mod_n() {

@@ -123,9 +123,7 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
 
     /// Subtract an element given by value from an element given by reference.
     /// See [`Ring::sub_assign_rhs`].
-    fn sub_rhs(
-        &self, l: &Self::Element, mut r: Self::Element
-    ) -> Self::Element {
+    fn sub_rhs(&self, l: &Self::Element, mut r: Self::Element) -> Self::Element {
         self.sub_assign_rhs(l, &mut r);
         r
     }
@@ -148,12 +146,7 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
     /// <https://github.com/rust-num/num-bigint/blob/575cea47d21f969e541a7668751d4a82825d02bd/src/biguint/multiplication.rs#L67C37-L67C76>
     ///
     /// TODO: Expose this function and use it.
-    fn mul_add_assign(
-        &self,
-        acc: &mut Self::Element,
-        a: &Self::Element,
-        b: &Self::Element,
-    ) {
+    fn mul_add_assign(&self, acc: &mut Self::Element, a: &Self::Element, b: &Self::Element) {
         self.add_assign(acc, &self.mul(a.clone(), b))
     }
 
@@ -170,12 +163,7 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
     }
 
     /// [`Ring::mul_add_assign`] but with [`Ring::sub`].
-    fn mul_sub_assign(
-        &self,
-        acc: &mut Self::Element,
-        a: &Self::Element,
-        b: &Self::Element,
-    ) {
+    fn mul_sub_assign(&self, acc: &mut Self::Element, a: &Self::Element, b: &Self::Element) {
         self.sub_assign(acc, &self.mul(a.clone(), b));
     }
 
@@ -264,7 +252,7 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
     /// Parse an element from the given iterator over characters.
     fn parse_element(
         &self,
-        it: &mut std::iter::Peekable<impl Iterator<Item = char>>
+        it: &mut std::iter::Peekable<impl Iterator<Item = char>>,
     ) -> Option<Self::Element> {
         // TODO: allow hexadecimal literals.
 
@@ -433,24 +421,15 @@ pub trait IntDivRing: OrderedRing {
 macro_rules! impl_int_div_for_field {
     ($field:ident) => {
         impl IntDivRing for $field {
-            fn rounded_div(
-                l: &Self::Element,
-                r: &Self::Element,
-            ) -> Self::Element {
+            fn rounded_div(l: &Self::Element, r: &Self::Element) -> Self::Element {
                 l / r
             }
 
-            fn euclidean_div(
-                l: &Self::Element,
-                r: &Self::Element,
-            ) -> Self::Element {
+            fn euclidean_div(l: &Self::Element, r: &Self::Element) -> Self::Element {
                 l / r
             }
 
-            fn euclidean_rem(
-                _l: &Self::Element,
-                _r: &Self::Element,
-            ) -> Self::Element {
+            fn euclidean_rem(_l: &Self::Element, _r: &Self::Element) -> Self::Element {
                 Self::zero()
             }
         }
@@ -524,11 +503,7 @@ pub trait OrderedRing: Ring {
     }
 
     /// Compare the absolute value of two elements.
-    fn cmp_abs(
-        &self,
-        l: &Self::Element,
-        r: &Self::Element,
-    ) -> std::cmp::Ordering {
+    fn cmp_abs(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
         self.cmp(&self.abs(l.clone()), &self.abs(r.clone()))
     }
 

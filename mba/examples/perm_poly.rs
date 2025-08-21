@@ -1,4 +1,4 @@
-use mba::{rings::U8, perm_poly};
+use mba::{perm_poly, rings::U8};
 
 // This generates an 8-bit permutation polynomial of degree 3 and its inverse.
 fn main() {

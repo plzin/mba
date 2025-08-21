@@ -64,7 +64,8 @@ fn build_table<R: BinaryRing>(
     ring: &R,
 ) -> (Vec<Symbol>, Vec<R::Element>, Valuation<R>) {
     let vars = expr.vars();
-    assert!(vars.len() < usize::BITS as usize,
+    assert!(
+        vars.len() < usize::BITS as usize,
         "More than {} variables are currently not supported on your system.",
         usize::BITS - 1
     );
@@ -96,9 +97,9 @@ fn compute_expected_result<R: BinaryRing>(
     val: &mut Valuation<R>,
     r: &R,
 ) -> R::Element {
-    (0..r.bits()).fold(R::zero(), |acc, j|
+    (0..r.bits()).fold(R::zero(), |acc, j| {
         r.sub(acc, &r.shl(b[compute_index(vars, val, j, r)].clone(), j))
-    )
+    })
 }
 
 /// This function is only meaningful in the context of the fundamental theorem
@@ -107,13 +108,8 @@ fn compute_expected_result<R: BinaryRing>(
 /// but `j` is set or not in each input variable. [`build_table`] evaluates the
 /// expression at all such inputs and stores the results in a table. This
 /// function computes the index into that table in this scenario.
-fn compute_index<R: BinaryRing>(
-    vars: &[Symbol],
-    val: &mut Valuation<R>,
-    j: u32,
-    r: &R,
-) -> usize {
-    vars.iter()
-        .enumerate()
-        .fold(0, |acc, (i, &v)| acc | (R::bit(val.value(v, r), j) as usize) << i)
+fn compute_index<R: BinaryRing>(vars: &[Symbol], val: &mut Valuation<R>, j: u32, r: &R) -> usize {
+    vars.iter().enumerate().fold(0, |acc, (i, &v)| {
+        acc | (R::bit(val.value(v, r), j) as usize) << i
+    })
 }

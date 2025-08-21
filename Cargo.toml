@@ -10,7 +10,7 @@ num-bigint = { git = "https://github.com/plzin/num-bigint.git", branch = "rand-0
 [workspace.dependencies]
 mba = { path = "mba" }
 rand = "0.9"
-lazy_static = "1.4"
+
 itertools = "0.14"
 num-traits = "0.2"
 num-integer = "0.1"

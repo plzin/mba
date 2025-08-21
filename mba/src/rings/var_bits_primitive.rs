@@ -13,7 +13,10 @@ macro_rules! var_primitive_int {
         impl $ring {
             pub fn new(bits: u32) -> Self {
                 assert!((1..=$uint::BITS).contains(&bits));
-                Self { bits: bits as $uint, mask: ((1 as $uint) << bits).wrapping_sub(1) }
+                Self {
+                    bits: bits as $uint,
+                    mask: ((1 as $uint) << bits).wrapping_sub(1),
+                }
             }
         }
 
@@ -134,7 +137,7 @@ macro_rules! var_primitive_int {
         }
 
         impl_ordered_ring_uint!($ring);
-    }
+    };
 }
 
 pub struct VarBitsPrimitiveIntDataType {
@@ -148,6 +151,7 @@ impl std::fmt::Display for VarBitsPrimitiveIntDataType {
             Formatter::C => write!(f, "uint{}_t", self.bits),
             Formatter::Rust => write!(f, "Wrapping<u{}>", self.bits),
             Formatter::Tex => write!(f, "uint{}", self.bits),
+            Formatter::LLVM => write!(f, "i{}", self.bits),
         }
     }
 }

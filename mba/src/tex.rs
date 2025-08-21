@@ -6,7 +6,6 @@ use crate::poly::Poly;
 use crate::rings::{Ring, RingElement};
 use crate::vector::{Vector, VectorStorage};
 
-
 pub fn bold<T>(t: T) -> TexBold<T> {
     TexBold(t)
 }
@@ -24,7 +23,6 @@ pub fn parens<T>(t: T) -> TexParens<T> {
 }
 
 pub struct TexParens<T>(T);
-
 
 impl<T: std::fmt::Display> std::fmt::Display for TexParens<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -63,7 +61,10 @@ pub struct TexPoly<'a, R: Ring> {
 
 impl<'a, R: Ring> std::fmt::Display for TexPoly<'a, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.poly.coeffs.iter()
+        let mut iter = self
+            .poly
+            .coeffs
+            .iter()
             .enumerate()
             .rev()
             .filter(|(_, e)| !e.is_zero());
@@ -71,7 +72,7 @@ impl<'a, R: Ring> std::fmt::Display for TexPoly<'a, R> {
         fn write_term<E: RingElement>(
             f: &mut std::fmt::Formatter<'_>,
             e: usize,
-            c: &E
+            c: &E,
         ) -> std::fmt::Result {
             if e == 0 {
                 return write!(f, "{c}");
@@ -103,8 +104,6 @@ impl<'a, R: Ring> std::fmt::Display for TexPoly<'a, R> {
         Ok(())
     }
 }
-
-
 
 impl<R: Ring, S: VectorStorage<R> + ?Sized> Vector<R, S> {
     pub fn to_tex(&self) -> TexVector<'_, R, S> {
@@ -179,7 +178,6 @@ impl<'a, R: Ring> std::fmt::Display for TexLattice<'a, R> {
         Ok(())
     }
 }
-
 
 impl<R: Ring> AffineLattice<R> {
     pub fn to_tex(&self) -> TexAffineLattice<'_, R> {

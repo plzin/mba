@@ -10,20 +10,20 @@
 // version conflicts.
 pub use egg::Symbol;
 
-pub mod rings;
-pub mod matrix;
-pub mod vector;
-pub mod valuation;
-pub mod expr;
 pub mod bitwise_expr;
-pub mod solver;
-pub mod lattice;
-pub mod poly;
-pub mod perm_poly;
-pub mod linear_mba;
-pub mod simplify_boolean;
+pub mod expr;
 pub mod formatter;
+pub mod lattice;
+pub mod linear_mba;
+pub mod matrix;
+pub mod perm_poly;
+pub mod poly;
+pub mod rings;
+pub mod simplify_boolean;
+pub mod solver;
 pub mod tex;
+pub mod valuation;
+pub mod vector;
 
 use expr::*;
 
@@ -50,7 +50,7 @@ type Half = u16;
 /// So I am abusing the usize to store the data.
 struct CustomMetadataSlice<T, M> {
     phantom: std::marker::PhantomData<M>,
-    data: [T]
+    data: [T],
 }
 
 trait CustomMetadata {
@@ -65,10 +65,7 @@ impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
             std::mem::size_of::<<[T] as std::ptr::Pointee>::Metadata>()
         );
         unsafe {
-            &*std::ptr::from_raw_parts(
-                data as _,
-                core::intrinsics::transmute_unchecked(metadata)
-            )
+            &*std::ptr::from_raw_parts(data as _, core::intrinsics::transmute_unchecked(metadata))
         }
     }
 
@@ -80,15 +77,13 @@ impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
         unsafe {
             &mut *std::ptr::from_raw_parts_mut(
                 data as _,
-                core::intrinsics::transmute_unchecked(metadata)
+                core::intrinsics::transmute_unchecked(metadata),
             )
         }
     }
 
     pub fn metadata(&self) -> M {
-        unsafe {
-            core::intrinsics::transmute_unchecked(std::ptr::metadata(self))
-        }
+        unsafe { core::intrinsics::transmute_unchecked(std::ptr::metadata(self)) }
     }
 
     pub fn as_ptr(&self) -> *const T {
@@ -100,20 +95,12 @@ impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
     }
 
     pub fn slice(&self) -> &[T] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.data.as_ptr() as _,
-                self.metadata().size()
-            )
-        }
+        unsafe { std::slice::from_raw_parts(self.data.as_ptr() as _, self.metadata().size()) }
     }
 
     pub fn slice_mut(&mut self) -> &mut [T] {
         unsafe {
-            std::slice::from_raw_parts_mut(
-                self.data.as_mut_ptr() as _,
-                self.metadata().size()
-            )
+            std::slice::from_raw_parts_mut(self.data.as_mut_ptr() as _, self.metadata().size())
         }
     }
 }
@@ -121,7 +108,9 @@ impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
 /// Hacky function to convert a rug::Integer to a z3 bitvector.
 #[cfg(feature = "z3")]
 pub(crate) fn int_to_bv<'ctx, R: rings::BinaryRing>(
-    ctx: &'ctx z3::Context, e: &R::Element, r: &R,
+    ctx: &'ctx z3::Context,
+    e: &R::Element,
+    r: &R,
 ) -> z3::ast::BV<'ctx> {
     use z3::ast::Ast;
     let bits: Vec<_> = (0..r.bits()).map(|j| R::bit(e, j)).collect();
@@ -129,7 +118,7 @@ pub(crate) fn int_to_bv<'ctx, R: rings::BinaryRing>(
         let ast = z3_sys::Z3_mk_bv_numeral(
             *(ctx as *const _ as *const z3_sys::Z3_context),
             r.bits(),
-            bits.as_ptr()
+            bits.as_ptr(),
         );
         z3::ast::BV::wrap(ctx, ast)
     }

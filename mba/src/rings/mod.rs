@@ -25,32 +25,31 @@
 //! of the whole modulus.
 //! It has the bitwise operations on it.
 
-mod traits;
-mod primitive_int;
-mod primitive_uint;
+mod binary_bigint;
 mod float;
 mod integers;
-mod rationals;
-mod mod_n;
-mod binary_bigint;
-mod var_bits_primitive;
 mod mod_inv_pow_two;
+mod mod_n;
+mod primitive_int;
+mod primitive_uint;
+mod rationals;
+mod traits;
+mod var_bits_primitive;
 
-pub use traits::*;
-pub use primitive_int::*;
-pub use primitive_uint::*;
+pub use binary_bigint::*;
 pub use float::*;
 pub use integers::*;
-pub use rationals::*;
 pub use mod_n::*;
-pub use binary_bigint::*;
+pub use primitive_int::*;
+pub use primitive_uint::*;
+pub use rationals::*;
+pub use traits::*;
 pub use var_bits_primitive::*;
 
-
 use num_bigint::{BigInt, BigUint, RandBigInt};
-use num_rational::BigRational;
 use num_integer::Integer as _;
-use num_traits::{One, Zero, Signed, Euclid};
+use num_rational::BigRational;
+use num_traits::{Euclid, One, Signed, Zero};
 
 impl_ring_element!(BigUint);
 impl_ring_element!(BigInt);
@@ -172,8 +171,8 @@ pub(crate) fn not_assign_mod(e: &mut BigUint, m: &BigUint) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     pub fn test_inverse<R: Ring>(r: &R) {
         let rng = &mut StdRng::seed_from_u64(0);
@@ -184,10 +183,20 @@ mod test {
             let is_unit = r.is_unit(&e);
             if let Some(inv) = inv {
                 let prod = r.mul(e.clone(), &inv);
-                assert_eq!(prod, R::one(), "`inverse` returned {inv} but {e} * {inv} = {prod}");
-                assert!(is_unit, "`inverse` returned {inv} but `is_unit` returned false");
+                assert_eq!(
+                    prod,
+                    R::one(),
+                    "`inverse` returned {inv} but {e} * {inv} = {prod}"
+                );
+                assert!(
+                    is_unit,
+                    "`inverse` returned {inv} but `is_unit` returned false"
+                );
             } else {
-                assert!(!is_unit, "`inverse` returned None but `is_unit` returned true");
+                assert!(
+                    !is_unit,
+                    "`inverse` returned None but `is_unit` returned true"
+                );
             }
         }
     }
@@ -201,7 +210,10 @@ mod test {
             let n = r.random(&mut rng);
             let biguint = R::to_representative(&n);
             let check = r.element_from_biguint(&biguint);
-            assert_eq!(n, check, "element_from_biguint({biguint}) = {n} but got {check}");
+            assert_eq!(
+                n, check,
+                "element_from_biguint({biguint}) = {n} but got {check}"
+            );
         }
     }
 
@@ -220,12 +232,13 @@ mod test {
                 }
             };
             let q = R::rounded_div(&a, &b);
-            let check = r.element_from_bigint(&BigRational::new(
-                BigInt::from(a.clone()),
-                BigInt::from(b.clone()),
-            ).round().into_raw().0);
-            assert_eq!(q, check,
-                "rounded_div({a}, {b}) = {check} but got {q}");
+            let check = r.element_from_bigint(
+                &BigRational::new(BigInt::from(a.clone()), BigInt::from(b.clone()))
+                    .round()
+                    .into_raw()
+                    .0,
+            );
+            assert_eq!(q, check, "rounded_div({a}, {b}) = {check} but got {q}");
         }
     }
 }

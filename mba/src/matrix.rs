@@ -2,12 +2,12 @@
 //! See the module documentation for [`crate::vector`].
 //! The same thing applies here.
 
-use std::ops::{Index, IndexMut};
-use std::{marker::PhantomData, fmt::Debug};
+use crate::rings::Ring;
+use crate::{CustomMetadata, CustomMetadataSlice, Half, vector::*};
 use itertools::iproduct;
 use rand::Rng;
-use crate::rings::Ring;
-use crate::{vector::*, CustomMetadata, CustomMetadataSlice, Half};
+use std::ops::{Index, IndexMut};
+use std::{fmt::Debug, marker::PhantomData};
 
 /// How are the entries of a matrix stored?
 pub trait MatrixStorage<R: Ring>: 'static {
@@ -16,18 +16,10 @@ pub trait MatrixStorage<R: Ring>: 'static {
     type ColVecStorage: VectorStorage<R> + ?Sized;
 
     /// Row/column iter type.
-    type RowIter<'a>: DoubleEndedIterator<
-        Item = &'a Vector<R, Self::RowVecStorage>
-    >;
-    type RowIterMut<'a>: DoubleEndedIterator<
-        Item = &'a mut Vector<R, Self::RowVecStorage>
-    >;
-    type ColIter<'a>: DoubleEndedIterator<
-        Item = &'a Vector<R, Self::ColVecStorage>
-    >;
-    type ColIterMut<'a>: DoubleEndedIterator<
-        Item = &'a mut Vector<R, Self::ColVecStorage>
-    >;
+    type RowIter<'a>: DoubleEndedIterator<Item = &'a Vector<R, Self::RowVecStorage>>;
+    type RowIterMut<'a>: DoubleEndedIterator<Item = &'a mut Vector<R, Self::RowVecStorage>>;
+    type ColIter<'a>: DoubleEndedIterator<Item = &'a Vector<R, Self::ColVecStorage>>;
+    type ColIterMut<'a>: DoubleEndedIterator<Item = &'a mut Vector<R, Self::ColVecStorage>>;
 
     /// Returns the number of rows.
     fn rows(&self) -> usize;
@@ -79,7 +71,7 @@ pub struct Matrix<R: Ring, S: MatrixStorage<R> + ?Sized> {
 impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
     fn from_storage(s: S) -> Self
     where
-        S: Sized
+        S: Sized,
     {
         Self {
             marker: PhantomData,
@@ -163,12 +155,9 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
     }
 
     /// Returns an iterator over the mutable entries in row-major order.
-    pub fn entries_row_major_mut(
-        &mut self
-    ) -> impl Iterator<Item = &mut R::Element> {
+    pub fn entries_row_major_mut(&mut self) -> impl Iterator<Item = &mut R::Element> {
         self.rows_mut().flat_map(|r| r.iter_mut())
     }
-
 
     /// Returns an iterator over the entries in column-major order.
     pub fn entries_col_major(&self) -> impl Iterator<Item = &R::Element> {
@@ -176,16 +165,12 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
     }
 
     /// Returns an iterator over the mutable entries in column-major order.
-    pub fn entries_col_major_mut(
-        &mut self
-    ) -> impl Iterator<Item = &mut R::Element> {
+    pub fn entries_col_major_mut(&mut self) -> impl Iterator<Item = &mut R::Element> {
         self.cols_mut().flat_map(|c| c.iter_mut())
     }
 
     /// Call a function on each entry and return the resulting matrix.
-    pub fn transform<U: Ring, F: FnMut(&R::Element) -> U::Element>(
-        &self, f: F
-    ) -> OwnedMatrix<U> {
+    pub fn transform<U: Ring, F: FnMut(&R::Element) -> U::Element>(&self, f: F) -> OwnedMatrix<U> {
         OwnedMatrix::from_iter(
             self.num_rows(),
             self.num_cols(),
@@ -208,7 +193,7 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
             core::ptr::swap_nonoverlapping(
                 self.entry_mut(i, 0),
                 self.entry_mut(j, 0),
-                self.num_cols()
+                self.num_cols(),
             )
         }
     }
@@ -221,9 +206,7 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
 
         for k in 0..self.num_rows() {
             unsafe {
-                core::ptr::swap(
-                    self.entry_mut(k, i), self.entry_mut(k, j)
-                );
+                core::ptr::swap(self.entry_mut(k, i), self.entry_mut(k, j));
             }
         }
     }
@@ -235,7 +218,10 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
         &mut self,
         i: usize,
         j: usize,
-    ) -> (&mut Vector<R, S::RowVecStorage>, &mut Vector<R, S::RowVecStorage>) {
+    ) -> (
+        &mut Vector<R, S::RowVecStorage>,
+        &mut Vector<R, S::RowVecStorage>,
+    ) {
         // I actually think this is not UB, although it is a bit ugly. It could
         // maybe be less ugly if the `MatrixStorage` returned pointers to the
         // row storages instead of references, but I don't think it matters.
@@ -250,7 +236,7 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
         OwnedMatrix::from_iter(
             self.num_rows(),
             self.num_cols(),
-            self.entries_row_major().cloned()
+            self.entries_row_major().cloned(),
         )
     }
 
@@ -259,7 +245,7 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
         OwnedMatrix::from_iter(
             self.num_cols(),
             self.num_rows(),
-            self.entries_col_major().cloned()
+            self.entries_col_major().cloned(),
         )
     }
 
@@ -295,13 +281,7 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
 
     /// Add a scaled row to another row. N += M * c.
     /// `m` and `n` can not be equal.
-    pub fn row_multiply_add(
-        &mut self,
-        n: usize,
-        m: usize,
-        c: &R::Element,
-        r: &R,
-    ) {
+    pub fn row_multiply_add(&mut self, n: usize, m: usize, c: &R::Element, r: &R) {
         assert_ne!(m, n);
         assert!(n < self.num_rows() && m < self.num_rows());
         for i in 0..self.num_cols() {
@@ -315,13 +295,7 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
 
     /// Add a scaled column to another column. N += M * c.
     /// `m` and `n` can not be equal.
-    pub fn col_multiply_add(
-        &mut self,
-        n: usize,
-        m: usize,
-        c: &R::Element,
-        r: &R,
-    ) {
+    pub fn col_multiply_add(&mut self, n: usize, m: usize, c: &R::Element, r: &R) {
         assert_ne!(m, n);
         assert!(n < self.num_cols() && m < self.num_cols());
         for i in 0..self.num_rows() {
@@ -340,8 +314,7 @@ impl<R: Ring, S: MatrixStorage<R> + ?Sized> Matrix<R, S> {
     {
         let r = self.num_rows();
         let c = rhs.num_cols();
-        let iter = iproduct!(0..r, 0..c)
-            .map(|(r, c)| self.row(r).dot(rhs.col(c), ring));
+        let iter = iproduct!(0..r, 0..c).map(|(r, c)| self.row(r).dot(rhs.col(c), ring));
         OwnedMatrix::from_iter(r, c, iter)
     }
 
@@ -401,7 +374,6 @@ where
     fn index(&self, (r, c): (usize, usize)) -> &Self::Output {
         self.entry(r, c)
     }
-
 }
 
 impl<R, S> IndexMut<(usize, usize)> for Matrix<R, S>
@@ -421,7 +393,8 @@ where
     T: MatrixStorage<R> + ?Sized,
 {
     fn eq(&self, other: &Matrix<R, S>) -> bool {
-        self.num_rows() == other.num_rows() && self.num_cols() == other.num_cols()
+        self.num_rows() == other.num_rows()
+            && self.num_cols() == other.num_cols()
             && self.entries_row_major().eq(other.entries_row_major())
     }
 }
@@ -433,9 +406,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         //write!(f, "({}×{})", self.nrows(), self.ncols())?;
-        f.debug_list()
-            .entries(self.rows())
-            .finish()
+        f.debug_list().entries(self.rows()).finish()
     }
 }
 
@@ -469,7 +440,9 @@ impl<R: Ring> OwnedMatrix<R> {
     pub fn view(&self) -> &MatrixView<R> {
         unsafe {
             MatrixView::from_raw_parts(
-                self.storage.entries.as_ptr(), self.num_rows(), self.num_cols()
+                self.storage.entries.as_ptr(),
+                self.num_rows(),
+                self.num_cols(),
             )
         }
     }
@@ -478,7 +451,9 @@ impl<R: Ring> OwnedMatrix<R> {
     pub fn view_mut(&mut self) -> &mut MatrixView<R> {
         unsafe {
             MatrixView::from_raw_parts_mut(
-                self.storage.entries.as_mut_ptr(), self.num_rows(), self.num_cols()
+                self.storage.entries.as_mut_ptr(),
+                self.num_rows(),
+                self.num_cols(),
             )
         }
     }
@@ -491,7 +466,7 @@ impl<R: Ring> OwnedMatrix<R> {
 
     /// Creates a matrix from an array of rows.
     pub fn from_array<U: Into<R::Element>, const RS: usize, const CS: usize>(
-        a: [[U; CS]; RS]
+        a: [[U; CS]; RS],
     ) -> Self {
         let mut entries = Vec::with_capacity(RS * CS);
         for row in a {
@@ -508,13 +483,12 @@ impl<R: Ring> OwnedMatrix<R> {
     }
 
     /// Creates a matrix from an iterator in row-major order.
-    pub fn from_iter<I: Iterator<Item = R::Element>>(
-        r: usize, c: usize, mut iter: I
-    ) -> Self {
+    pub fn from_iter<I: Iterator<Item = R::Element>>(r: usize, c: usize, mut iter: I) -> Self {
         let num_entries = r * c;
         let mut entries = Vec::with_capacity(num_entries);
         for _ in 0..num_entries {
-            let e = iter.next()
+            let e = iter
+                .next()
                 .expect("The iterator needs to return at least r * c items.");
             entries.push(e);
         }
@@ -528,12 +502,15 @@ impl<R: Ring> OwnedMatrix<R> {
 
     /// Tries to create a matrix from an iterator in row-major order.
     pub fn try_from_iter<E, I: Iterator<Item = Result<R::Element, E>>>(
-        r: usize, c: usize, mut iter: I
+        r: usize,
+        c: usize,
+        mut iter: I,
     ) -> Result<Self, E> {
         let num_entries = r * c;
         let mut entries = Vec::with_capacity(num_entries);
         for _ in 0..num_entries {
-            let e = iter.next()
+            let e = iter
+                .next()
                 .expect("The iterator needs to return at least r * c items.")?;
             entries.push(e);
         }
@@ -559,18 +536,16 @@ impl<R: Ring> OwnedMatrix<R> {
         let c = rows[0].as_ref().len();
         assert!(rows.iter().all(|r| r.as_ref().len() == c));
 
-        Matrix::from_iter(r, c, rows.iter()
-            .flat_map(|r| r.as_ref().iter().map(|e| e.clone().into()))
+        Matrix::from_iter(
+            r,
+            c,
+            rows.iter()
+                .flat_map(|r| r.as_ref().iter().map(|e| e.clone().into())),
         )
     }
 
     /// Creates a random matrix.
-    pub fn random<Rand: Rng>(
-        r: usize,
-        c: usize,
-        ring: &R,
-        rng: &mut Rand,
-    ) -> Self {
+    pub fn random<Rand: Rng>(r: usize, c: usize, ring: &R, rng: &mut Rand) -> Self {
         Self::from_iter(r, c, std::iter::repeat_with(|| ring.random(rng)))
     }
 
@@ -605,9 +580,7 @@ impl<R: Ring> OwnedMatrix<R> {
 
     /// Remove rows of zeros at the end of the matrix.
     pub fn remove_zero_rows(&mut self) {
-        let num = self.rows().rev()
-            .take_while(|r| r.is_zero())
-            .count();
+        let num = self.rows().rev().take_while(|r| r.is_zero()).count();
 
         self.shrink(self.num_rows() - num);
     }
@@ -623,7 +596,7 @@ impl<R: Ring> Clone for OwnedMatrix<R> {
         OwnedMatrix::from_iter(
             self.num_rows(),
             self.num_cols(),
-            self.entries_row_major().cloned()
+            self.entries_row_major().cloned(),
         )
     }
 }
@@ -652,7 +625,7 @@ impl<R: Ring> OwnedMatrixStorage<R> {
     /// Returns a zero-initialized r×c matrix.
     pub fn zero(r: usize, c: usize) -> Self {
         Self {
-            entries: vec![R::zero(); r*c],
+            entries: vec![R::zero(); r * c],
             rows: r,
             cols: c,
         }
@@ -721,55 +694,33 @@ impl<R: Ring> MatrixStorage<R> for OwnedMatrixStorage<R> {
     fn row_mut(&mut self, r: usize) -> &mut Self::RowVecStorage {
         assert!(r < self.rows);
         let start = r * self.cols;
-        SliceVectorStorage::from_slice_mut(
-            &mut self.entries[start..start + self.cols])
+        SliceVectorStorage::from_slice_mut(&mut self.entries[start..start + self.cols])
     }
 
     fn row_iter(&self) -> Self::RowIter<'_> {
-        unsafe {
-            MatrixSliceIter::new(self.entries.as_ptr(), self.cols, self.rows)
-        }
+        unsafe { MatrixSliceIter::new(self.entries.as_ptr(), self.cols, self.rows) }
     }
 
     fn row_iter_mut(&mut self) -> Self::RowIterMut<'_> {
-        unsafe {
-            MatrixSliceIterMut::new(self.entries.as_mut_ptr(), self.cols, self.rows)
-        }
+        unsafe { MatrixSliceIterMut::new(self.entries.as_mut_ptr(), self.cols, self.rows) }
     }
 
     fn col(&self, c: usize) -> &Self::ColVecStorage {
         assert!(c < self.cols);
-        unsafe {
-            StrideStorage::from_raw_parts(
-                &self.entries[c],
-                self.rows,
-                self.cols
-            )
-        }
+        unsafe { StrideStorage::from_raw_parts(&self.entries[c], self.rows, self.cols) }
     }
 
     fn col_mut(&mut self, c: usize) -> &mut Self::ColVecStorage {
         assert!(c < self.cols);
-        unsafe {
-            StrideStorage::from_raw_parts_mut(
-                &mut self.entries[c],
-                self.rows,
-                self.cols
-            )
-        }
+        unsafe { StrideStorage::from_raw_parts_mut(&mut self.entries[c], self.rows, self.cols) }
     }
 
     fn col_iter(&self) -> Self::ColIter<'_> {
-        unsafe {
-            MatrixStridedIter::new(self.entries.as_ptr(), self.rows, self.cols)
-        }
+        unsafe { MatrixStridedIter::new(self.entries.as_ptr(), self.rows, self.cols) }
     }
 
     fn col_iter_mut(&mut self) -> Self::ColIterMut<'_> {
-        unsafe {
-            MatrixStridedIterMut::new(
-                self.entries.as_mut_ptr(), self.rows, self.cols)
-        }
+        unsafe { MatrixStridedIterMut::new(self.entries.as_mut_ptr(), self.rows, self.cols) }
     }
 }
 
@@ -778,27 +729,17 @@ pub type MatrixView<R> = Matrix<R, SliceMatrixStorage<R>>;
 impl<R: Ring> MatrixView<R> {
     /// Returns a view of the matrix transposed.
     pub fn transpose(&self) -> &TransposedMatrixView<R> {
-        unsafe {
-            &*(self as *const _ as *const _)
-        }
+        unsafe { &*(self as *const _ as *const _) }
     }
 
     /// Returns a mutable view of the matrix transposed.
     pub fn transpose_mut(&mut self) -> &mut TransposedMatrixView<R> {
-        unsafe {
-            &mut *(self as *mut _ as *mut _)
-        }
+        unsafe { &mut *(self as *mut _ as *mut _) }
     }
 
-    unsafe fn from_raw_parts<'a>(
-        entries: *const R::Element,
-        rows: usize,
-        cols: usize,
-    ) -> &'a Self {
+    unsafe fn from_raw_parts<'a>(entries: *const R::Element, rows: usize, cols: usize) -> &'a Self {
         let metadata = SliceMatrixStorageMetadata::new(rows, cols);
-        unsafe {
-            std::mem::transmute(CustomMetadataSlice::new(entries, metadata))
-        }
+        unsafe { std::mem::transmute(CustomMetadataSlice::new(entries, metadata)) }
     }
 
     unsafe fn from_raw_parts_mut<'a>(
@@ -807,18 +748,14 @@ impl<R: Ring> MatrixView<R> {
         cols: usize,
     ) -> &'a mut Self {
         let metadata = SliceMatrixStorageMetadata::new(rows, cols);
-        unsafe {
-            std::mem::transmute(CustomMetadataSlice::new_mut(entries, metadata))
-        }
+        unsafe { std::mem::transmute(CustomMetadataSlice::new_mut(entries, metadata)) }
     }
 }
 
 /// Very hacky, see [StrideStorage] for explanation.
 /// Metadata stores the number of rows (in the least significant 4 bytes)
 /// and columns (in the most significant 4 bytes).
-pub struct SliceMatrixStorage<R: Ring>(
-    CustomMetadataSlice<R::Element, SliceMatrixStorageMetadata>
-);
+pub struct SliceMatrixStorage<R: Ring>(CustomMetadataSlice<R::Element, SliceMatrixStorageMetadata>);
 
 struct SliceMatrixStorageMetadata {
     rows: Half,
@@ -862,7 +799,7 @@ impl<R: Ring> MatrixStorage<R> for SliceMatrixStorage<R> {
         unsafe {
             SliceVectorStorage::from_slice(std::slice::from_raw_parts(
                 self.0.as_ptr().add(r * self.cols()),
-                self.cols()
+                self.cols(),
             ))
         }
     }
@@ -872,57 +809,37 @@ impl<R: Ring> MatrixStorage<R> for SliceMatrixStorage<R> {
         unsafe {
             SliceVectorStorage::from_slice_mut(std::slice::from_raw_parts_mut(
                 self.0.as_mut_ptr().add(r * self.cols()),
-                self.cols()
+                self.cols(),
             ))
         }
     }
 
     fn row_iter(&self) -> Self::RowIter<'_> {
-        unsafe {
-            MatrixSliceIter::new(self.0.as_ptr(), self.cols(), self.rows())
-        }
+        unsafe { MatrixSliceIter::new(self.0.as_ptr(), self.cols(), self.rows()) }
     }
 
     fn row_iter_mut(&mut self) -> Self::RowIterMut<'_> {
-        unsafe {
-            MatrixSliceIterMut::new(
-                self.0.as_mut_ptr(), self.cols(), self.rows())
-        }
+        unsafe { MatrixSliceIterMut::new(self.0.as_mut_ptr(), self.cols(), self.rows()) }
     }
 
     fn col(&self, c: usize) -> &Self::ColVecStorage {
         assert!(c < self.cols());
-        unsafe {
-            StrideStorage::from_raw_parts(
-                self.0.as_ptr().add(c),
-                self.rows(),
-                self.cols()
-            )
-        }
+        unsafe { StrideStorage::from_raw_parts(self.0.as_ptr().add(c), self.rows(), self.cols()) }
     }
 
     fn col_mut(&mut self, c: usize) -> &mut Self::ColVecStorage {
         assert!(c < self.cols());
         unsafe {
-            StrideStorage::from_raw_parts_mut(
-                self.0.as_mut_ptr().add(c),
-                self.rows(),
-                self.cols()
-            )
+            StrideStorage::from_raw_parts_mut(self.0.as_mut_ptr().add(c), self.rows(), self.cols())
         }
     }
 
     fn col_iter(&self) -> Self::ColIter<'_> {
-        unsafe {
-            MatrixStridedIter::new(self.0.as_ptr(), self.rows(), self.cols())
-        }
+        unsafe { MatrixStridedIter::new(self.0.as_ptr(), self.rows(), self.cols()) }
     }
 
     fn col_iter_mut(&mut self) -> Self::ColIterMut<'_> {
-        unsafe {
-            MatrixStridedIterMut::new(
-                self.0.as_mut_ptr(), self.rows(), self.cols())
-        }
+        unsafe { MatrixStridedIterMut::new(self.0.as_mut_ptr(), self.rows(), self.cols()) }
     }
 }
 
@@ -931,16 +848,12 @@ pub type TransposedMatrixView<R> = Matrix<R, TransposedMatrixStorage<R>>;
 impl<R: Ring> TransposedMatrixView<R> {
     /// Returns a view of the matrix transposed.
     pub fn transpose(&self) -> &MatrixView<R> {
-        unsafe {
-            &*(self as *const _ as *const _)
-        }
+        unsafe { &*(self as *const _ as *const _) }
     }
 
     /// Returns a mutable view of the matrix transposed.
     pub fn transpose_mut(&mut self) -> &mut MatrixView<R> {
-        unsafe {
-            &mut *(self as *mut _ as *mut _)
-        }
+        unsafe { &mut *(self as *mut _ as *mut _) }
     }
 }
 
@@ -950,7 +863,7 @@ impl<R: Ring> TransposedMatrixView<R> {
 /// This allows you to transmute a [SliceMatrixStorage] reference into a
 /// [TransposedMatrixStorage] reference while transposing the view.
 pub struct TransposedMatrixStorage<R: Ring>(
-    CustomMetadataSlice<R::Element, TransposedMatrixStorageMetadata>
+    CustomMetadataSlice<R::Element, TransposedMatrixStorageMetadata>,
 );
 
 struct TransposedMatrixStorageMetadata {
@@ -983,40 +896,22 @@ impl<R: Ring> MatrixStorage<R> for TransposedMatrixStorage<R> {
 
     fn row(&self, r: usize) -> &Self::RowVecStorage {
         assert!(r < self.rows());
-        unsafe {
-            StrideStorage::from_raw_parts(
-                self.0.as_ptr().add(r),
-                self.cols(),
-                self.rows()
-            )
-        }
+        unsafe { StrideStorage::from_raw_parts(self.0.as_ptr().add(r), self.cols(), self.rows()) }
     }
 
     fn row_mut(&mut self, r: usize) -> &mut Self::RowVecStorage {
         assert!(r < self.rows());
         unsafe {
-            StrideStorage::from_raw_parts_mut(
-                self.0.as_mut_ptr().add(r),
-                self.cols(),
-                self.rows()
-            )
+            StrideStorage::from_raw_parts_mut(self.0.as_mut_ptr().add(r), self.cols(), self.rows())
         }
     }
 
     fn row_iter(&self) -> Self::RowIter<'_> {
-        unsafe {
-            MatrixStridedIter::new(
-                self.0.as_ptr(), self.rows(), self.cols()
-            )
-        }
+        unsafe { MatrixStridedIter::new(self.0.as_ptr(), self.rows(), self.cols()) }
     }
 
     fn row_iter_mut(&mut self) -> Self::RowIterMut<'_> {
-        unsafe {
-            MatrixStridedIterMut::new(
-                self.0.as_mut_ptr(), self.rows(), self.cols()
-            )
-        }
+        unsafe { MatrixStridedIterMut::new(self.0.as_mut_ptr(), self.rows(), self.cols()) }
     }
 
     fn col(&self, c: usize) -> &Self::ColVecStorage {
@@ -1024,7 +919,7 @@ impl<R: Ring> MatrixStorage<R> for TransposedMatrixStorage<R> {
         unsafe {
             SliceVectorStorage::from_slice(std::slice::from_raw_parts(
                 self.0.as_ptr().add(c * self.cols()),
-                self.rows()
+                self.rows(),
             ))
         }
     }
@@ -1034,34 +929,24 @@ impl<R: Ring> MatrixStorage<R> for TransposedMatrixStorage<R> {
         unsafe {
             SliceVectorStorage::from_slice_mut(std::slice::from_raw_parts_mut(
                 self.0.as_mut_ptr().add(c * self.cols()),
-                self.rows()
+                self.rows(),
             ))
         }
     }
 
     fn col_iter(&self) -> Self::ColIter<'_> {
-        unsafe {
-            MatrixSliceIter::new(
-                self.0.as_ptr(), self.cols(), self.rows()
-            )
-        }
+        unsafe { MatrixSliceIter::new(self.0.as_ptr(), self.cols(), self.rows()) }
     }
 
     fn col_iter_mut(&mut self) -> Self::ColIterMut<'_> {
-        unsafe {
-            MatrixSliceIterMut::new(
-                self.0.as_mut_ptr(), self.cols(), self.rows()
-            )
-        }
+        unsafe { MatrixSliceIterMut::new(self.0.as_mut_ptr(), self.cols(), self.rows()) }
     }
 }
 
 /// A matrix with a single row.
 pub type RowVector<R, S> = Matrix<R, RowVectorStorage<R, S>>;
 
-pub struct RowVectorStorage<R: Ring, S: VectorStorage<R> + ?Sized>(
-    PhantomData<R>, S
-);
+pub struct RowVectorStorage<R: Ring, S: VectorStorage<R> + ?Sized>(PhantomData<R>, S);
 
 impl<R, S> MatrixStorage<R> for RowVectorStorage<R, S>
 where
@@ -1073,10 +958,12 @@ where
 
     type RowIter<'a> = std::iter::Once<&'a Vector<R, S>>;
     type RowIterMut<'a> = std::iter::Once<&'a mut Vector<R, S>>;
-    type ColIter<'a> = std::iter::Map<S::Iter<'a>,
-        fn(&'a R::Element) -> &'a Vector<R, SliceVectorStorage<R>>>;
-    type ColIterMut<'a> = std::iter::Map<S::IterMut<'a>,
-        fn(&'a mut R::Element) -> &'a mut Vector<R, SliceVectorStorage<R>>>;
+    type ColIter<'a> =
+        std::iter::Map<S::Iter<'a>, fn(&'a R::Element) -> &'a Vector<R, SliceVectorStorage<R>>>;
+    type ColIterMut<'a> = std::iter::Map<
+        S::IterMut<'a>,
+        fn(&'a mut R::Element) -> &'a mut Vector<R, SliceVectorStorage<R>>,
+    >;
 
     fn rows(&self) -> usize {
         1
@@ -1111,8 +998,7 @@ where
 
     fn col_mut(&mut self, c: usize) -> &mut Self::ColVecStorage {
         assert!(c < self.cols());
-        SliceVectorStorage::from_slice_mut(
-            std::slice::from_mut(self.1.entry_mut(c)))
+        SliceVectorStorage::from_slice_mut(std::slice::from_mut(self.1.entry_mut(c)))
     }
 
     fn col_iter(&self) -> Self::ColIter<'_> {
@@ -1127,9 +1013,7 @@ where
 /// A matrix with a single column.
 pub type ColumnVector<R, S> = Matrix<R, ColumnVectorStorage<R, S>>;
 
-pub struct ColumnVectorStorage<R: Ring, S: VectorStorage<R> + ?Sized>(
-    PhantomData<R>, S
-);
+pub struct ColumnVectorStorage<R: Ring, S: VectorStorage<R> + ?Sized>(PhantomData<R>, S);
 
 impl<R, S> MatrixStorage<R> for ColumnVectorStorage<R, S>
 where
@@ -1139,10 +1023,12 @@ where
     type RowVecStorage = SliceVectorStorage<R>;
     type ColVecStorage = S;
 
-    type RowIter<'a> = std::iter::Map<S::Iter<'a>,
-        fn(&'a R::Element) -> &'a Vector<R, SliceVectorStorage<R>>>;
-    type RowIterMut<'a> = std::iter::Map<S::IterMut<'a>,
-        fn(&'a mut R::Element) -> &'a mut Vector<R, SliceVectorStorage<R>>>;
+    type RowIter<'a> =
+        std::iter::Map<S::Iter<'a>, fn(&'a R::Element) -> &'a Vector<R, SliceVectorStorage<R>>>;
+    type RowIterMut<'a> = std::iter::Map<
+        S::IterMut<'a>,
+        fn(&'a mut R::Element) -> &'a mut Vector<R, SliceVectorStorage<R>>,
+    >;
     type ColIter<'a> = std::iter::Once<&'a Vector<R, S>>;
     type ColIterMut<'a> = std::iter::Once<&'a mut Vector<R, S>>;
 
@@ -1161,8 +1047,7 @@ where
 
     fn row_mut(&mut self, r: usize) -> &mut Self::RowVecStorage {
         assert!(r < self.rows());
-        SliceVectorStorage::from_slice_mut(
-            std::slice::from_mut(self.1.entry_mut(r)))
+        SliceVectorStorage::from_slice_mut(std::slice::from_mut(self.1.entry_mut(r)))
     }
 
     fn row_iter(&self) -> Self::RowIter<'_> {
@@ -1191,7 +1076,6 @@ where
         std::iter::once(Vector::from_storage_ref_mut(self.col_mut(0)))
     }
 }
-
 
 /// Iterate over vectors of the matrix that are contiguous in memory.
 /// This is usually rows for [`OwnedMatrix`] and [`MatrixView`] and columns for
@@ -1231,13 +1115,13 @@ impl<'a, R: Ring> Iterator for MatrixSliceIter<'a, R> {
             return None;
         }
 
-        let slice = unsafe {
-            std::slice::from_raw_parts(self.start_ptr, self.dim)
-        };
+        let slice = unsafe { std::slice::from_raw_parts(self.start_ptr, self.dim) };
 
         self.start_ptr = unsafe { self.start_ptr.add(self.dim) };
 
-        Some(Vector::from_storage_ref(SliceVectorStorage::from_slice(slice)))
+        Some(Vector::from_storage_ref(SliceVectorStorage::from_slice(
+            slice,
+        )))
     }
 
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
@@ -1253,11 +1137,11 @@ impl<'a, R: Ring> DoubleEndedIterator for MatrixSliceIter<'a, R> {
         }
 
         self.end_ptr = unsafe { self.end_ptr.sub(self.dim) };
-        let slice = unsafe {
-            std::slice::from_raw_parts(self.end_ptr, self.dim)
-        };
+        let slice = unsafe { std::slice::from_raw_parts(self.end_ptr, self.dim) };
 
-        Some(Vector::from_storage_ref(SliceVectorStorage::from_slice(slice)))
+        Some(Vector::from_storage_ref(SliceVectorStorage::from_slice(
+            slice,
+        )))
     }
 
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
@@ -1294,14 +1178,13 @@ impl<'a, R: Ring> Iterator for MatrixSliceIterMut<'a, R> {
             return None;
         }
 
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(self.start_ptr, self.dim)
-        };
+        let slice = unsafe { std::slice::from_raw_parts_mut(self.start_ptr, self.dim) };
 
         self.start_ptr = unsafe { self.start_ptr.add(self.dim) };
 
         Some(Vector::from_storage_ref_mut(
-            SliceVectorStorage::from_slice_mut(slice)))
+            SliceVectorStorage::from_slice_mut(slice),
+        ))
     }
 
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
@@ -1317,12 +1200,11 @@ impl<'a, R: Ring> DoubleEndedIterator for MatrixSliceIterMut<'a, R> {
         }
 
         self.end_ptr = unsafe { self.end_ptr.sub(self.dim) };
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(self.end_ptr, self.dim)
-        };
+        let slice = unsafe { std::slice::from_raw_parts_mut(self.end_ptr, self.dim) };
 
         Some(Vector::from_storage_ref_mut(
-            SliceVectorStorage::from_slice_mut(slice)))
+            SliceVectorStorage::from_slice_mut(slice),
+        ))
     }
 
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
@@ -1371,9 +1253,7 @@ impl<'a, R: Ring> Iterator for MatrixStridedIter<'a, R> {
             return None;
         }
 
-        let s = unsafe {
-            StrideStorage::from_raw_parts(self.start_ptr, self.vdim, self.odim)
-        };
+        let s = unsafe { StrideStorage::from_raw_parts(self.start_ptr, self.vdim, self.odim) };
 
         self.start_ptr = unsafe { self.start_ptr.add(1) };
 
@@ -1394,9 +1274,7 @@ impl<'a, R: Ring> DoubleEndedIterator for MatrixStridedIter<'a, R> {
 
         self.end_ptr = unsafe { self.end_ptr.sub(1) };
 
-        let s = unsafe {
-            StrideStorage::from_raw_parts(self.end_ptr, self.vdim, self.odim)
-        };
+        let s = unsafe { StrideStorage::from_raw_parts(self.end_ptr, self.vdim, self.odim) };
 
         Some(Vector::from_storage_ref(s))
     }
@@ -1437,10 +1315,7 @@ impl<'a, R: Ring> Iterator for MatrixStridedIterMut<'a, R> {
             return None;
         }
 
-        let s = unsafe {
-            StrideStorage::from_raw_parts_mut(
-                self.start_ptr, self.vdim, self.odim)
-        };
+        let s = unsafe { StrideStorage::from_raw_parts_mut(self.start_ptr, self.vdim, self.odim) };
 
         self.start_ptr = unsafe { self.start_ptr.add(1) };
 
@@ -1461,10 +1336,7 @@ impl<'a, R: Ring> DoubleEndedIterator for MatrixStridedIterMut<'a, R> {
 
         self.end_ptr = unsafe { self.end_ptr.sub(1) };
 
-        let s = unsafe {
-            StrideStorage::from_raw_parts_mut(
-                self.end_ptr, self.vdim, self.odim)
-        };
+        let s = unsafe { StrideStorage::from_raw_parts_mut(self.end_ptr, self.vdim, self.odim) };
 
         Some(Vector::from_storage_ref_mut(s))
     }
@@ -1477,14 +1349,11 @@ impl<'a, R: Ring> DoubleEndedIterator for MatrixStridedIterMut<'a, R> {
 
 #[cfg(test)]
 mod test {
-    use crate::rings::U32;
     use super::*;
+    use crate::rings::U32;
     #[test]
     fn transpose_test() {
-        let m = OwnedMatrix::<U32>::from_rows(&[
-            [2u32, 3u32],
-            [4u32, 5u32],
-        ]);
+        let m = OwnedMatrix::<U32>::from_rows(&[[2u32, 3u32], [4u32, 5u32]]);
         let t = m.transpose();
         assert_eq!(t.num_rows(), 2);
         assert_eq!(t.num_cols(), 2);
@@ -1498,30 +1367,21 @@ mod test {
 
     #[test]
     fn row() {
-        let m = OwnedMatrix::<U32>::from_rows(&[
-            [2u32, 3u32],
-            [4u32, 5u32],
-        ]);
+        let m = OwnedMatrix::<U32>::from_rows(&[[2u32, 3u32], [4u32, 5u32]]);
         assert_eq!(m.row(0), &[2, 3]);
         assert_eq!(m.row(1), &[4, 5]);
     }
 
     #[test]
     fn col() {
-        let m = OwnedMatrix::<U32>::from_rows(&[
-            [2u32, 3u32],
-            [4u32, 5u32],
-        ]);
+        let m = OwnedMatrix::<U32>::from_rows(&[[2u32, 3u32], [4u32, 5u32]]);
         assert_eq!(m.col(0), &[2, 4]);
         assert_eq!(m.col(1), &[3, 5]);
     }
 
     #[test]
     fn rows_iter() {
-        let m = OwnedMatrix::<U32>::from_rows(&[
-            [2u32, 3u32],
-            [4u32, 5u32],
-        ]);
+        let m = OwnedMatrix::<U32>::from_rows(&[[2u32, 3u32], [4u32, 5u32]]);
         let mut r = m.rows();
         assert_eq!(r.next().unwrap(), &[2, 3]);
         assert_eq!(r.next().unwrap(), &[4, 5]);
@@ -1530,10 +1390,7 @@ mod test {
 
     #[test]
     fn col_iter() {
-        let m = OwnedMatrix::<U32>::from_rows(&[
-            [2u32, 3u32],
-            [4u32, 5u32],
-        ]);
+        let m = OwnedMatrix::<U32>::from_rows(&[[2u32, 3u32], [4u32, 5u32]]);
         let mut c0 = m.col(0).iter();
         assert_eq!(c0.next(), Some(&2));
         assert_eq!(c0.next(), Some(&4));
@@ -1546,10 +1403,7 @@ mod test {
 
     #[test]
     fn row_iter_rev_test() {
-        let m = OwnedMatrix::<U32>::from_rows(&[
-            [2u32, 3u32],
-            [4u32, 5u32],
-        ]);
+        let m = OwnedMatrix::<U32>::from_rows(&[[2u32, 3u32], [4u32, 5u32]]);
         let mut r = m.rows();
         assert_eq!(r.next_back().unwrap(), &[4, 5]);
         assert_eq!(r.next_back().unwrap(), &[2, 3]);
@@ -1558,10 +1412,7 @@ mod test {
 
     #[test]
     fn col_iter_rev() {
-        let m = OwnedMatrix::<U32>::from_rows(&[
-            [2u32, 3u32],
-            [4u32, 5u32],
-        ]);
+        let m = OwnedMatrix::<U32>::from_rows(&[[2u32, 3u32], [4u32, 5u32]]);
         let mut r = m.cols();
         assert_eq!(r.next_back().unwrap(), &[3, 5]);
         assert_eq!(r.next_back().unwrap(), &[2, 4]);
@@ -1570,10 +1421,7 @@ mod test {
 
     #[test]
     fn entry_iterators() {
-        let m = OwnedMatrix::<U32>::from_rows(&[
-            [2u32, 3u32],
-            [4u32, 5u32],
-        ]);
+        let m = OwnedMatrix::<U32>::from_rows(&[[2u32, 3u32], [4u32, 5u32]]);
         let mut r = m.entries_row_major();
         assert_eq!(r.next(), Some(&2));
         assert_eq!(r.next(), Some(&3));

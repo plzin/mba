@@ -2,14 +2,14 @@
 
 use rand::Rng;
 
-use crate::solver::solve_via_modular_diagonalize;
 use crate::Symbol;
-use crate::bitwise_expr::{LBExpr};
-use crate::rings::BinaryRing;
-use crate::vector::{OwnedVector, VectorView};
-use crate::matrix::OwnedMatrix;
+use crate::bitwise_expr::LBExpr;
 use crate::lattice::AffineLattice;
+use crate::matrix::OwnedMatrix;
+use crate::rings::BinaryRing;
+use crate::solver::solve_via_modular_diagonalize;
 use crate::valuation::Valuation;
+use crate::vector::{OwnedVector, VectorView};
 
 /// Rewrite an [`LBExpr`] using a set of [`LBExpr`]s.
 ///
@@ -57,7 +57,8 @@ pub fn solve_linear_system<R: BinaryRing>(
     vars: &[Symbol],
     ring: &R,
 ) -> AffineLattice<R> {
-    assert!(vars.len() < usize::BITS as usize,
+    assert!(
+        vars.len() < usize::BITS as usize,
         "More than {} variables are currently not supported on your system.",
         usize::BITS - 1
     );
@@ -114,8 +115,8 @@ pub fn collect_solution<R: BinaryRing>(
 
 #[test]
 fn rewrite_test() {
-    use rand::{SeedableRng as _, rngs::StdRng};
     use crate::rings::U8;
+    use rand::{SeedableRng as _, rngs::StdRng};
 
     let mut rng = StdRng::seed_from_u64(0);
     let r = &U8;

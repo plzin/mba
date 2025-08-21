@@ -1,6 +1,6 @@
-use mba::formatter::Formatter;
-use mba::linear_mba::{obfuscate, ObfuscationConfig};
 use mba::expr::Expr;
+use mba::formatter::Formatter;
+use mba::linear_mba::{ObfuscationConfig, obfuscate};
 use mba::rings::U8;
 use rand::{SeedableRng as _, rngs::StdRng};
 

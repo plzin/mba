@@ -1,11 +1,13 @@
-use mba::{choose_binary_ring, perm_poly::{compute_inverse, is_perm_poly, random_perm_poly, ZeroIdeal}, poly::Poly, rings::BinaryRing};
+use mba::{
+    choose_binary_ring,
+    perm_poly::{ZeroIdeal, compute_inverse, is_perm_poly, random_perm_poly},
+    poly::Poly,
+    rings::BinaryRing,
+};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(js_name = "invertPermutationPolynomial")]
-pub fn invert_permutation_polynomial(
-    poly: String,
-    bits: u32,
-) -> Result<String, String> {
+pub fn invert_permutation_polynomial(poly: String, bits: u32) -> Result<String, String> {
     choose_binary_ring!(invert_permutation_polynomial_impl(poly, &r), r = bits)
 }
 
@@ -25,15 +27,11 @@ fn invert_permutation_polynomial_impl<R: BinaryRing>(
 }
 
 #[wasm_bindgen(js_name = "randomPermutationPolynomial")]
-pub fn random_permutation_polynomial(
-    bits: u32,
-) -> String {
+pub fn random_permutation_polynomial(bits: u32) -> String {
     choose_binary_ring!(random_permutation_polynomial_impl(&r), r = bits)
 }
 
-fn random_permutation_polynomial_impl<R: BinaryRing>(
-    r: &R
-) -> String {
+fn random_permutation_polynomial_impl<R: BinaryRing>(r: &R) -> String {
     let rng = &mut rand::rng();
     let zi = ZeroIdeal::init(r);
     // This is the smallest degree possible that can represent any permutation

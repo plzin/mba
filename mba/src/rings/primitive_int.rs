@@ -1,5 +1,5 @@
-use super::*;
 use super::mod_inv_pow_two::ModInv as _;
+use super::*;
 use crate::formatter::Formatter;
 
 macro_rules! int_ring {
@@ -41,7 +41,8 @@ macro_rules! int_ring {
             }
 
             fn inverse(&self, e: &Self::Element) -> Option<Self::Element> {
-                self.is_unit(e).then(|| $uring.mod_inv(&e.cast_unsigned()).cast_signed())
+                self.is_unit(e)
+                    .then(|| $uring.mod_inv(&e.cast_unsigned()).cast_signed())
             }
 
             fn is_zero_divisor(&self, e: &Self::Element) -> bool {
@@ -59,7 +60,8 @@ macro_rules! int_ring {
             #[cfg(target_pointer_width = "32")]
             fn element_from_biguint(&self, n: &BigUint) -> Self::Element {
                 let mut e = 0;
-                for (i, digit) in n.iter_u32_digits()
+                for (i, digit) in n
+                    .iter_u32_digits()
                     .take(($int::BITS.div_ceil(32)) as usize)
                     .enumerate()
                 {
@@ -71,7 +73,8 @@ macro_rules! int_ring {
             #[cfg(target_pointer_width = "64")]
             fn element_from_biguint(&self, n: &BigUint) -> Self::Element {
                 let mut e = 0;
-                for (i, digit) in n.iter_u64_digits()
+                for (i, digit) in n
+                    .iter_u64_digits()
                     .take(($int::BITS.div_ceil(64)) as usize)
                     .enumerate()
                 {
@@ -85,6 +88,9 @@ macro_rules! int_ring {
                     Formatter::C => $c_type,
                     Formatter::Rust => concat!("Wrapping<", stringify!($int), ">"),
                     Formatter::Tex => $c_type,
+                    // LLVM integer type name matches bit-width of the Rust int
+                    // e.g., i8, i16, i32, i64, i128
+                    Formatter::LLVM => stringify!($int),
                 }
             }
         }
@@ -136,11 +142,7 @@ macro_rules! int_ring {
         }
 
         impl OrderedRing for $ring {
-            fn cmp(
-                &self,
-                l: &Self::Element,
-                r: &Self::Element,
-            ) -> std::cmp::Ordering {
+            fn cmp(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
                 l.cmp(r)
             }
 
@@ -176,11 +178,7 @@ macro_rules! int_ring {
                 e.abs()
             }
 
-            fn cmp_abs(
-                &self,
-                l: &Self::Element,
-                r: &Self::Element,
-            ) -> std::cmp::Ordering {
+            fn cmp_abs(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
                 l.abs().cmp(&r.abs())
             }
 
@@ -210,10 +208,7 @@ macro_rules! int_ring {
         }
 
         impl IntDivRing for $ring {
-            fn rounded_div(
-                &l: &Self::Element,
-                &r: &Self::Element,
-            ) -> Self::Element {
+            fn rounded_div(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
                 // See `primitive_uint.rs` for why this seems more complicated
                 // than it should be. Note also that in this case `i32::MIN`
                 // divided by `-1` is `i32::MIN` instead of panicking.
@@ -233,17 +228,11 @@ macro_rules! int_ring {
                 }
             }
 
-            fn euclidean_div(
-                &l: &Self::Element,
-                &r: &Self::Element,
-            ) -> Self::Element {
+            fn euclidean_div(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
                 l.overflowing_div_euclid(r).0
             }
 
-            fn euclidean_rem(
-                &l: &Self::Element,
-                &r: &Self::Element,
-            ) -> Self::Element {
+            fn euclidean_rem(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
                 l.overflowing_rem_euclid(r).0
             }
         }
@@ -258,8 +247,8 @@ int_ring!(I128, i128, U128, "int128_t");
 
 #[cfg(test)]
 mod test_primitive_int {
-    use super::*;
     use super::test::*;
+    use super::*;
 
     #[test]
     fn test_inverse_i8() {
@@ -336,11 +325,7 @@ mod test_primitive_int {
         test_rounded_div(&I128);
     }
 
-    fn test_rounded_div_special_cases<R>(
-        r: &R,
-        min: R::Element,
-        max: R::Element,
-    )
+    fn test_rounded_div_special_cases<R>(r: &R, min: R::Element, max: R::Element)
     where
         R: BinaryRing,
         R::Element: Copy + std::ops::Div<Output = R::Element>,
@@ -368,12 +353,12 @@ mod test_primitive_int {
                 let b = if i & 2 == 0 { b } else { r.neg(b) };
 
                 let q = R::rounded_div(&a, &b);
-                let check = r.element_from_bigint(BigRational::new(
-                    BigInt::from(a),
-                    BigInt::from(b),
-                ).round().numer());
-                assert_eq!(q, check,
-                    "rounded_div({a}, {b}) = {check} but got {q}");
+                let check = r.element_from_bigint(
+                    BigRational::new(BigInt::from(a), BigInt::from(b))
+                        .round()
+                        .numer(),
+                );
+                assert_eq!(q, check, "rounded_div({a}, {b}) = {check} but got {q}");
             }
         }
     }

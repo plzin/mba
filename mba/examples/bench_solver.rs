@@ -1,13 +1,15 @@
 #![feature(duration_millis_float)]
 
-use std::time::{Duration, Instant};
-use mba::solver::{solve_modular_via_integer_hnf, solve_via_integer_diagonalize, solve_via_modular_diagonalize};
 use mba::rings::BinaryRing;
+use mba::solver::{
+    solve_modular_via_integer_hnf, solve_via_integer_diagonalize, solve_via_modular_diagonalize,
+};
 use mba::{matrix::Matrix, vector::Vector};
 use num_bigint::BigUint;
 use num_traits::One;
 use rand::distr::Distribution as _;
-use rand::{rngs::StdRng, SeedableRng, distr::Uniform};
+use rand::{SeedableRng, distr::Uniform, rngs::StdRng};
+use std::time::{Duration, Instant};
 
 fn main() {
     let args: Vec<_> = std::env::args().collect();
@@ -18,12 +20,12 @@ fn main() {
             Err(_) => {
                 eprintln!("Invalid argument: {arg}");
                 return;
-            },
+            }
         },
         None => {
             eprintln!("Usage: {} <bits> <iter>", args[0]);
             return;
-        },
+        }
     };
 
     let iter = match args.get(2) {
@@ -32,7 +34,7 @@ fn main() {
             Err(_) => {
                 eprintln!("Invalid argument: {arg}");
                 return;
-            },
+            }
         },
         None => 10000,
     };
@@ -55,7 +57,6 @@ fn bench<R: BinaryRing>(r: &R, iter: usize) {
         let cols = dist.sample(rng);
         let a = Matrix::random(dim, cols, r, rng);
         let b = Vector::random(dim, r, rng);
-
 
         {
             let a_int = a.transform(|e| R::to_representative(e).into());
@@ -92,7 +93,16 @@ fn bench<R: BinaryRing>(r: &R, iter: usize) {
         }
     }
 
-    println!("int_hnf_duration: {:.2}ms", int_hnf_duration.as_millis_f64());
-    println!("int_diag_duration: {:.2}ms", int_diag_duration.as_millis_f64());
-    println!("mod_diag_duration: {:.2}ms", mod_diag_duration.as_millis_f64());
+    println!(
+        "int_hnf_duration: {:.2}ms",
+        int_hnf_duration.as_millis_f64()
+    );
+    println!(
+        "int_diag_duration: {:.2}ms",
+        int_diag_duration.as_millis_f64()
+    );
+    println!(
+        "mod_diag_duration: {:.2}ms",
+        mod_diag_duration.as_millis_f64()
+    );
 }

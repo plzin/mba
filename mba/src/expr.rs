@@ -1,11 +1,11 @@
 //! General expressions.
 
-use std::rc::Rc;
+use crate::Symbol;
+use crate::rings::{BinaryRing, Ring, RingElement as _};
+use crate::valuation::Valuation;
 use std::collections::BTreeSet;
 use std::ops::Deref;
-use crate::rings::{Ring, RingElement as _, BinaryRing};
-use crate::valuation::Valuation;
-use crate::Symbol;
+use std::rc::Rc;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Expr<R: Ring>(Rc<ExprOp<R>>);
@@ -39,14 +39,11 @@ impl<R: Ring> Expr<R> {
         let mut v = Vec::new();
         simplify_impl(self, &mut v);
 
-        fn simplify_impl<R: Ring>(
-            e: &mut Expr<R>,
-            visited: &mut Vec<*const ExprOp<R>>
-        ) {
+        fn simplify_impl<R: Ring>(e: &mut Expr<R>, visited: &mut Vec<*const ExprOp<R>>) {
             let ptr = e.as_ptr();
             if e.strong_count() > 1 {
                 if visited.contains(&ptr) {
-                    return
+                    return;
                 }
                 visited.push(ptr);
             }
@@ -54,7 +51,7 @@ impl<R: Ring> Expr<R> {
             let m = unsafe { &mut *(ptr as *mut _) };
 
             match m {
-                ExprOp::Const(_) | ExprOp::Var(_) => {},
+                ExprOp::Const(_) | ExprOp::Var(_) => {}
                 ExprOp::Add(l, r) => {
                     simplify_impl(l, visited);
                     simplify_impl(r, visited);
@@ -63,7 +60,7 @@ impl<R: Ring> Expr<R> {
                     } else if r.is_zero() {
                         *e = l.clone();
                     }
-                },
+                }
                 ExprOp::Sub(l, r) => {
                     simplify_impl(l, visited);
                     simplify_impl(r, visited);
@@ -73,7 +70,7 @@ impl<R: Ring> Expr<R> {
                     } else if r.is_zero() {
                         *e = l.clone();
                     }
-                },
+                }
                 ExprOp::Mul(l, r) => {
                     simplify_impl(l, visited);
                     simplify_impl(r, visited);
@@ -84,7 +81,7 @@ impl<R: Ring> Expr<R> {
                     } else if r.is_one() {
                         *e = l.clone();
                     }
-                },
+                }
                 ExprOp::Neg(i) => {
                     simplify_impl(i, visited);
                     if i.is_zero() {
@@ -92,14 +89,14 @@ impl<R: Ring> Expr<R> {
                     } else if let ExprOp::Neg(i) = i.as_ref() {
                         *e = i.clone();
                     }
-                },
+                }
                 ExprOp::And(l, r) => {
                     simplify_impl(l, visited);
                     simplify_impl(r, visited);
                     if l.is_zero() || r.is_zero() {
                         *e = ExprOp::zero().into();
                     }
-                },
+                }
                 ExprOp::Or(l, r) => {
                     simplify_impl(l, visited);
                     simplify_impl(r, visited);
@@ -108,7 +105,7 @@ impl<R: Ring> Expr<R> {
                     } else if r.is_zero() {
                         *e = l.clone();
                     }
-                },
+                }
                 ExprOp::Xor(l, r) => {
                     simplify_impl(l, visited);
                     simplify_impl(r, visited);
@@ -117,10 +114,10 @@ impl<R: Ring> Expr<R> {
                     } else if r.is_zero() {
                         *e = l.clone();
                     }
-                },
+                }
                 ExprOp::Not(i) => {
                     simplify_impl(i, visited);
-                },
+                }
             }
         }
     }
@@ -128,7 +125,7 @@ impl<R: Ring> Expr<R> {
     /// Evaluate an expression.
     pub fn eval(&self, v: &mut Valuation<R>, r: &R) -> R::Element
     where
-        R: BinaryRing
+        R: BinaryRing,
     {
         let mut cache = Vec::new();
         return eval_impl(self, v, r, &mut cache);
@@ -137,7 +134,7 @@ impl<R: Ring> Expr<R> {
             e: &Expr<R>,
             v: &mut Valuation<R>,
             ring: &R,
-            cache: &mut Vec<(*const ExprOp<R>, R::Element)>
+            cache: &mut Vec<(*const ExprOp<R>, R::Element)>,
         ) -> R::Element {
             if e.strong_count() > 1 {
                 // This is a common subexpression.
@@ -154,13 +151,25 @@ impl<R: Ring> Expr<R> {
             let v = match e.as_ref() {
                 ExprOp::Const(n) => n.clone(),
                 ExprOp::Var(name) => v.value(*name, ring).clone(),
-                ExprOp::Add(l, r) => ring.add(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache)),
-                ExprOp::Sub(l, r) => ring.sub(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache)),
-                ExprOp::Mul(l, r) => ring.mul(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache)),
+                ExprOp::Add(l, r) => {
+                    ring.add(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache))
+                }
+                ExprOp::Sub(l, r) => {
+                    ring.sub(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache))
+                }
+                ExprOp::Mul(l, r) => {
+                    ring.mul(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache))
+                }
                 ExprOp::Neg(i) => ring.neg(eval_impl(i, v, ring, cache)),
-                ExprOp::And(l, r) => R::and(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache)),
-                ExprOp::Or(l, r) => R::or(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache)),
-                ExprOp::Xor(l, r) => R::xor(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache)),
+                ExprOp::And(l, r) => {
+                    R::and(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache))
+                }
+                ExprOp::Or(l, r) => {
+                    R::or(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache))
+                }
+                ExprOp::Xor(l, r) => {
+                    R::xor(eval_impl(l, v, ring, cache), &eval_impl(r, v, ring, cache))
+                }
                 ExprOp::Not(i) => ring.not(eval_impl(i, v, ring, cache)),
             };
 
@@ -184,7 +193,7 @@ impl<R: Ring> Expr<R> {
             e: &mut Expr<R>,
             var: Symbol,
             s: &mut Expr<R>,
-            visited: &mut Vec<*const ExprOp<R>>
+            visited: &mut Vec<*const ExprOp<R>>,
         ) {
             let ptr = e.as_ptr();
             let recurse = if visited.contains(&ptr) {
@@ -199,15 +208,22 @@ impl<R: Ring> Expr<R> {
             // that this is never encountered twice.
             match unsafe { &mut *(ptr as *mut _) } {
                 Const(_) => (),
-                Var(v) => if *v == var { *e = s.clone() },
-                Add(l, r) | Sub(l, r) | Mul(l, r)
-                | And(l, r) | Or(l, r) | Xor(l, r) => if recurse {
-                    substitute_impl(l, var, s, visited);
-                    substitute_impl(r, var, s, visited);
-                },
-                Neg(i) | Not(i) => if recurse {
-                    substitute_impl(i, var, s, visited)
-                },
+                Var(v) => {
+                    if *v == var {
+                        *e = s.clone()
+                    }
+                }
+                Add(l, r) | Sub(l, r) | Mul(l, r) | And(l, r) | Or(l, r) | Xor(l, r) => {
+                    if recurse {
+                        substitute_impl(l, var, s, visited);
+                        substitute_impl(r, var, s, visited);
+                    }
+                }
+                Neg(i) | Not(i) => {
+                    if recurse {
+                        substitute_impl(i, var, s, visited)
+                    }
+                }
             }
         }
     }
@@ -220,7 +236,7 @@ impl<R: Ring> Expr<R> {
 
         fn deep_copy_impl<R: Ring>(
             e: &Expr<R>,
-            v: &mut Vec<(*const ExprOp<R>, Expr<R>)>
+            v: &mut Vec<(*const ExprOp<R>, Expr<R>)>,
         ) -> Expr<R> {
             if e.strong_count() > 1
                 && let Some((_, r)) = v.iter().find(|(p, _)| *p == e.as_ptr())
@@ -290,12 +306,10 @@ impl<R: Ring> Expr<R> {
             it.next();
             let mut var = String::from(c);
             loop {
-                let Some(c) = it.peek() else {
-                    break
-                };
+                let Some(c) = it.peek() else { break };
 
                 if !c.is_alphanumeric() && *c != '_' {
-                    break
+                    break;
                 }
 
                 var.push(*c);
@@ -346,7 +360,6 @@ impl<R: Ring> Expr<R> {
             });
         }
     }
-
 }
 
 impl<R: Ring> From<ExprOp<R>> for Expr<R> {
@@ -380,7 +393,6 @@ pub enum ExprOp<R: Ring> {
     Not(Expr<R>),
 }
 
-
 impl<R: Ring> ExprOp<R> {
     /// Returns the zero constant.
     pub fn zero() -> Self {
@@ -407,11 +419,15 @@ impl<R: Ring> ExprOp<R> {
 
     pub(crate) fn vars_impl(&self, v: &mut BTreeSet<Symbol>) {
         match self {
-            ExprOp::Const(_) => {},
+            ExprOp::Const(_) => {}
             ExprOp::Var(name) => drop(v.insert(*name)),
             ExprOp::Neg(e) | ExprOp::Not(e) => e.vars_impl(v),
-            ExprOp::Add(l, r) | ExprOp::Sub(l, r) | ExprOp::Mul(l, r)
-            | ExprOp::And(l, r) | ExprOp::Or(l, r) | ExprOp::Xor(l, r) => {
+            ExprOp::Add(l, r)
+            | ExprOp::Sub(l, r)
+            | ExprOp::Mul(l, r)
+            | ExprOp::And(l, r)
+            | ExprOp::Or(l, r)
+            | ExprOp::Xor(l, r) => {
                 l.vars_impl(v);
                 r.vars_impl(v);
             }
@@ -436,7 +452,7 @@ impl<R: Ring> ExprOp<R> {
     #[cfg(feature = "z3")]
     pub fn to_z3_bv<'ctx>(&self, ctx: &'ctx z3::Context, ring: &R) -> z3::ast::BV<'ctx>
     where
-        R: BinaryRing
+        R: BinaryRing,
     {
         use ExprOp::*;
 
@@ -459,56 +475,65 @@ impl<R: Ring> ExprOp<R> {
 fn parse_expr_test() {
     use crate::rings::U32;
     let e = Expr::from_string("1 + 2 * 3".to_owned(), &U32).unwrap();
-    assert_eq!(e.as_ref(), &ExprOp::Add(
-        ExprOp::Const(1).into(),
-        ExprOp::Mul(
-            ExprOp::Const(2).into(),
-            ExprOp::Const(3).into(),
-        ).into(),
-    ));
+    assert_eq!(
+        e.as_ref(),
+        &ExprOp::Add(
+            ExprOp::Const(1).into(),
+            ExprOp::Mul(ExprOp::Const(2).into(), ExprOp::Const(3).into(),).into(),
+        )
+    );
 
     let e = Expr::from_string("x & y + z".to_owned(), &U32).unwrap();
-    assert_eq!(e.as_ref(), &ExprOp::And(
-        ExprOp::Var("x".into()).into(),
-        ExprOp::Add(
-            ExprOp::Var("y".into()).into(),
-            ExprOp::Var("z".into()).into(),
-        ).into(),
-    ));
-
-    let e = Expr::from_string("x | 3 + z".to_owned(), &U32).unwrap();
-    assert_eq!(e.as_ref(), &ExprOp::Or(
-        ExprOp::Var("x".into()).into(),
-        ExprOp::Add(
-            ExprOp::Const(3).into(),
-            ExprOp::Var("z".into()).into(),
-        ).into(),
-    ));
-
-    let e = Expr::from_string("x & (x + long_name) ^ 4".to_owned(), &U32)
-        .unwrap();
-    assert_eq!(e.as_ref(), &ExprOp::Xor(
-        ExprOp::And(
+    assert_eq!(
+        e.as_ref(),
+        &ExprOp::And(
             ExprOp::Var("x".into()).into(),
             ExprOp::Add(
+                ExprOp::Var("y".into()).into(),
+                ExprOp::Var("z".into()).into(),
+            )
+            .into(),
+        )
+    );
+
+    let e = Expr::from_string("x | 3 + z".to_owned(), &U32).unwrap();
+    assert_eq!(
+        e.as_ref(),
+        &ExprOp::Or(
+            ExprOp::Var("x".into()).into(),
+            ExprOp::Add(ExprOp::Const(3).into(), ExprOp::Var("z".into()).into(),).into(),
+        )
+    );
+
+    let e = Expr::from_string("x & (x + long_name) ^ 4".to_owned(), &U32).unwrap();
+    assert_eq!(
+        e.as_ref(),
+        &ExprOp::Xor(
+            ExprOp::And(
                 ExprOp::Var("x".into()).into(),
-                ExprOp::Var("long_name".into()).into(),
-            ).into(),
-        ).into(),
-        ExprOp::Const(4).into(),
-    ));
+                ExprOp::Add(
+                    ExprOp::Var("x".into()).into(),
+                    ExprOp::Var("long_name".into()).into(),
+                )
+                .into(),
+            )
+            .into(),
+            ExprOp::Const(4).into(),
+        )
+    );
 
     let e = Expr::from_string("x & y | z ^ 1".to_owned(), &U32).unwrap();
-    assert_eq!(e.as_ref(), &ExprOp::Or(
-        ExprOp::And(
-            ExprOp::Var("x".into()).into(),
-            ExprOp::Var("y".into()).into(),
-        ).into(),
-        ExprOp::Xor(
-            ExprOp::Var("z".into()).into(),
-            ExprOp::Const(1).into(),
-        ).into(),
-    ));
+    assert_eq!(
+        e.as_ref(),
+        &ExprOp::Or(
+            ExprOp::And(
+                ExprOp::Var("x".into()).into(),
+                ExprOp::Var("y".into()).into(),
+            )
+            .into(),
+            ExprOp::Xor(ExprOp::Var("z".into()).into(), ExprOp::Const(1).into(),).into(),
+        )
+    );
 }
 
 #[test]
@@ -518,9 +543,13 @@ fn expr_eval_test() {
     assert_eq!(e.eval(&mut Valuation::empty(), &U32), 7);
 
     let e = Expr::from_string("(x * y) + z".to_owned(), &U32).unwrap();
-    assert_eq!(e.eval(&mut Valuation::from_vec_panic(vec![
-        ("x".into(), 1),
-        ("y".into(), 3),
-        ("z".into(), 7),
-    ]), &U32), 10);
+    assert_eq!(
+        e.eval(
+            &mut Valuation::from_vec_panic(
+                vec![("x".into(), 1), ("y".into(), 3), ("z".into(), 7),]
+            ),
+            &U32
+        ),
+        10
+    );
 }
