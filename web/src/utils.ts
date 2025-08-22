@@ -102,6 +102,14 @@ export function handleDisplayCode(
         window.open(`https://play.rust-lang.org/?version=stable&mode=release&edition=2024&code=${pgCode}`);
       },
     };
+  } else if (outputType == Formatter.LLVM) {
+    const ceCode = encodeURIComponent(code);
+    playgroundButton = {
+      label: 'Open in Compiler Explorer',
+      onClick: () => {
+        window.open(`https://godbolt.org/#g:!((g:!((h:codeEditor,i:(filename:'1',fontScale:14,fontUsePx:'0',j:1,lang:llvm,selection:(endColumn:1,endLineNumber:1,positionColumn:1,positionLineNumber:1,selectionStartColumn:1,selectionStartLineNumber:1,startColumn:1,startLineNumber:1),source:'${ceCode}'),l:'5',n:'0',o:'LLVM+IR+source',t:'0'),(h:compiler,i:(compiler:llc2010,fontScale:14,lang:llvm,filters:(b:'0',c:'1',d:'1',e:'1',i:'1',l:'1',p:'1',t:'1'),options:'-O3 --x86-asm-syntax=intel',source:1,compilationPanelShown:'1'),l:'5',n:'0',o:'Compiler+x8s-64+llc+20.1.0+(Editor+%231)',t:'0')),k:50,l:'2',n:'0',o:'',s:0,t:'0')),version:4`);
+      },
+    };
   }
 
   // Highlight the code.
