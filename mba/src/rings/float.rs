@@ -76,7 +76,10 @@ macro_rules! float_field {
                 n.$from_big().unwrap()
             }
 
-            fn data_type_name(&self, formatter: Formatter) -> impl std::fmt::Display {
+            fn data_type_name(
+                &self,
+                formatter: Formatter,
+            ) -> impl std::fmt::Display {
                 match formatter {
                     Formatter::C => $c_type,
                     Formatter::Rust => $rust_type,
@@ -101,7 +104,11 @@ macro_rules! float_field {
         impl_int_div_for_field!($field);
 
         impl OrderedRing for $field {
-            fn cmp(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+            fn cmp(
+                &self,
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> std::cmp::Ordering {
                 l.partial_cmp(r).unwrap()
             }
 
@@ -137,7 +144,11 @@ macro_rules! float_field {
                 e.abs()
             }
 
-            fn cmp_abs(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+            fn cmp_abs(
+                &self,
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> std::cmp::Ordering {
                 l.abs().partial_cmp(&r.abs()).unwrap()
             }
 

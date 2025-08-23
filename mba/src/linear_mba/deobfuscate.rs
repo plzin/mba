@@ -11,13 +11,15 @@ use super::{
     rewrite::{collect_solution, solve_linear_system},
     subexpression::expr_to_lbexpr,
 };
-use crate::bitwise_expr::{BExpr, LBExpr};
-use crate::expr::{Expr, ExprOp};
-use crate::lattice::{AffineLattice, Lattice};
-use crate::matrix::Matrix;
-use crate::rings::{BinaryRing, F64, Ring as _, RingElement as _, Z};
-use crate::simplify_boolean::{SimplificationConfig, simplify_from_truth_table};
-use crate::valuation::Valuation;
+use crate::{
+    bitwise_expr::{BExpr, LBExpr},
+    expr::{Expr, ExprOp},
+    lattice::{AffineLattice, Lattice},
+    matrix::Matrix,
+    rings::{BinaryRing, F64, Ring as _, RingElement as _, Z},
+    simplify_boolean::{SimplificationConfig, simplify_from_truth_table},
+    valuation::Valuation,
+};
 
 /// Configuration for deobfuscation.
 pub struct DeobfuscationConfig {
@@ -53,7 +55,11 @@ pub enum SolutionAlgorithm {
     ShortVector,
 }
 
-pub fn deobfuscate<R: BinaryRing>(e: &mut Expr<R>, cfg: &DeobfuscationConfig, ring: &R) {
+pub fn deobfuscate<R: BinaryRing>(
+    e: &mut Expr<R>,
+    cfg: &DeobfuscationConfig,
+    ring: &R,
+) {
     let mut v = Vec::new();
     deobfuscate_impl(e, &mut v, cfg, ring);
     e.simplify();
@@ -95,10 +101,10 @@ pub fn deobfuscate<R: BinaryRing>(e: &mut Expr<R>, cfg: &DeobfuscationConfig, ri
             ExprOp::Mul(l, r) => {
                 deobfuscate_impl(l, visited, cfg, ring);
                 deobfuscate_impl(r, visited, cfg, ring);
-            }
+            },
             _ => panic!(
-                "Expression should be linear MBA, \
-                but expr_to_lbexpr failed ({e:?})."
+                "Expression should be linear MBA, but expr_to_lbexpr failed \
+                 ({e:?})."
             ),
         }
     }
@@ -127,7 +133,10 @@ pub fn deobfuscate_lbexpr<R: BinaryRing>(
         for i in 0..entries {
             // Initialize the valuation.
             for (j, c) in vars.iter().enumerate() {
-                val.set_value(*c, ring.neg(ring.element_from_usize((i >> j) & 1)));
+                val.set_value(
+                    *c,
+                    ring.neg(ring.element_from_usize((i >> j) & 1)),
+                );
             }
 
             // Evaluate the expression.
@@ -224,7 +233,8 @@ pub fn deobfuscate_lbexpr<R: BinaryRing>(
     //
 
     // Compute the complexity measure for each coordinate.
-    let complexity: Vec<_> = ops.iter().map(|e| e.complexity() as usize).collect();
+    let complexity: Vec<_> =
+        ops.iter().map(|e| e.complexity() as usize).collect();
 
     // We need to create an integer lattice.
     let mut generating_set = Matrix::zero(
@@ -236,12 +246,13 @@ pub fn deobfuscate_lbexpr<R: BinaryRing>(
         generating_set[(l.lattice.rank() + i, i)] = Z::one() << ring.bits();
     }
 
-    let mut offset = l
-        .offset
-        .transform::<Z, _>(|i| BigInt::from(R::to_representative(i)));
+    let mut offset =
+        l.offset.transform::<Z, _>(|i| BigInt::from(R::to_representative(i)));
 
     // Scale the lattice basis...
-    for (old_row, new_row) in l.lattice.basis.rows().zip(generating_set.rows_mut()) {
+    for (old_row, new_row) in
+        l.lattice.basis.rows().zip(generating_set.rows_mut())
+    {
         for ((old, new), &c) in old_row.iter().zip(new_row).zip(&complexity) {
             *new = BigInt::from(R::to_representative(old) * c);
         }
@@ -303,17 +314,19 @@ fn deobfuscate_linear_test() {
 
 #[test]
 fn deobfuscate_test() {
-    use crate::rings::U8;
     use rand::{SeedableRng as _, rngs::StdRng};
+
     //use crate::formatter::Formatter;
     use crate::linear_mba::obfuscate::{ObfuscationConfig, obfuscate};
+    use crate::rings::U8;
 
     let mut rng = StdRng::seed_from_u64(0);
     let r = &U8;
 
     // Create an example expression.
     //let e = Expr::from_string("x + y * x").unwrap();
-    let e = Expr::from_string("179 * x - 6 + y * x * 4".to_owned(), &U8).unwrap();
+    let e =
+        Expr::from_string("179 * x - 6 + y * x * 4".to_owned(), &U8).unwrap();
 
     //println!("Original:\n{}", e.display(Formatter::Rust, 0, r));
 

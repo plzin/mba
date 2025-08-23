@@ -1,11 +1,12 @@
 //! Basically a key-value store for variable names and their values,
 //! but you can specify what to do when a variable is not found.
 
+use rand::{Rng, SeedableRng, rngs::StdRng};
+
 use crate::{
     Symbol,
     rings::{Ring, RingElement as _},
 };
-use rand::{Rng, SeedableRng, rngs::StdRng};
 
 /// Stores values that should be substituted into variables.
 #[derive(Debug)]
@@ -41,19 +42,13 @@ impl<R: Ring> Valuation<R> {
     /// Initializes a valuation from a list of pairs of variables and values.
     /// If a variable is requested that is not in the list, it will panic.
     pub fn from_vec_panic(vals: Vec<(Symbol, R::Element)>) -> Self {
-        Self {
-            vals,
-            missing: MissingValue::panic(),
-        }
+        Self { vals, missing: MissingValue::panic() }
     }
 
     /// Initializes a valuation from a list of pairs of variables and values.
     /// If a variable is requested that is not in the list, it will return zero.
     pub fn from_vec_zero(vals: Vec<(Symbol, R::Element)>) -> Self {
-        Self {
-            vals,
-            missing: MissingValue::zero(),
-        }
+        Self { vals, missing: MissingValue::zero() }
     }
 
     /// Initializes a valuation from a list of pairs of variables and values.
@@ -61,12 +56,12 @@ impl<R: Ring> Valuation<R> {
     /// it will return a random value.
     /// The value will be consistent across multiple uses of the same variable.
     /// It will be stored in the valuation.
-    pub fn from_vec_random_seeded(vals: Vec<(Symbol, R::Element)>, seed: u64) -> Self {
+    pub fn from_vec_random_seeded(
+        vals: Vec<(Symbol, R::Element)>,
+        seed: u64,
+    ) -> Self {
         let rng = Box::new(StdRng::seed_from_u64(seed));
-        Self {
-            vals,
-            missing: MissingValue::random(rng),
-        }
+        Self { vals, missing: MissingValue::random(rng) }
     }
 
     /// Returns a valuation that is zero for all the given variables and panics
@@ -97,7 +92,9 @@ impl<R: Ring> Valuation<R> {
 
         // If not, use the missing valuation.
         let new_val = match &mut self.missing {
-            MissingValue::Panic => panic!("Variable {name} not found in valuation."),
+            MissingValue::Panic => {
+                panic!("Variable {name} not found in valuation.")
+            },
             MissingValue::Zero => R::zero(),
             MissingValue::Random(rng) => r.random(&mut *rng),
         };

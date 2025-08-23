@@ -1,15 +1,23 @@
 #![feature(duration_millis_float)]
 
-use mba::rings::BinaryRing;
-use mba::solver::{
-    solve_modular_via_integer_hnf, solve_via_integer_diagonalize, solve_via_modular_diagonalize,
+use std::time::{Duration, Instant};
+
+use mba::{
+    matrix::Matrix,
+    rings::BinaryRing,
+    solver::{
+        solve_modular_via_integer_hnf, solve_via_integer_diagonalize,
+        solve_via_modular_diagonalize,
+    },
+    vector::Vector,
 };
-use mba::{matrix::Matrix, vector::Vector};
 use num_bigint::BigUint;
 use num_traits::One;
-use rand::distr::Distribution as _;
-use rand::{SeedableRng, distr::Uniform, rngs::StdRng};
-use std::time::{Duration, Instant};
+use rand::{
+    SeedableRng,
+    distr::{Distribution as _, Uniform},
+    rngs::StdRng,
+};
 
 fn main() {
     let args: Vec<_> = std::env::args().collect();
@@ -20,12 +28,12 @@ fn main() {
             Err(_) => {
                 eprintln!("Invalid argument: {arg}");
                 return;
-            }
+            },
         },
         None => {
             eprintln!("Usage: {} <bits> <iter>", args[0]);
             return;
-        }
+        },
     };
 
     let iter = match args.get(2) {
@@ -34,7 +42,7 @@ fn main() {
             Err(_) => {
                 eprintln!("Invalid argument: {arg}");
                 return;
-            }
+            },
         },
         None => 10000,
     };
@@ -93,16 +101,7 @@ fn bench<R: BinaryRing>(r: &R, iter: usize) {
         }
     }
 
-    println!(
-        "int_hnf_duration: {:.2}ms",
-        int_hnf_duration.as_millis_f64()
-    );
-    println!(
-        "int_diag_duration: {:.2}ms",
-        int_diag_duration.as_millis_f64()
-    );
-    println!(
-        "mod_diag_duration: {:.2}ms",
-        mod_diag_duration.as_millis_f64()
-    );
+    println!("int_hnf_duration: {:.2}ms", int_hnf_duration.as_millis_f64());
+    println!("int_diag_duration: {:.2}ms", int_diag_duration.as_millis_f64());
+    println!("mod_diag_duration: {:.2}ms", mod_diag_duration.as_millis_f64());
 }

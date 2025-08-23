@@ -8,8 +8,7 @@ mod obfuscate;
 mod obfuscate_linear;
 mod perm_poly;
 
-use mba::bitwise_expr::LBExpr;
-use mba::rings::Z;
+use mba::{bitwise_expr::LBExpr, rings::Z};
 use wasm_bindgen::prelude::*;
 
 /// Sets the panic hook to display useful error messages.
@@ -64,8 +63,10 @@ impl SolutionAlgorithm {
             SolutionAlgorithm::Fast => mba::linear_mba::SolutionAlgorithm::Fast,
             SolutionAlgorithm::LeastComplexTerms => {
                 mba::linear_mba::SolutionAlgorithm::LeastComplexTerms
-            }
-            SolutionAlgorithm::ShortVector => mba::linear_mba::SolutionAlgorithm::ShortVector,
+            },
+            SolutionAlgorithm::ShortVector => {
+                mba::linear_mba::SolutionAlgorithm::ShortVector
+            },
         }
     }
 }

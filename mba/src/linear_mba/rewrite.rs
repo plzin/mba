@@ -2,14 +2,16 @@
 
 use rand::Rng;
 
-use crate::Symbol;
-use crate::bitwise_expr::LBExpr;
-use crate::lattice::AffineLattice;
-use crate::matrix::OwnedMatrix;
-use crate::rings::BinaryRing;
-use crate::solver::solve_via_modular_diagonalize;
-use crate::valuation::Valuation;
-use crate::vector::{OwnedVector, VectorView};
+use crate::{
+    Symbol,
+    bitwise_expr::LBExpr,
+    lattice::AffineLattice,
+    matrix::OwnedMatrix,
+    rings::BinaryRing,
+    solver::solve_via_modular_diagonalize,
+    valuation::Valuation,
+    vector::{OwnedVector, VectorView},
+};
 
 /// Rewrite an [`LBExpr`] using a set of [`LBExpr`]s.
 ///
@@ -115,8 +117,9 @@ pub fn collect_solution<R: BinaryRing>(
 
 #[test]
 fn rewrite_test() {
-    use crate::rings::U8;
     use rand::{SeedableRng as _, rngs::StdRng};
+
+    use crate::rings::U8;
 
     let mut rng = StdRng::seed_from_u64(0);
     let r = &U8;

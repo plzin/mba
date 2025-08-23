@@ -7,10 +7,12 @@
 use rand::Rng;
 
 use super::{rewrite::rewrite, subexpression::expr_to_lbexpr};
-use crate::Symbol;
-use crate::bitwise_expr::{BExpr, LBExpr};
-use crate::expr::{Expr, ExprOp};
-use crate::rings::BinaryRing;
+use crate::{
+    Symbol,
+    bitwise_expr::{BExpr, LBExpr},
+    expr::{Expr, ExprOp},
+    rings::BinaryRing,
+};
 
 /// More obscure settings for internals of the obfuscation.
 /// Use `ObfuscationConfig::default()` to get a reasonable default.
@@ -131,7 +133,7 @@ pub fn obfuscate<R: BinaryRing, Rand: Rng>(
                     }
                 }
                 panic!("Failed to rewrite bitwise expression.");
-            }
+            },
             RewriteTries::FiniteOriginal(t) => {
                 for _ in 0..t {
                     if let Some(e) = try_rewrite(e, &vars, cfg, rng, ring) {
@@ -139,7 +141,7 @@ pub fn obfuscate<R: BinaryRing, Rand: Rng>(
                     }
                 }
                 e.clone()
-            }
+            },
         }
     }
 
@@ -178,10 +180,10 @@ pub fn obfuscate<R: BinaryRing, Rand: Rng>(
             ExprOp::Mul(l, r) => {
                 obfuscate_impl(l, visited, vars, cfg, rng, ring);
                 obfuscate_impl(r, visited, vars, cfg, rng, ring);
-            }
+            },
             _ => panic!(
-                "Expression should be linear MBA, \
-                but expr_to_lbexpr failed ({e:?})."
+                "Expression should be linear MBA, but expr_to_lbexpr failed \
+                 ({e:?})."
             ),
         }
     }
@@ -191,11 +193,14 @@ pub fn obfuscate<R: BinaryRing, Rand: Rng>(
 /// It would be very desirable to make this smarter.
 /// Currently it generates a lot of non-sense expressions,
 /// which simplify to zero or one easily.
-fn random_bool_expr<Rand: Rng>(vars: &[Symbol], max_depth: usize, rng: &mut Rand) -> BExpr {
+fn random_bool_expr<Rand: Rng>(
+    vars: &[Symbol],
+    max_depth: usize,
+    rng: &mut Rand,
+) -> BExpr {
     assert!(
         !vars.is_empty(),
-        "There needs to be \
-        at least one variable for the random expression."
+        "There needs to be at least one variable for the random expression."
     );
     let num_vars = vars.len() as u32;
     assert_eq!(
@@ -231,9 +236,9 @@ fn random_bool_expr<Rand: Rng>(vars: &[Symbol], max_depth: usize, rng: &mut Rand
 
 #[test]
 fn linear_obfuscate_test() {
-    use crate::rings::U8;
-    use crate::valuation::Valuation;
     use rand::{SeedableRng as _, rngs::StdRng};
+
+    use crate::{rings::U8, valuation::Valuation};
 
     let mut rng = StdRng::seed_from_u64(0);
     let cfg = ObfuscationConfig::default();

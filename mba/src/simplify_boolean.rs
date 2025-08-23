@@ -1,18 +1,17 @@
 //! Simplify boolean expressions using egg.
 //! There are some obvious improvements you could make:
-//! - Given a truth table, find a minimal expression
-//!   using e.g. the Quine-McCluskey algorithm, before handing
-//!   it to egg.
-//! - Use a custom RewriteScheduler that is aware of
-//!   the cost function, i.e. tries cost reducing rewrites
-//!   more aggressively.
+//! - Given a truth table, find a minimal expression using e.g. the
+//!   Quine-McCluskey algorithm, before handing it to egg.
+//! - Use a custom RewriteScheduler that is aware of the cost function, i.e.
+//!   tries cost reducing rewrites more aggressively.
 //! - Maybe a more refined cost function.
 //! - More refined rewrite rules.
 
-use crate::bitwise_expr::BExpr;
+use std::{cell::RefCell, sync::OnceLock};
+
 use egg::*;
-use std::cell::RefCell;
-use std::sync::OnceLock;
+
+use crate::bitwise_expr::BExpr;
 
 /// The way we simplify is by running equality saturation
 /// on the expression. The egraph for the expression would be
@@ -93,16 +92,18 @@ fn bexpr_eq(l: &EggExpr, r: &EggExpr) -> bool {
             (BooleanLanguage::One, BooleanLanguage::One) => true,
             (BooleanLanguage::Not(lid), BooleanLanguage::Not(rid)) => {
                 bexpr_eq_impl(l, *lid, r, *rid)
-            }
-            (BooleanLanguage::And([ll, lr]), BooleanLanguage::And([rl, rr])) => {
-                bexpr_eq_impl(l, *ll, r, *rl) && bexpr_eq_impl(l, *lr, r, *rr)
-            }
+            },
+            (
+                BooleanLanguage::And([ll, lr]),
+                BooleanLanguage::And([rl, rr]),
+            ) => bexpr_eq_impl(l, *ll, r, *rl) && bexpr_eq_impl(l, *lr, r, *rr),
             (BooleanLanguage::Or([ll, lr]), BooleanLanguage::Or([rl, rr])) => {
                 bexpr_eq_impl(l, *ll, r, *rl) && bexpr_eq_impl(l, *lr, r, *rr)
-            }
-            (BooleanLanguage::Xor([ll, lr]), BooleanLanguage::Xor([rl, rr])) => {
-                bexpr_eq_impl(l, *ll, r, *rl) && bexpr_eq_impl(l, *lr, r, *rr)
-            }
+            },
+            (
+                BooleanLanguage::Xor([ll, lr]),
+                BooleanLanguage::Xor([rl, rr]),
+            ) => bexpr_eq_impl(l, *ll, r, *rl) && bexpr_eq_impl(l, *lr, r, *rr),
             (BooleanLanguage::Symbol(l), BooleanLanguage::Symbol(r)) => l == r,
             _ => false,
         }
@@ -177,7 +178,11 @@ where
 
     let nodes = RefCell::new(nodes);
 
-    fn from_1(vars: &[Symbol], i: usize, nodes: &RefCell<Vec<BooleanLanguage>>) -> usize {
+    fn from_1(
+        vars: &[Symbol],
+        i: usize,
+        nodes: &RefCell<Vec<BooleanLanguage>>,
+    ) -> usize {
         let mut iter = (0..vars.len()).map(|j| j * 2 + (1 - ((i >> j) & 1)));
 
         let first = iter.next().unwrap();
@@ -227,7 +232,11 @@ where
 
     let nodes = RefCell::new(nodes);
 
-    fn from_0(vars: &[Symbol], i: usize, nodes: &RefCell<Vec<BooleanLanguage>>) -> usize {
+    fn from_0(
+        vars: &[Symbol],
+        i: usize,
+        nodes: &RefCell<Vec<BooleanLanguage>>,
+    ) -> usize {
         let mut iter = (0..vars.len()).map(|j| j * 2 + ((i >> j) & 1));
 
         let first = iter.next().unwrap();
@@ -310,33 +319,34 @@ fn simplify_bexpr(e: &EggExpr, cfg: &SimplificationConfig) -> EggExpr {
     unreachable!();
 }
 
-/// Converts a bitwise expression ([`BExpr`]) to a egg boolean expression ([`EggExpr`]).
+/// Converts a bitwise expression ([`BExpr`]) to a egg boolean expression
+/// ([`EggExpr`]).
 fn bexpr_to_egg(e: &BExpr) -> EggExpr {
     fn bexpr_to_egg_impl(e: &BExpr, nodes: &mut Vec<BooleanLanguage>) -> Id {
         match e {
             BExpr::Var(v) => {
                 nodes.push(BooleanLanguage::Symbol(*v));
-            }
+            },
             BExpr::Ones => nodes.push(BooleanLanguage::One),
             BExpr::Not(e) => {
                 let e = bexpr_to_egg_impl(e, nodes);
                 nodes.push(BooleanLanguage::Not(e));
-            }
+            },
             BExpr::And(l, r) => {
                 let l = bexpr_to_egg_impl(l, nodes);
                 let r = bexpr_to_egg_impl(r, nodes);
                 nodes.push(BooleanLanguage::And([l, r]));
-            }
+            },
             BExpr::Or(l, r) => {
                 let l = bexpr_to_egg_impl(l, nodes);
                 let r = bexpr_to_egg_impl(r, nodes);
                 nodes.push(BooleanLanguage::Or([l, r]));
-            }
+            },
             BExpr::Xor(l, r) => {
                 let l = bexpr_to_egg_impl(l, nodes);
                 let r = bexpr_to_egg_impl(r, nodes);
                 nodes.push(BooleanLanguage::Xor([l, r]));
-            }
+            },
         }
 
         Id::from(nodes.len() - 1)
@@ -347,22 +357,26 @@ fn bexpr_to_egg(e: &BExpr) -> EggExpr {
     RecExpr::from(nodes)
 }
 
-/// Converts an egg boolean expression ([`EggExpr`]) into a bitwise expression ([`BExpr`]).
+/// Converts an egg boolean expression ([`EggExpr`]) into a bitwise expression
+/// ([`BExpr`]).
 fn egg_to_bexpr(e: &EggExpr) -> BExpr {
     fn bexpr_to_bexpr_impl(e: &EggExpr, idx: Id) -> BExpr {
         match &e[idx] {
             BooleanLanguage::Zero => BExpr::not(BExpr::Ones),
             BooleanLanguage::One => BExpr::Ones,
             BooleanLanguage::Not(i) => BExpr::not(bexpr_to_bexpr_impl(e, *i)),
-            BooleanLanguage::And([i, j]) => {
-                BExpr::and(bexpr_to_bexpr_impl(e, *i), bexpr_to_bexpr_impl(e, *j))
-            }
-            BooleanLanguage::Or([i, j]) => {
-                BExpr::or(bexpr_to_bexpr_impl(e, *i), bexpr_to_bexpr_impl(e, *j))
-            }
-            BooleanLanguage::Xor([i, j]) => {
-                BExpr::xor(bexpr_to_bexpr_impl(e, *i), bexpr_to_bexpr_impl(e, *j))
-            }
+            BooleanLanguage::And([i, j]) => BExpr::and(
+                bexpr_to_bexpr_impl(e, *i),
+                bexpr_to_bexpr_impl(e, *j),
+            ),
+            BooleanLanguage::Or([i, j]) => BExpr::or(
+                bexpr_to_bexpr_impl(e, *i),
+                bexpr_to_bexpr_impl(e, *j),
+            ),
+            BooleanLanguage::Xor([i, j]) => BExpr::xor(
+                bexpr_to_bexpr_impl(e, *i),
+                bexpr_to_bexpr_impl(e, *j),
+            ),
             BooleanLanguage::Symbol(s) => BExpr::var(s.to_string()),
         }
     }
@@ -428,7 +442,10 @@ fn make_rules() -> Vec<Rewrite<BooleanLanguage, ()>> {
 #[test]
 fn verify_boolean_equivalences() {
     fn ast_to_bexpr(e: &PatternAst<BooleanLanguage>) -> BExpr {
-        fn ast_to_bexpr_impl(e: &PatternAst<BooleanLanguage>, idx: Id) -> BExpr {
+        fn ast_to_bexpr_impl(
+            e: &PatternAst<BooleanLanguage>,
+            idx: Id,
+        ) -> BExpr {
             let r = match &e[idx] {
                 ENodeOrVar::Var(v) => return BExpr::Var(v.to_string().into()),
                 ENodeOrVar::ENode(e) => e,
@@ -438,25 +455,32 @@ fn verify_boolean_equivalences() {
                 BooleanLanguage::Zero => BExpr::not(BExpr::Ones),
                 BooleanLanguage::One => BExpr::Ones,
                 BooleanLanguage::Not(i) => BExpr::not(ast_to_bexpr_impl(e, *i)),
-                BooleanLanguage::And([i, j]) => {
-                    BExpr::and(ast_to_bexpr_impl(e, *i), ast_to_bexpr_impl(e, *j))
-                }
-                BooleanLanguage::Or([i, j]) => {
-                    BExpr::or(ast_to_bexpr_impl(e, *i), ast_to_bexpr_impl(e, *j))
-                }
-                BooleanLanguage::Xor([i, j]) => {
-                    BExpr::xor(ast_to_bexpr_impl(e, *i), ast_to_bexpr_impl(e, *j))
-                }
-                BooleanLanguage::Symbol(_) => panic!("There should be no free variables."),
+                BooleanLanguage::And([i, j]) => BExpr::and(
+                    ast_to_bexpr_impl(e, *i),
+                    ast_to_bexpr_impl(e, *j),
+                ),
+                BooleanLanguage::Or([i, j]) => BExpr::or(
+                    ast_to_bexpr_impl(e, *i),
+                    ast_to_bexpr_impl(e, *j),
+                ),
+                BooleanLanguage::Xor([i, j]) => BExpr::xor(
+                    ast_to_bexpr_impl(e, *i),
+                    ast_to_bexpr_impl(e, *j),
+                ),
+                BooleanLanguage::Symbol(_) => {
+                    panic!("There should be no free variables.")
+                },
             }
         }
 
         ast_to_bexpr_impl(e, Id::from(e.as_ref().len() - 1))
     }
 
-    fn verify(lhs: &PatternAst<BooleanLanguage>, rhs: &PatternAst<BooleanLanguage>) {
-        use crate::rings::U8;
-        use crate::valuation::Valuation;
+    fn verify(
+        lhs: &PatternAst<BooleanLanguage>,
+        rhs: &PatternAst<BooleanLanguage>,
+    ) {
+        use crate::{rings::U8, valuation::Valuation};
         let lhs = ast_to_bexpr(lhs);
         let rhs = ast_to_bexpr(rhs);
         println!("Verifying equivalence: {lhs} == {rhs}");
@@ -511,9 +535,8 @@ fn short_from_rand_truth_table() {
     let n = (rand::random::<u8>() % 5 + 1) as usize;
     let vars = n_vars(n);
 
-    let truth_table: Vec<_> = std::iter::repeat_with(rand::random::<bool>)
-        .take(1 << n)
-        .collect();
+    let truth_table: Vec<_> =
+        std::iter::repeat_with(rand::random::<bool>).take(1 << n).collect();
     let cfg = SimplificationConfig {
         node_limit: 1_000_000,
         iter_limit: 100,
@@ -533,7 +556,8 @@ fn list_minimal_expressions() {
     let cfg = SimplificationConfig::default();
 
     loop {
-        let e = simplify_from_truth_table(&vars, truth_table.iter().cloned(), &cfg);
+        let e =
+            simplify_from_truth_table(&vars, truth_table.iter().cloned(), &cfg);
         for v in &truth_table {
             print!("{}", *v as usize);
         }

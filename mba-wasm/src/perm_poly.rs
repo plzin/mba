@@ -7,7 +7,10 @@ use mba::{
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(js_name = "invertPermutationPolynomial")]
-pub fn invert_permutation_polynomial(poly: String, bits: u32) -> Result<String, String> {
+pub fn invert_permutation_polynomial(
+    poly: String,
+    bits: u32,
+) -> Result<String, String> {
     choose_binary_ring!(invert_permutation_polynomial_impl(poly, &r), r = bits)
 }
 

@@ -1,11 +1,13 @@
 //! Formatting for expressions.
 
-use crate::Symbol;
-use crate::bitwise_expr::{BExpr, LBExpr};
-use crate::expr::{Expr, ExprOp};
-use crate::rings::{Ring, RingElement};
-
 use std::fmt::{Display, Write as _};
+
+use crate::{
+    Symbol,
+    bitwise_expr::{BExpr, LBExpr},
+    expr::{Expr, ExprOp},
+    rings::{Ring, RingElement},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Formatter {
@@ -74,21 +76,18 @@ impl BExpr {
     /// Creates a wrapper struct that implements [`Display`] and uses the given
     /// `formatter` to format the expression.
     pub fn display(&self, formatter: Formatter) -> DisplayableBExpr<'_> {
-        DisplayableBExpr {
-            expr: self,
-            formatter,
-        }
+        DisplayableBExpr { expr: self, formatter }
     }
 
     /// Creates a wrapper struct that implements [`Display`] and uses the given
     /// formatter to format the expression. It will wrap the output in
     /// parentheses if the expression is not a topmost unary. This is basically
     /// a helper function.
-    pub fn display_wrapped(&self, formatter: Formatter) -> DisplayableBExprWrapped<'_> {
-        DisplayableBExprWrapped {
-            expr: self,
-            formatter,
-        }
+    pub fn display_wrapped(
+        &self,
+        formatter: Formatter,
+    ) -> DisplayableBExprWrapped<'_> {
+        DisplayableBExprWrapped { expr: self, formatter }
     }
 }
 
@@ -120,14 +119,28 @@ impl<'a> Display for DisplayableBExpr<'a> {
             BExpr::Ones => f.write_str("-1"),
             BExpr::Var(n) => n.fmt(f),
             BExpr::Not(e) => match self.formatter {
-                Formatter::C => write!(f, "~{}", e.display_wrapped(self.formatter)),
-                Formatter::Rust => write!(f, "!{}", e.display_wrapped(self.formatter)),
-                Formatter::Tex => write!(f, "\\neg{{{}}}", e.display(self.formatter)),
-                Formatter::LLVM => write!(f, "~{}", e.display_wrapped(Formatter::C)),
+                Formatter::C => {
+                    write!(f, "~{}", e.display_wrapped(self.formatter))
+                },
+                Formatter::Rust => {
+                    write!(f, "!{}", e.display_wrapped(self.formatter))
+                },
+                Formatter::Tex => {
+                    write!(f, "\\neg{{{}}}", e.display(self.formatter))
+                },
+                Formatter::LLVM => {
+                    write!(f, "~{}", e.display_wrapped(Formatter::C))
+                },
             },
-            BExpr::And(l, r) => self.handle_binop(l, r, self.formatter.and_op(), f),
-            BExpr::Or(l, r) => self.handle_binop(l, r, self.formatter.or_op(), f),
-            BExpr::Xor(l, r) => self.handle_binop(l, r, self.formatter.xor_op(), f),
+            BExpr::And(l, r) => {
+                self.handle_binop(l, r, self.formatter.and_op(), f)
+            },
+            BExpr::Or(l, r) => {
+                self.handle_binop(l, r, self.formatter.or_op(), f)
+            },
+            BExpr::Xor(l, r) => {
+                self.handle_binop(l, r, self.formatter.xor_op(), f)
+            },
         }
     }
 }
@@ -150,11 +163,11 @@ impl<'a> Display for DisplayableBExprWrapped<'a> {
 impl<R: Ring> LBExpr<R> {
     /// Creates a wrapper struct that implements [`Display`] and uses the given
     /// `formatter` to format the expression.
-    pub fn display<'a>(&'a self, formatter: Formatter) -> LBExprFormatter<'a, R> {
-        LBExprFormatter {
-            expr: self,
-            formatter,
-        }
+    pub fn display<'a>(
+        &'a self,
+        formatter: Formatter,
+    ) -> LBExprFormatter<'a, R> {
+        LBExprFormatter { expr: self, formatter }
     }
 
     /// Creates a wrapper struct that implements [`Display`] and uses the given
@@ -372,11 +385,7 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
 
             // Push it first so that we don't try to create a variable for the
             // same subexpression again.
-            self.subs.push(CommonSubExpr {
-                ptr,
-                var: v,
-                init: String::new(),
-            });
+            self.subs.push(CommonSubExpr { ptr, var: v, init: String::new() });
 
             // Format the subexpression into a new buffer.
             let mut cur_buf = std::mem::take(&mut self.buf);
@@ -404,7 +413,8 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
                 let old = std::mem::replace(&mut self.expr, $l);
                 if pred > $l.precedence() && $l.strong_count() == 1 {
                     self.buf.push_str("(");
-                    // We know `l` has a strong count == 1, so we can use `format_op`.
+                    // We know `l` has a strong count == 1, so we can use
+                    // `format_op`.
                     self.format_op();
                     self.buf.push_str(")");
                 } else {
@@ -452,7 +462,7 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
                 } else {
                     write!(&mut self.buf, "{i}").unwrap()
                 }
-            }
+            },
             ExprOp::Var(v) => write!(&mut self.buf, "{v}").unwrap(),
             ExprOp::Add(l, r) => format_bin_op!(add_op, l, r),
             ExprOp::Sub(l, r) => format_bin_op!(sub_op, l, r),
@@ -474,27 +484,27 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
             "or" => {
                 self.llvm_or += 1;
                 format!("or{}", self.llvm_or)
-            }
+            },
             "and" => {
                 self.llvm_and += 1;
                 format!("and{}", self.llvm_and)
-            }
+            },
             "xor" => {
                 self.llvm_xor += 1;
                 format!("xor{}", self.llvm_xor)
-            }
+            },
             "add" => {
                 self.llvm_add += 1;
                 format!("add{}", self.llvm_add)
-            }
+            },
             "sub" => {
                 self.llvm_sub += 1;
                 format!("sub{}", self.llvm_sub)
-            }
+            },
             "mul" => {
                 self.llvm_mul += 1;
                 format!("mul{}", self.llvm_mul)
-            }
+            },
             _ => format!("v{}", self.subs.len() + 1),
         };
         Symbol::new(&name)
@@ -519,31 +529,33 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
             Neg(i) => {
                 let ty = self.llvm_type_name();
                 let rhs = self.llvm_emit_value(i);
-                let var = self.find_existing_var(e.as_ptr()).unwrap_or_else(|| {
-                    let v = self.llvm_fresh_var("sub");
-                    self.subs.push(CommonSubExpr {
-                        ptr: e.as_ptr(),
-                        var: v,
-                        init: format!("sub {ty} 0, {rhs}"),
+                let var =
+                    self.find_existing_var(e.as_ptr()).unwrap_or_else(|| {
+                        let v = self.llvm_fresh_var("sub");
+                        self.subs.push(CommonSubExpr {
+                            ptr: e.as_ptr(),
+                            var: v,
+                            init: format!("sub {ty} 0, {rhs}"),
+                        });
+                        v
                     });
-                    v
-                });
                 format!("%{}", var)
-            }
+            },
             Not(i) => {
                 let ty = self.llvm_type_name();
                 let val = self.llvm_emit_value(i);
-                let var = self.find_existing_var(e.as_ptr()).unwrap_or_else(|| {
-                    let v = self.llvm_fresh_var("xor");
-                    self.subs.push(CommonSubExpr {
-                        ptr: e.as_ptr(),
-                        var: v,
-                        init: format!("xor {ty} {val}, -1"),
+                let var =
+                    self.find_existing_var(e.as_ptr()).unwrap_or_else(|| {
+                        let v = self.llvm_fresh_var("xor");
+                        self.subs.push(CommonSubExpr {
+                            ptr: e.as_ptr(),
+                            var: v,
+                            init: format!("xor {ty} {val}, -1"),
+                        });
+                        v
                     });
-                    v
-                });
                 format!("%{}", var)
-            }
+            },
         }
     }
 
@@ -585,7 +597,7 @@ impl<R: Ring> Display for ExprFormatter<'_, R> {
                         tabs = self.tabs
                     )?;
                 }
-            }
+            },
             Formatter::Rust => {
                 for sub in self.subs.iter().rev() {
                     writeln!(
@@ -597,13 +609,13 @@ impl<R: Ring> Display for ExprFormatter<'_, R> {
                         tabs = self.tabs
                     )?;
                 }
-            }
+            },
             Formatter::Tex => {
                 for sub in self.subs.iter().rev() {
                     writeln!(f, "{} = {}\\\\", sub.var, sub.init)?;
                 }
                 return write!(f, "{}{}", self.prefix, self.buf);
-            }
+            },
             Formatter::LLVM => {
                 // Generate LLVM code with dependencies listed first
                 for sub in self.subs.iter() {
@@ -617,7 +629,7 @@ impl<R: Ring> Display for ExprFormatter<'_, R> {
                     )?;
                 }
                 return Ok(());
-            }
+            },
         }
 
         write!(
@@ -653,13 +665,7 @@ impl<'a, R: Ring, D> FunctionFormatter<'a, R, D> {
             (s.len(), s)
         });
 
-        Self {
-            vars,
-            inner,
-            formatter,
-            function_name,
-            r,
-        }
+        Self { vars, inner, formatter, function_name, r }
     }
 }
 
@@ -680,7 +686,7 @@ impl<'a, R: Ring, D: Display> Display for FunctionFormatter<'a, R, D> {
                 }
 
                 write!(f, ") {{\n{};\n}}", self.inner)
-            }
+            },
             Formatter::Rust => {
                 let ty = self.r.data_type_name(self.formatter).to_string();
                 write!(f, "fn {}(", self.function_name)?;
@@ -695,7 +701,7 @@ impl<'a, R: Ring, D: Display> Display for FunctionFormatter<'a, R, D> {
                 }
 
                 write!(f, ") -> {ty} {{\n{}\n}}", self.inner)
-            }
+            },
             Formatter::Tex => self.inner.fmt(f),
             Formatter::LLVM => {
                 let ty = self.r.data_type_name(self.formatter).to_string();
@@ -720,23 +726,26 @@ impl<'a, R: Ring, D: Display> Display for FunctionFormatter<'a, R, D> {
                     }
                 }
                 // Compute final result value
-                let last_value = if let Some(sub) = instructions.lines().rev().find_map(|line| {
-                    let line = line.trim();
-                    if line.starts_with('%') {
-                        line.find('=').map(|eq_pos| line[..eq_pos].trim().to_string())
-                    } else {
-                        None
-                    }
-                }) {
+                let last_value = if let Some(sub) =
+                    instructions.lines().rev().find_map(|line| {
+                        let line = line.trim();
+                        if line.starts_with('%') {
+                            line.find('=')
+                                .map(|eq_pos| line[..eq_pos].trim().to_string())
+                        } else {
+                            None
+                        }
+                    }) {
                     sub
                 } else {
-                    // No instructions; fallback to a constant zero of correct type
+                    // No instructions; fallback to a constant zero of correct
+                    // type
                     "0".to_string()
                 };
 
                 writeln!(f, "{:\t>tabs$}ret {ty} {last_value}", "", tabs = 1)?;
                 write!(f, "}}")
-            }
+            },
         }
     }
 }

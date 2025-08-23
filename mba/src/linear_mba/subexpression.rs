@@ -1,9 +1,11 @@
 //! Finds linear MBA subexpressions in an [`Expr`].
 
-use crate::Symbol;
-use crate::bitwise_expr::{BExpr, LBExpr};
-use crate::expr::{Expr, ExprOp};
-use crate::rings::BinaryRing;
+use crate::{
+    Symbol,
+    bitwise_expr::{BExpr, LBExpr},
+    expr::{Expr, ExprOp},
+    rings::BinaryRing,
+};
 
 /// A list of substitutions.
 /// See e.g. [`expr_to_bexpr`] on what this is used for.
@@ -40,7 +42,11 @@ impl<R: BinaryRing> Subs<R> {
 /// If `force` is false, it will return [`None`] if the top-most operation is
 /// not a [`BExpr`] operation. Otherwise, it will return a [`BExpr::Var`] whose
 /// substitution is the original expression.
-pub fn expr_to_bexpr<R: BinaryRing>(e: &Expr<R>, subs: &mut Subs<R>, force: bool) -> Option<BExpr> {
+pub fn expr_to_bexpr<R: BinaryRing>(
+    e: &Expr<R>,
+    subs: &mut Subs<R>,
+    force: bool,
+) -> Option<BExpr> {
     // New substitution variable.
     let mut new_sub = || force.then(|| BExpr::Var(subs.add(e.clone())));
 
@@ -66,7 +72,9 @@ pub fn expr_to_bexpr<R: BinaryRing>(e: &Expr<R>, subs: &mut Subs<R>, force: bool
             expr_to_bexpr(l, subs, true).unwrap(),
             expr_to_bexpr(r, subs, true).unwrap(),
         )),
-        ExprOp::Not(i) => Some(BExpr::not(expr_to_bexpr(i, subs, true).unwrap())),
+        ExprOp::Not(i) => {
+            Some(BExpr::not(expr_to_bexpr(i, subs, true).unwrap()))
+        },
         // Otherwise generate a new variable and add the substitution.
         _ => new_sub(),
     }
@@ -133,13 +141,13 @@ fn expr_to_lbexpr_impl<R: BinaryRing>(
             expr_to_lbexpr_impl(l, lu, subs, negate, true, ring);
             expr_to_lbexpr_impl(r, lu, subs, negate, true, ring);
             true
-        }
+        },
 
         ExprOp::Sub(l, r) => {
             expr_to_lbexpr_impl(l, lu, subs, negate, true, ring);
             expr_to_lbexpr_impl(r, lu, subs, !negate, true, ring);
             true
-        }
+        },
 
         ExprOp::Neg(i) => {
             // Theoretically we could allow another whole
@@ -151,7 +159,7 @@ fn expr_to_lbexpr_impl<R: BinaryRing>(
             };
             lu.0.push((c, expr_to_bexpr(i, subs, true).unwrap()));
             true
-        }
+        },
 
         // Otherwise parse the term from this expression.
         _ => {
@@ -164,6 +172,6 @@ fn expr_to_lbexpr_impl<R: BinaryRing>(
             }
             lu.0.push((f, u));
             true
-        }
+        },
     }
 }

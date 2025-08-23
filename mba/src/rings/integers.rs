@@ -134,7 +134,11 @@ impl OrderedRing for Z {
         }
     }
 
-    fn cmp_abs(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+    fn cmp_abs(
+        &self,
+        l: &Self::Element,
+        r: &Self::Element,
+    ) -> std::cmp::Ordering {
         l.magnitude().cmp(r.magnitude())
     }
 
@@ -165,8 +169,10 @@ impl OrderedRing for Z {
 
 #[test]
 fn rounded_div_test() {
-    use rand::SeedableRng as _;
-    use rand::distr::{Distribution as _, Uniform};
+    use rand::{
+        SeedableRng as _,
+        distr::{Distribution as _, Uniform},
+    };
     let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 
     let dividend_max = 1000;
@@ -185,7 +191,8 @@ fn rounded_div_test() {
         };
 
         let quotient = Z::rounded_div(&dividend.into(), &divisor.into());
-        let check = (((dividend as f64) / (divisor as f64)).round() as i32).into();
+        let check =
+            (((dividend as f64) / (divisor as f64)).round() as i32).into();
         assert_eq!(
             quotient, check,
             "rounded_div({dividend}, {divisor}) = {check} but got {quotient}"

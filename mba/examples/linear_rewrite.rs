@@ -1,6 +1,4 @@
-use mba::bitwise_expr::LBExpr;
-use mba::linear_mba::rewrite;
-use mba::rings::U8;
+use mba::{bitwise_expr::LBExpr, linear_mba::rewrite, rings::U8};
 
 // Rewrite an expression using linear MBA.
 fn main() {

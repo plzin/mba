@@ -1,10 +1,12 @@
 //! Generates LaTeX code for various objects.
 
-use crate::lattice::{AffineLattice, Lattice};
-use crate::matrix::{Matrix, MatrixStorage};
-use crate::poly::Poly;
-use crate::rings::{Ring, RingElement};
-use crate::vector::{Vector, VectorStorage};
+use crate::{
+    lattice::{AffineLattice, Lattice},
+    matrix::{Matrix, MatrixStorage},
+    poly::Poly,
+    rings::{Ring, RingElement},
+    vector::{Vector, VectorStorage},
+};
 
 pub fn bold<T>(t: T) -> TexBold<T> {
     TexBold(t)
@@ -115,7 +117,9 @@ pub struct TexVector<'a, R: Ring, S: VectorStorage<R> + ?Sized> {
     vector: &'a Vector<R, S>,
 }
 
-impl<'a, R: Ring, S: VectorStorage<R> + ?Sized> std::fmt::Display for TexVector<'a, R, S> {
+impl<'a, R: Ring, S: VectorStorage<R> + ?Sized> std::fmt::Display
+    for TexVector<'a, R, S>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "\\left[\\begin{{array}}{{}}")?;
         for e in self.vector.iter() {
@@ -135,7 +139,9 @@ pub struct TexMatrix<'a, R: Ring, S: MatrixStorage<R> + ?Sized> {
     matrix: &'a Matrix<R, S>,
 }
 
-impl<'a, R: Ring, S: MatrixStorage<R> + ?Sized> std::fmt::Display for TexMatrix<'a, R, S> {
+impl<'a, R: Ring, S: MatrixStorage<R> + ?Sized> std::fmt::Display
+    for TexMatrix<'a, R, S>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "\\left[\\begin{{array}}{{}}")?;
         for row in self.matrix.rows() {

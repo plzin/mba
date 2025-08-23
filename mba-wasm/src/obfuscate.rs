@@ -1,6 +1,7 @@
-use crate::Formatter;
 use mba::{expr::Expr, linear_mba, rings::BinaryRing};
 use wasm_bindgen::prelude::*;
+
+use crate::Formatter;
 
 /// Obfuscates a general expression.
 #[wasm_bindgen(js_name = "obfuscate")]
@@ -33,8 +34,8 @@ pub fn obfuscate_impl<R: BinaryRing>(
     formatter: Formatter,
     r: &R,
 ) -> Result<String, String> {
-    let mut e =
-        Expr::from_string(expr, r).map_err(|e| format!("Failed to parse expression: {e}"))?;
+    let mut e = Expr::from_string(expr, r)
+        .map_err(|e| format!("Failed to parse expression: {e}"))?;
 
     let cfg = linear_mba::ObfuscationConfig {
         auxiliary_vars,

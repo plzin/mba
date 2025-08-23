@@ -1,12 +1,17 @@
 //! Binary permutation polynomials.
 
-use crate::matrix::OwnedMatrix;
-use crate::poly::Poly;
-use crate::rings::{BinaryRing, Ring, RingElement as _};
-use crate::solver;
-use crate::vector::OwnedVector;
-use rand::Rng;
-use rand::distr::{Distribution, Uniform};
+use rand::{
+    Rng,
+    distr::{Distribution, Uniform},
+};
+
+use crate::{
+    matrix::OwnedMatrix,
+    poly::Poly,
+    rings::{BinaryRing, Ring, RingElement as _},
+    solver,
+    vector::OwnedVector,
+};
 
 /// Returns a pair of permutation polynomials mod 2^n.
 /// The functions are inverses of each other.
@@ -19,8 +24,8 @@ pub fn perm_pair<R: BinaryRing, Rand: Rng>(
 ) -> (Poly<R>, Poly<R>) {
     assert!(
         degree >= 1,
-        "Can't create a permutation polynomial \
-            of degree 0 as this would be a constant."
+        "Can't create a permutation polynomial of degree 0 as this would be a \
+         constant."
     );
     // Generate a random permutation polynomial.
     let p = random_perm_poly(rng, degree, r);
@@ -33,7 +38,11 @@ pub fn perm_pair<R: BinaryRing, Rand: Rng>(
 }
 
 /// Returns a random permutation polynomial.
-pub fn random_perm_poly<R: BinaryRing, Rand: Rng>(rng: &mut Rand, degree: usize, r: &R) -> Poly<R> {
+pub fn random_perm_poly<R: BinaryRing, Rand: Rng>(
+    rng: &mut Rand,
+    degree: usize,
+    r: &R,
+) -> Poly<R> {
     let mut p: Vec<_> = (0..=degree).map(|_| r.random(rng)).collect();
 
     // Make sure that this is a permutation polynomial.
@@ -63,7 +72,12 @@ pub fn random_perm_poly<R: BinaryRing, Rand: Rng>(rng: &mut Rand, degree: usize,
 /// It does not simplify the result as much as possible,
 /// so it is recommended to call [Poly::simplify] afterwards.
 /// It does however reduce the degree of the result.
-pub fn compose<R: BinaryRing>(p: &Poly<R>, q: &Poly<R>, zi: &ZeroIdeal<R>, ring: &R) -> Poly<R> {
+pub fn compose<R: BinaryRing>(
+    p: &Poly<R>,
+    q: &Poly<R>,
+    zi: &ZeroIdeal<R>,
+    ring: &R,
+) -> Poly<R> {
     // Iterate over the coefficients in reverse order.
     let mut iter = p.coeffs.iter().rev();
 
@@ -81,11 +95,12 @@ pub fn compose<R: BinaryRing>(p: &Poly<R>, q: &Poly<R>, zi: &ZeroIdeal<R>, ring:
 }
 
 /// Computes the inverse of a permutation polynomial using Newton's Method.
-pub fn compute_inverse<R: BinaryRing>(f: &Poly<R>, zi: &ZeroIdeal<R>, r: &R) -> Poly<R> {
-    assert!(
-        is_perm_poly(f),
-        "Can't invert {f} as it is not a permutation."
-    );
+pub fn compute_inverse<R: BinaryRing>(
+    f: &Poly<R>,
+    zi: &ZeroIdeal<R>,
+    r: &R,
+) -> Poly<R> {
+    assert!(is_perm_poly(f), "Can't invert {f} as it is not a permutation.");
 
     // Simplify p.
     let p = f.clone().simplified(zi, r);
@@ -101,8 +116,8 @@ pub fn compute_inverse<R: BinaryRing>(f: &Poly<R>, zi: &ZeroIdeal<R>, r: &R) -> 
         // to stop after a certain number of iterations.
         assert!(
             it <= r.bits() * 2,
-            "Failed to compute the inverse \
-                in a reasonable number of iterations."
+            "Failed to compute the inverse in a reasonable number of \
+             iterations."
         );
         // Compute the composition.
         let mut comp = compose(&p, &q, zi, r).simplified(zi, r);
@@ -126,11 +141,12 @@ pub fn compute_inverse<R: BinaryRing>(f: &Poly<R>, zi: &ZeroIdeal<R>, r: &R) -> 
 }
 
 /// Computes the inverse of a permutation polynomial by using f as a generator.
-pub fn compute_inverse_generator<R: BinaryRing>(f: &Poly<R>, zi: &ZeroIdeal<R>, r: &R) -> Poly<R> {
-    assert!(
-        is_perm_poly(f),
-        "Can't invert {f} as it is not a permutation."
-    );
+pub fn compute_inverse_generator<R: BinaryRing>(
+    f: &Poly<R>,
+    zi: &ZeroIdeal<R>,
+    r: &R,
+) -> Poly<R> {
+    assert!(is_perm_poly(f), "Can't invert {f} as it is not a permutation.");
 
     // The inverse will contain f^(2^n-1)
     let mut inverse = f.clone();
@@ -308,9 +324,7 @@ impl<R: Ring> ZeroIdeal<R> {
     where
         R: BinaryRing,
     {
-        Self {
-            generators: zero_ideal(r),
-        }
+        Self { generators: zero_ideal(r) }
     }
 
     /// Get generators for the zero ideal.
@@ -332,8 +346,8 @@ impl<R: BinaryRing> Poly<R> {
         // zi.last with zi.last, because it has a leading coefficient of 1,
         // so each coefficient of higher degree
         // can be eliminated in a single step.
-        // Once the degree is less than that of zi.last we try to reduce with the
-        // other generators as much as possible.
+        // Once the degree is less than that of zi.last we try to reduce with
+        // the other generators as much as possible.
 
         if self.len() == 0 {
             return;
@@ -345,7 +359,10 @@ impl<R: BinaryRing> Poly<R> {
             let gen_len = g.len();
 
             while coeff + 1 >= gen_len {
-                let m = R::euclidean_div(&self.coeffs[coeff], &g.coeffs[gen_len - 1]);
+                let m = R::euclidean_div(
+                    &self.coeffs[coeff],
+                    &g.coeffs[gen_len - 1],
+                );
                 if !m.is_zero() {
                     let iter = self.coeffs[coeff + 1 - gen_len..=coeff]
                         .iter_mut()
@@ -379,7 +396,8 @@ impl<R: BinaryRing> Poly<R> {
             let p_len = self.len();
             let (c, rest) = self.coeffs.split_last_mut().unwrap();
             if !c.is_zero() {
-                let iter = rest[p_len - gen_len..].iter_mut().zip(g.coeffs.iter());
+                let iter =
+                    rest[p_len - gen_len..].iter_mut().zip(g.coeffs.iter());
 
                 for (p, g) in iter {
                     r.mul_sub_assign(p, c, g);
@@ -395,9 +413,10 @@ impl<R: BinaryRing> Poly<R> {
 
 #[cfg(test)]
 mod test {
+    use rand::{SeedableRng as _, rngs::StdRng};
+
     use super::*;
     use crate::rings::{U8, U16, U32, U64, U128};
-    use rand::{SeedableRng as _, rngs::StdRng};
 
     fn check_composition<R: BinaryRing>(r: &R) {
         let rng = &mut StdRng::seed_from_u64(0);
@@ -498,7 +517,11 @@ mod test {
 
     /// Computes the order of a polynomial by brute force.
     /// Should only be used for testing and only with tiny moduli.
-    pub fn order<R: BinaryRing>(p: &Poly<R>, zi: &ZeroIdeal<R>, r: &R) -> usize {
+    pub fn order<R: BinaryRing>(
+        p: &Poly<R>,
+        zi: &ZeroIdeal<R>,
+        r: &R,
+    ) -> usize {
         assert!(
             is_perm_poly(p),
             "The order is only defined for permutation polynomials!"
@@ -518,8 +541,8 @@ mod test {
         }
 
         panic!(
-            "We shouldn't get here. \
-            Either p is not a permutation polynomial or the composition is wrong."
+            "We shouldn't get here. Either p is not a permutation polynomial \
+             or the composition is wrong."
         );
     }
 
@@ -542,7 +565,8 @@ mod test {
         let mut rng = StdRng::seed_from_u64(0);
         let zi = ZeroIdeal::init(r);
         for d in 0..10usize {
-            let p = random_perm_poly(&mut rng, d % 10 + 1, r).simplified(&zi, r);
+            let p =
+                random_perm_poly(&mut rng, d % 10 + 1, r).simplified(&zi, r);
             let q = compute_inverse_generator(&p, &zi, r);
             assert!(
                 compose(&p, &q, &zi, r).simplified(&zi, r).is_id(),

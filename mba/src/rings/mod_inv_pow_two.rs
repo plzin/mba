@@ -1,6 +1,5 @@
-use crate::rings::RingElement as _;
-
 use super::{BinaryBigInt, BinaryRing, U8, U16, U32, U64, U128};
+use crate::rings::RingElement as _;
 
 /// This is here to allow us to specialize the `mod_inv` method for each type.
 /// For `u8` we compute a lookup table at compile time and can just look up the
@@ -50,7 +49,8 @@ impl ModInv for BinaryBigInt {
 /// element mod a power of two.
 fn mod_inv<R: BinaryRing>(e: &R::Element, r: &R) -> R::Element {
     // We initialize the inverse with the inverse of e mod 2^8.
-    let mut x = r.element_from_usize(MOD_INV_TABLE[R::to_usize(e) & 0xff] as usize);
+    let mut x =
+        r.element_from_usize(MOD_INV_TABLE[R::to_usize(e) & 0xff] as usize);
 
     // We need the number two in each iteration.
     let two = r.element_from_usize(2);

@@ -33,15 +33,20 @@
 //! But if there were methods that do not take `R` as an argument in the impl
 //! block, then the compiler genuinely couldn't know what `R` is.
 
-use rand::Rng;
-use std::borrow::{Borrow, BorrowMut};
-use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::ops::{Index, IndexMut, Range};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    fmt::Debug,
+    marker::PhantomData,
+    ops::{Index, IndexMut, Range},
+};
 
-use crate::matrix::{ColumnVector, Matrix, MatrixStorage, RowVector};
-use crate::rings::{Field, IntDivRing, Ring, RingElement, SqrtRing};
-use crate::{CustomMetadata, CustomMetadataSlice, Half};
+use rand::Rng;
+
+use crate::{
+    CustomMetadata, CustomMetadataSlice, Half,
+    matrix::{ColumnVector, Matrix, MatrixStorage, RowVector},
+    rings::{Field, IntDivRing, Ring, RingElement, SqrtRing},
+};
 
 /// Manages how the entries of the vector are stored.
 /// See the module documentation [`crate::vector`].
@@ -87,10 +92,7 @@ impl<R: Ring, S: VectorStorage<R> + ?Sized> Vector<R, S> {
     where
         S: Sized,
     {
-        Self {
-            phantom: std::marker::PhantomData,
-            storage,
-        }
+        Self { phantom: std::marker::PhantomData, storage }
     }
 
     /// Creates a vector reference from a storage reference.
@@ -186,7 +188,11 @@ impl<R: Ring, S: VectorStorage<R> + ?Sized> Vector<R, S> {
 
     /// Returns mutable references to two entries by index or panics if the
     /// indices are the same.
-    pub fn get_mut_entries(&mut self, i: usize, j: usize) -> (&mut R::Element, &mut R::Element) {
+    pub fn get_mut_entries(
+        &mut self,
+        i: usize,
+        j: usize,
+    ) -> (&mut R::Element, &mut R::Element) {
         // See `Matrix::get_mut_rows`.
         assert_ne!(i, j, "Tried to mutably borrow the same entry twice.");
         let i_ptr = self.entry_mut(i) as *mut _;
@@ -257,9 +263,7 @@ impl<R: Ring, S: VectorStorage<R> + ?Sized> Vector<R, S> {
         );
         OwnedVector::from_iter(
             self.dim(),
-            self.iter()
-                .zip(rhs.iter())
-                .map(|(a, b)| r.add(a.clone(), b)),
+            self.iter().zip(rhs.iter()).map(|(a, b)| r.add(a.clone(), b)),
         )
     }
 
@@ -301,9 +305,7 @@ impl<R: Ring, S: VectorStorage<R> + ?Sized> Vector<R, S> {
         );
         OwnedVector::from_iter(
             self.dim(),
-            self.iter()
-                .zip(rhs.iter())
-                .map(|(a, b)| r.sub(a.clone(), b)),
+            self.iter().zip(rhs.iter()).map(|(a, b)| r.sub(a.clone(), b)),
         )
     }
 
@@ -364,7 +366,10 @@ impl<R: Ring, S: VectorStorage<R> + ?Sized> Vector<R, S> {
 
     /// Allocate a new vector that is this vector scaled by the scalar.
     pub fn mul_ref(&self, c: &R::Element, r: &R) -> OwnedVector<R> {
-        OwnedVector::from_iter(self.dim(), self.iter().map(|e| r.mul(e.clone(), c)))
+        OwnedVector::from_iter(
+            self.dim(),
+            self.iter().map(|e| r.mul(e.clone(), c)),
+        )
     }
 
     /// Multiply a vector by a scalar and add the result to this vector.
@@ -411,14 +416,12 @@ impl<R: Ring, S: VectorStorage<R> + ?Sized> Vector<R, S> {
     where
         T: VectorStorage<R> + ?Sized,
     {
-        self.iter()
-            .zip(other.iter())
-            .fold(R::zero(), |acc, (a, b)| {
-                // TODO: We should probably try to avoid allocating a new element
-                // for the diff each time. We can just reuse one.
-                let diff = r.sub(a.clone(), b);
-                r.mul_add(acc, &diff, &diff)
-            })
+        self.iter().zip(other.iter()).fold(R::zero(), |acc, (a, b)| {
+            // TODO: We should probably try to avoid allocating a new element
+            // for the diff each time. We can just reuse one.
+            let diff = r.sub(a.clone(), b);
+            r.mul_add(acc, &diff, &diff)
+        })
     }
 
     /// Returns the norm of the vector.
@@ -493,7 +496,10 @@ impl<R: Field, S: VectorStorage<R> + ?Sized> Vector<R, S> {
 
     /// Allocate a new vector that is this vector divided by the scalar.
     pub fn div_ref(&self, c: &R::Element, r: &R) -> OwnedVector<R> {
-        OwnedVector::from_iter(self.dim(), self.iter().map(|e| r.div(e.clone(), c)))
+        OwnedVector::from_iter(
+            self.dim(),
+            self.iter().map(|e| r.div(e.clone(), c)),
+        )
     }
 }
 
@@ -578,8 +584,8 @@ where
     R: Ring,
     S: VectorStorage<R> + ?Sized,
 {
-    type Item = &'a R::Element;
     type IntoIter = S::Iter<'a>;
+    type Item = &'a R::Element;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -591,8 +597,8 @@ where
     R: Ring,
     S: VectorStorage<R> + ?Sized,
 {
-    type Item = &'a mut R::Element;
     type IntoIter = S::IterMut<'a>;
+    type Item = &'a mut R::Element;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
@@ -621,7 +627,10 @@ where
     }
 }
 
-impl<R: Ring, S: VectorStorage<R> + ?Sized> Eq for Vector<R, S> where R::Element: Eq {}
+impl<R: Ring, S: VectorStorage<R> + ?Sized> Eq for Vector<R, S> where
+    R::Element: Eq
+{
+}
 
 /// Technically this is not a vector view, because it owns
 /// the elements. However, you can only get references
@@ -680,7 +689,9 @@ impl<R: Ring> SliceVectorStorage<R> {
     }
 
     pub fn from_slice_mut(s: &mut [R::Element]) -> &mut Self {
-        unsafe { &mut *std::ptr::from_raw_parts_mut(s.as_mut_ptr() as _, s.len()) }
+        unsafe {
+            &mut *std::ptr::from_raw_parts_mut(s.as_mut_ptr() as _, s.len())
+        }
     }
 }
 
@@ -744,9 +755,7 @@ impl<R: Ring> OwnedVector<R> {
 
     /// Returns an empty vector.
     pub fn empty() -> Self {
-        Self::from_storage(OwnedVectorStorage {
-            entries: Vec::new(),
-        })
+        Self::from_storage(OwnedVectorStorage { entries: Vec::new() })
     }
 
     /// Returns a zero vector.
@@ -765,7 +774,10 @@ impl<R: Ring> OwnedVector<R> {
     }
 
     /// Creates a vector from an iterator.
-    pub fn from_iter<U: Iterator<Item = R::Element>>(dim: usize, mut iter: U) -> Self {
+    pub fn from_iter<U: Iterator<Item = R::Element>>(
+        dim: usize,
+        mut iter: U,
+    ) -> Self {
         let mut entries = Vec::with_capacity(dim);
         for _ in 0..dim {
             let e = iter.next().expect("Iter needs to return `dim` elements.");
@@ -782,7 +794,8 @@ impl<R: Ring> OwnedVector<R> {
     ) -> Result<Self, E> {
         let mut entries = Vec::with_capacity(dim);
         for _ in 0..dim {
-            let e = iter.next().expect("Iter needs to return `dim` elements.")?;
+            let e =
+                iter.next().expect("Iter needs to return `dim` elements.")?;
             entries.push(e);
         }
 
@@ -800,7 +813,10 @@ impl<R: Ring> OwnedVector<R> {
     }
 
     /// Applies a function to each entry.
-    pub fn map<F: FnMut(R::Element) -> R::Element>(self, mut f: F) -> OwnedVector<R> {
+    pub fn map<F: FnMut(R::Element) -> R::Element>(
+        self,
+        mut f: F,
+    ) -> OwnedVector<R> {
         let mut entries = Vec::with_capacity(self.dim());
         for e in self.storage.entries {
             entries.push(f(e));
@@ -898,17 +914,26 @@ pub type StrideVectorView<R> = Vector<R, StrideStorage<R>>;
 
 impl<R: Ring> StrideVectorView<R> {
     /// Returns a vector view with stride from a raw pointer and dimension.
-    unsafe fn from_raw_parts<'a>(ptr: *const R::Element, dim: usize, stride: usize) -> &'a Self {
-        Self::from_storage_ref(unsafe { StrideStorage::from_raw_parts(ptr, dim, stride) })
+    unsafe fn from_raw_parts<'a>(
+        ptr: *const R::Element,
+        dim: usize,
+        stride: usize,
+    ) -> &'a Self {
+        Self::from_storage_ref(unsafe {
+            StrideStorage::from_raw_parts(ptr, dim, stride)
+        })
     }
 
-    /// Returns a mutable vector view with stride from a raw pointer and dimension.
+    /// Returns a mutable vector view with stride from a raw pointer and
+    /// dimension.
     unsafe fn from_raw_parts_mut<'a>(
         ptr: *mut R::Element,
         dim: usize,
         stride: usize,
     ) -> &'a mut Self {
-        Self::from_storage_ref_mut(unsafe { StrideStorage::from_raw_parts_mut(ptr, dim, stride) })
+        Self::from_storage_ref_mut(unsafe {
+            StrideStorage::from_raw_parts_mut(ptr, dim, stride)
+        })
     }
 
     /// Returns a vector view with stride from a slice.
@@ -923,7 +948,10 @@ impl<R: Ring> StrideVectorView<R> {
     /// Returns a vector view with stride from a slice.
     /// The vector view will have the maximum possible dimension
     /// that fits into the slice.
-    pub fn from_stride_slice_mut(s: &mut [R::Element], stride: usize) -> &mut Self {
+    pub fn from_stride_slice_mut(
+        s: &mut [R::Element],
+        stride: usize,
+    ) -> &mut Self {
         assert!(stride > 0);
         let dim = s.len() + (stride - 1) / stride;
         unsafe { Self::from_raw_parts_mut(s.as_mut_ptr(), dim, stride) }
@@ -940,7 +968,9 @@ impl<R: Ring> StrideVectorView<R> {
 /// stride. As I said, very hacky, but in practice the both the dimension and
 /// stride should fit into 32 bits.
 #[repr(transparent)]
-pub struct StrideStorage<R: Ring>(CustomMetadataSlice<R::Element, StrideStorageMetadata>);
+pub struct StrideStorage<R: Ring>(
+    CustomMetadataSlice<R::Element, StrideStorageMetadata>,
+);
 
 struct StrideStorageMetadata {
     dim: Half,
@@ -978,7 +1008,9 @@ impl<R: Ring> StrideStorage<R> {
         stride: usize,
     ) -> &'a mut Self {
         let metadata = StrideStorageMetadata::new(dim, stride);
-        unsafe { std::mem::transmute(CustomMetadataSlice::new_mut(data, metadata)) }
+        unsafe {
+            std::mem::transmute(CustomMetadataSlice::new_mut(data, metadata))
+        }
     }
 
     /// The stride of the vector.

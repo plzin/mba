@@ -1,5 +1,4 @@
-use super::mod_inv_pow_two::ModInv as _;
-use super::*;
+use super::{mod_inv_pow_two::ModInv as _, *};
 use crate::formatter::Formatter;
 
 // Implements an order on a ring whose elements are represented using
@@ -10,7 +9,11 @@ use crate::formatter::Formatter;
 macro_rules! impl_ordered_ring_uint {
     ($ring:ident) => {
         impl OrderedRing for $ring {
-            fn cmp(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+            fn cmp(
+                &self,
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> std::cmp::Ordering {
                 l.cmp(r)
             }
 
@@ -44,7 +47,11 @@ macro_rules! impl_ordered_ring_uint {
                 e
             }
 
-            fn cmp_abs(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+            fn cmp_abs(
+                &self,
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> std::cmp::Ordering {
                 l.cmp(r)
             }
 
@@ -157,10 +164,15 @@ macro_rules! uint_ring {
                 e
             }
 
-            fn data_type_name(&self, formatter: Formatter) -> impl std::fmt::Display {
+            fn data_type_name(
+                &self,
+                formatter: Formatter,
+            ) -> impl std::fmt::Display {
                 match formatter {
                     Formatter::C => $c_type,
-                    Formatter::Rust => concat!("Wrapping<", stringify!($uint), ">"),
+                    Formatter::Rust => {
+                        concat!("Wrapping<", stringify!($uint), ">")
+                    },
                     Formatter::Tex => $c_type,
                     Formatter::LLVM => $llvm_type,
                 }
@@ -216,7 +228,10 @@ macro_rules! uint_ring {
         impl_ordered_ring_uint!($ring);
 
         impl IntDivRing for $ring {
-            fn rounded_div(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
+            fn rounded_div(
+                &l: &Self::Element,
+                &r: &Self::Element,
+            ) -> Self::Element {
                 // This isn't my favorite way to do this. But there are problems
                 // with the naive implementation (`(l + (r >> 1)) / r`), i.e.
                 // it can easily overflow. This can be avoided by casting to
@@ -228,14 +243,24 @@ macro_rules! uint_ring {
                 // in a single instruction (`div`).
                 let q = l / r;
                 let rem = l % r;
-                q + if rem >= r.div_ceil(2) { 1 } else { 0 }
+                q + if rem >= r.div_ceil(2) {
+                    1
+                } else {
+                    0
+                }
             }
 
-            fn euclidean_div(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
+            fn euclidean_div(
+                &l: &Self::Element,
+                &r: &Self::Element,
+            ) -> Self::Element {
                 l.overflowing_div(r).0
             }
 
-            fn euclidean_rem(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
+            fn euclidean_rem(
+                &l: &Self::Element,
+                &r: &Self::Element,
+            ) -> Self::Element {
                 l.overflowing_rem(r).0
             }
         }
@@ -250,8 +275,7 @@ uint_ring!(U128, u128, "uint128_t", "i128");
 
 #[cfg(test)]
 mod test_primitive_uint {
-    use super::test::*;
-    use super::*;
+    use super::{test::*, *};
 
     #[test]
     fn test_inverse_u8() {
@@ -365,7 +389,8 @@ mod test_primitive_uint {
                 R::to_representative(&a).into(),
                 R::to_representative(&b).into(),
             );
-            let check = r.element_from_biguint(rational.round().numer().magnitude());
+            let check =
+                r.element_from_biguint(rational.round().numer().magnitude());
             assert_eq!(q, check, "rounded_div({a}, {b}) = {check} but got {q}");
         }
     }

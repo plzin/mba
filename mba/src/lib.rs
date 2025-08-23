@@ -65,7 +65,10 @@ impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
             std::mem::size_of::<<[T] as std::ptr::Pointee>::Metadata>()
         );
         unsafe {
-            &*std::ptr::from_raw_parts(data as _, core::intrinsics::transmute_unchecked(metadata))
+            &*std::ptr::from_raw_parts(
+                data as _,
+                core::intrinsics::transmute_unchecked(metadata),
+            )
         }
     }
 
@@ -83,7 +86,9 @@ impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
     }
 
     pub fn metadata(&self) -> M {
-        unsafe { core::intrinsics::transmute_unchecked(std::ptr::metadata(self)) }
+        unsafe {
+            core::intrinsics::transmute_unchecked(std::ptr::metadata(self))
+        }
     }
 
     pub fn as_ptr(&self) -> *const T {
@@ -95,12 +100,20 @@ impl<T, M: CustomMetadata> CustomMetadataSlice<T, M> {
     }
 
     pub fn slice(&self) -> &[T] {
-        unsafe { std::slice::from_raw_parts(self.data.as_ptr() as _, self.metadata().size()) }
+        unsafe {
+            std::slice::from_raw_parts(
+                self.data.as_ptr() as _,
+                self.metadata().size(),
+            )
+        }
     }
 
     pub fn slice_mut(&mut self) -> &mut [T] {
         unsafe {
-            std::slice::from_raw_parts_mut(self.data.as_mut_ptr() as _, self.metadata().size())
+            std::slice::from_raw_parts_mut(
+                self.data.as_mut_ptr() as _,
+                self.metadata().size(),
+            )
         }
     }
 }

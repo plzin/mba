@@ -2,11 +2,11 @@
 //! ([ring](https://en.wikipedia.org/wiki/Ring_(mathematics))) we are working
 //! with. These traits exist and look the way they do for multiple reasons:
 //!
-//! - So we can have extremely fast implementations for common bit widths,
-//!   i.e. 8, 16, 32, 64, that use single instructions for wrapping operations
-//!   and don't have to go through an insane amount of `BigInt` overhead.
-//! - We can have slower but more general implementations using `BigInt`s
-//!   that allow the modulus to be set at runtime rather than compile time.
+//! - So we can have extremely fast implementations for common bit widths, i.e.
+//!   8, 16, 32, 64, that use single instructions for wrapping operations and
+//!   don't have to go through an insane amount of `BigInt` overhead.
+//! - We can have slower but more general implementations using `BigInt`s that
+//!   allow the modulus to be set at runtime rather than compile time.
 //!
 //! The most important trait is [`Ring`] which stores information about the
 //! ring we are working in and all operations on the ring are implemented in
@@ -40,16 +40,15 @@ pub use binary_bigint::*;
 pub use float::*;
 pub use integers::*;
 pub use mod_n::*;
+use num_bigint::{BigInt, BigUint, RandBigInt};
+use num_integer::Integer as _;
+use num_rational::BigRational;
+use num_traits::{Euclid, One, Signed, Zero};
 pub use primitive_int::*;
 pub use primitive_uint::*;
 pub use rationals::*;
 pub use traits::*;
 pub use var_bits_primitive::*;
-
-use num_bigint::{BigInt, BigUint, RandBigInt};
-use num_integer::Integer as _;
-use num_rational::BigRational;
-use num_traits::{Euclid, One, Signed, Zero};
 
 impl_ring_element!(BigUint);
 impl_ring_element!(BigInt);
@@ -155,9 +154,9 @@ pub(crate) fn neg_assign_mod(e: &mut BigUint, m: &BigUint) {
 ///   from `m`) to get a value `0 <= m - (e + 1) < m` which is the correct
 ///   representative.
 /// - We also need to be careful to never use negative numbers during the
-///   computation, since `BigUint` can only store non-negative integers.
-///   If we wrote this as `-e - 1 + m` we would be using negative numbers, but
-///   by subtracting the `e + 1` from `m` it doesn't.
+///   computation, since `BigUint` can only store non-negative integers. If we
+///   wrote this as `-e - 1 + m` we would be using negative numbers, but by
+///   subtracting the `e + 1` from `m` it doesn't.
 pub(crate) fn not_assign_mod(e: &mut BigUint, m: &BigUint) {
     *e = m - (std::mem::take(e) + 1u32);
 
@@ -170,9 +169,9 @@ pub(crate) fn not_assign_mod(e: &mut BigUint, m: &BigUint) {
 
 #[cfg(test)]
 mod test {
+    use rand::{SeedableRng, rngs::StdRng};
+
     use super::*;
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
 
     pub fn test_inverse<R: Ring>(r: &R) {
         let rng = &mut StdRng::seed_from_u64(0);
@@ -233,10 +232,13 @@ mod test {
             };
             let q = R::rounded_div(&a, &b);
             let check = r.element_from_bigint(
-                &BigRational::new(BigInt::from(a.clone()), BigInt::from(b.clone()))
-                    .round()
-                    .into_raw()
-                    .0,
+                &BigRational::new(
+                    BigInt::from(a.clone()),
+                    BigInt::from(b.clone()),
+                )
+                .round()
+                .into_raw()
+                .0,
             );
             assert_eq!(q, check, "rounded_div({a}, {b}) = {check} but got {q}");
         }

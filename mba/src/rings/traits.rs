@@ -4,7 +4,9 @@ use num_bigint::{BigInt, BigUint, Sign};
 /// This exists mostly for convenience, so we can call `e.is_zero` on ring
 /// elements, but this should really all be implemented on the `Ring` itself,
 /// so we'd have to call `r.is_zero(e)`.
-pub trait RingElement: 'static + Clone + PartialEq + std::fmt::Debug + std::fmt::Display {
+pub trait RingElement:
+    'static + Clone + PartialEq + std::fmt::Debug + std::fmt::Display
+{
     /// Returns the "zero" element of the ring.
     fn zero() -> Self;
 
@@ -123,7 +125,11 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
 
     /// Subtract an element given by value from an element given by reference.
     /// See [`Ring::sub_assign_rhs`].
-    fn sub_rhs(&self, l: &Self::Element, mut r: Self::Element) -> Self::Element {
+    fn sub_rhs(
+        &self,
+        l: &Self::Element,
+        mut r: Self::Element,
+    ) -> Self::Element {
         self.sub_assign_rhs(l, &mut r);
         r
     }
@@ -146,7 +152,12 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
     /// <https://github.com/rust-num/num-bigint/blob/575cea47d21f969e541a7668751d4a82825d02bd/src/biguint/multiplication.rs#L67C37-L67C76>
     ///
     /// TODO: Expose this function and use it.
-    fn mul_add_assign(&self, acc: &mut Self::Element, a: &Self::Element, b: &Self::Element) {
+    fn mul_add_assign(
+        &self,
+        acc: &mut Self::Element,
+        a: &Self::Element,
+        b: &Self::Element,
+    ) {
         self.add_assign(acc, &self.mul(a.clone(), b))
     }
 
@@ -163,7 +174,12 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
     }
 
     /// [`Ring::mul_add_assign`] but with [`Ring::sub`].
-    fn mul_sub_assign(&self, acc: &mut Self::Element, a: &Self::Element, b: &Self::Element) {
+    fn mul_sub_assign(
+        &self,
+        acc: &mut Self::Element,
+        a: &Self::Element,
+        b: &Self::Element,
+    ) {
         self.sub_assign(acc, &self.mul(a.clone(), b));
     }
 
@@ -421,15 +437,24 @@ pub trait IntDivRing: OrderedRing {
 macro_rules! impl_int_div_for_field {
     ($field:ident) => {
         impl IntDivRing for $field {
-            fn rounded_div(l: &Self::Element, r: &Self::Element) -> Self::Element {
+            fn rounded_div(
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> Self::Element {
                 l / r
             }
 
-            fn euclidean_div(l: &Self::Element, r: &Self::Element) -> Self::Element {
+            fn euclidean_div(
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> Self::Element {
                 l / r
             }
 
-            fn euclidean_rem(_l: &Self::Element, _r: &Self::Element) -> Self::Element {
+            fn euclidean_rem(
+                _l: &Self::Element,
+                _r: &Self::Element,
+            ) -> Self::Element {
                 Self::zero()
             }
         }
@@ -447,10 +472,10 @@ use crate::formatter::Formatter;
 ///   and some need [`OrderedRing::is_negative`].
 ///
 /// - In many lattice algorithms we need to compare two elements of a
-///   [`crate::lattice::WorkingType`], e.g. in [`crate::lattice::lll`].
-///   And we also need [`OrderedRing::cmp_abs`] for solving systems of linear
-///   equations over a field there. For this reason this is also implemented
-///   for [`super::F32`] and [`super::F64`] which rust doesn't consider to be
+///   [`crate::lattice::WorkingType`], e.g. in [`crate::lattice::lll`]. And we
+///   also need [`OrderedRing::cmp_abs`] for solving systems of linear equations
+///   over a field there. For this reason this is also implemented for
+///   [`super::F32`] and [`super::F64`] which rust doesn't consider to be
 ///   ordered ([`Ord`]) because of NaNs. The implementation for them just
 ///   `unwrap`s the [`PartialOrd::partial_cmp`].
 pub trait OrderedRing: Ring {
@@ -503,7 +528,11 @@ pub trait OrderedRing: Ring {
     }
 
     /// Compare the absolute value of two elements.
-    fn cmp_abs(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+    fn cmp_abs(
+        &self,
+        l: &Self::Element,
+        r: &Self::Element,
+    ) -> std::cmp::Ordering {
         self.cmp(&self.abs(l.clone()), &self.abs(r.clone()))
     }
 

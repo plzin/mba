@@ -1,15 +1,21 @@
 //! Integer lattices and algorithms.
 
-use crate::rings::{
-    BinaryRing, F32, F64, Field, IntDivRing, OrderedRing, Q, Ring, RingElement as _, SqrtRing, Z,
-};
-use crate::solver::hermite_normal_form;
-use crate::{matrix::*, vector::*};
+use std::fmt::Debug;
+
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{FromPrimitive, ToPrimitive};
 use rand::Rng;
-use std::fmt::Debug;
+
+use crate::{
+    matrix::*,
+    rings::{
+        BinaryRing, F32, F64, Field, IntDivRing, OrderedRing, Q, Ring,
+        RingElement as _, SqrtRing, Z,
+    },
+    solver::hermite_normal_form,
+    vector::*,
+};
 
 /// A "lattice", i.e. the span of a set of vectors.
 /// This can never be empty because it always contains the zero vector even if
@@ -25,9 +31,7 @@ pub struct Lattice<R: Ring> {
 impl<R: Ring> Lattice<R> {
     /// Creates a lattice that contains only the zero vector.
     pub fn zero(ambient_dim: usize) -> Self {
-        Self {
-            basis: OwnedMatrix::zero(0, ambient_dim),
-        }
+        Self { basis: OwnedMatrix::zero(0, ambient_dim) }
     }
 
     /// The lattice basis are the rows of the matrix.
@@ -39,15 +43,16 @@ impl<R: Ring> Lattice<R> {
     /// but are potentially linearly dependent.
     /// This function will compute the Hermite normal form
     /// and remove zero rows.
-    pub fn from_generating_set(mut generating_set: OwnedMatrix<R>, r: &R) -> Self
+    pub fn from_generating_set(
+        mut generating_set: OwnedMatrix<R>,
+        r: &R,
+    ) -> Self
     where
         R: IntDivRing,
     {
         hermite_normal_form(&mut generating_set, r);
         generating_set.remove_zero_rows();
-        Self {
-            basis: generating_set,
-        }
+        Self { basis: generating_set }
     }
 
     /// Returns the rank of the lattice, i.e. the number if basis vectors.
@@ -86,7 +91,11 @@ impl<R: Ring> Lattice<R> {
     }
 
     /// Returns a random point on the lattice.
-    pub fn sample_point<Rand: Rng>(&self, rng: &mut Rand, r: &R) -> OwnedVector<R> {
+    pub fn sample_point<Rand: Rng>(
+        &self,
+        rng: &mut Rand,
+        r: &R,
+    ) -> OwnedVector<R> {
         self.sample_point_impl(Vector::zero(self.ambient_dim()), rng, r)
     }
 
@@ -141,8 +150,12 @@ impl<R: Ring> Lattice<R> {
     }
 
     /// Performs LLL basis reduction.
-    pub fn lll<W: WorkingTypeFor<R>>(&mut self, delta: &W::Element, wt: &W, r: &R)
-    where
+    pub fn lll<W: WorkingTypeFor<R>>(
+        &mut self,
+        delta: &W::Element,
+        wt: &W,
+        r: &R,
+    ) where
         R: IntDivRing,
     {
         lll(&mut self.basis, delta, wt, r);
@@ -220,18 +233,15 @@ pub struct AffineLattice<R: Ring> {
 impl<R: Ring> AffineLattice<R> {
     /// Creates an empty affine lattice that contains no points.
     pub fn empty(ambient_dim: usize) -> Self {
-        Self {
-            offset: Vector::empty(),
-            lattice: Lattice::zero(ambient_dim),
-        }
+        Self { offset: Vector::empty(), lattice: Lattice::zero(ambient_dim) }
     }
 
     /// Creates an affine lattice from an offset and a basis.
-    pub fn from_offset_basis(offset: OwnedVector<R>, basis: OwnedMatrix<R>) -> Self {
-        Self {
-            offset,
-            lattice: Lattice::from_basis(basis),
-        }
+    pub fn from_offset_basis(
+        offset: OwnedVector<R>,
+        basis: OwnedMatrix<R>,
+    ) -> Self {
+        Self { offset, lattice: Lattice::from_basis(basis) }
     }
 
     /// The ambient dimension of the lattice.
@@ -255,7 +265,11 @@ impl<R: Ring> AffineLattice<R> {
     }
 
     /// Returns a random point on the lattice.
-    pub fn sample_point<Rand: Rng>(&self, rng: &mut Rand, r: &R) -> OwnedVector<R> {
+    pub fn sample_point<Rand: Rng>(
+        &self,
+        rng: &mut Rand,
+        r: &R,
+    ) -> OwnedVector<R> {
         self.lattice.sample_point_impl(self.offset.clone(), rng, r)
     }
 
@@ -337,7 +351,8 @@ pub fn lll<R: IntDivRing, W: WorkingTypeFor<R>>(
 
             let b_norm_sqr = wt.from_ring(&b.norm_sqr(r), r);
             let q = wt.div(wt.from_ring(&c.dot(b, r), r), &b_norm_sqr);
-            let rhs = wt.mul(b_norm_sqr, &(wt.add(wt.neg(wt.square(q)), delta)));
+            let rhs =
+                wt.mul(b_norm_sqr, &(wt.add(wt.neg(wt.square(q)), delta)));
 
             if wt.is_lt(&lhs, &rhs) {
                 basis.swap_rows(i, i + 1);
@@ -369,7 +384,10 @@ pub fn cvp_rounding<R: Ring, W: WorkingTypeFor<R>>(
         }
     }
 
-    let b = OwnedVector::from_iter(t.dim(), t.iter().map(|i| wt.from_ring(i, ring)));
+    let b = OwnedVector::from_iter(
+        t.dim(),
+        t.iter().map(|i| wt.from_ring(i, ring)),
+    );
 
     // If the system has full rank,
     // then we can just use an exact solution.
@@ -487,8 +505,8 @@ pub fn cvp_nearest_plane<R: Ring, W: WorkingTypeFor<R>>(
 ///   distance to search for.
 ///
 /// The returned vector is the vector of coefficients.
-/// This will always return some vector unless no vector is within `r` of the target.
-/// This algorithm is a generalization Babai's nearest plane algorithm
+/// This will always return some vector unless no vector is within `r` of the
+/// target. This algorithm is a generalization Babai's nearest plane algorithm
 /// that searches all planes that could contain the closest vector.
 /// It is the simplest one I could think of.
 pub fn cvp_planes<R: Ring, W: WorkingTypeFor<R>>(
@@ -518,7 +536,8 @@ pub fn cvp_planes<R: Ring, W: WorkingTypeFor<R>>(
     let rad = rad_sqr.unwrap_or_else(|| wt.infinity());
 
     // Multiply the coefficients of the vector.
-    return cvp_impl(r.num_cols() - 1, &r, qt.view(), &rad, wt, ring).map(|v| v.0);
+    return cvp_impl(r.num_cols() - 1, &r, qt.view(), &rad, wt, ring)
+        .map(|v| v.0);
 
     /// This actually finds the closest point.
     /// `rad` is the squared norm.
@@ -624,9 +643,14 @@ pub fn cvp_planes<R: Ring, W: WorkingTypeFor<R>>(
             let point_in_plane = qt.sub_rhs(r[i].mul_ref(&index, wt), wt);
 
             // Recursively find the closest point.
-            let Some((mut v, mut w)) =
-                cvp_impl(i - 1, r, point_in_plane.view(), &plane_dist, wt, ring)
-            else {
+            let Some((mut v, mut w)) = cvp_impl(
+                i - 1,
+                r,
+                point_in_plane.view(),
+                &plane_dist,
+                wt,
+                ring,
+            ) else {
                 continue;
             };
             assert!(v.dim() == i);
@@ -696,7 +720,8 @@ fn solve_linear<W: WorkingType>(
     let mut result = Vector::zero(rank);
     for i in (0..rank).rev() {
         let row = a.row(i);
-        let sum = (i + 1..rank).fold(b[i].clone(), |acc, j| wt.mul_sub(acc, &row[j], &result[j]));
+        let sum = (i + 1..rank)
+            .fold(b[i].clone(), |acc, j| wt.mul_sub(acc, &row[j], &result[j]));
 
         result[i] = wt.div(sum, &row[i]);
     }
@@ -800,78 +825,95 @@ impl WorkingTypeFor<Z> for Q {
 fn cvp_exact_dim20() {
     let l = Lattice::<Z>::from_basis(OwnedMatrix::from_rows(&[
         [
-            1, -74, 20, 19, -5, 21, -19, 18, -54, -56, -40, -38, -58, 54, -34, -1, -3, 0, -27, 8,
+            1, -74, 20, 19, -5, 21, -19, 18, -54, -56, -40, -38, -58, 54, -34,
+            -1, -3, 0, -27, 8,
         ],
         [
-            -44, 19, -20, 14, -34, -61, 53, -31, 42, 42, 27, 40, -77, -59, 2, -26, 9, 3, -49, 33,
+            -44, 19, -20, 14, -34, -61, 53, -31, 42, 42, 27, 40, -77, -59, 2,
+            -26, 9, 3, -49, 33,
         ],
         [
-            -19, -12, 18, -31, 63, 8, 52, 52, -50, -19, 22, -1, 51, -8, -57, 70, -62, -45, 48, -51,
+            -19, -12, 18, -31, 63, 8, 52, 52, -50, -19, 22, -1, 51, -8, -57,
+            70, -62, -45, 48, -51,
         ],
         [
-            -66, -5, 15, 34, 2, -50, 82, 28, 16, 18, 17, 66, 23, -38, 39, -36, -66, 19, -64, -62,
+            -66, -5, 15, 34, 2, -50, 82, 28, 16, 18, 17, 66, 23, -38, 39, -36,
+            -66, 19, -64, -62,
         ],
         [
-            -15, 10, -65, -46, -55, -22, -88, -49, 46, -19, -4, -6, -5, -20, 23, -24, -86, -29, -7,
-            16,
+            -15, 10, -65, -46, -55, -22, -88, -49, 46, -19, -4, -6, -5, -20,
+            23, -24, -86, -29, -7, 16,
         ],
         [
-            35, -57, 9, 41, 9, -7, 63, 11, -72, -23, -2, -103, 62, -9, 64, 1, 25, 10, 48, -41,
+            35, -57, 9, 41, 9, -7, 63, 11, -72, -23, -2, -103, 62, -9, 64, 1,
+            25, 10, 48, -41,
         ],
         [
-            18, 11, 31, 2, -51, 48, 11, -33, 69, 93, -12, -52, -3, -100, 14, -15, 85, -61, 6, 27,
+            18, 11, 31, 2, -51, 48, 11, -33, 69, 93, -12, -52, -3, -100, 14,
+            -15, 85, -61, 6, 27,
         ],
         [
-            -58, -54, -29, -28, 93, -88, 3, -63, -3, -9, 26, 22, 89, 26, 11, -2, -21, -5, 37, -36,
+            -58, -54, -29, -28, 93, -88, 3, -63, -3, -9, 26, 22, 89, 26, 11,
+            -2, -21, -5, 37, -36,
         ],
         [
-            24, 72, -79, -38, 50, 17, -54, -24, 38, -9, -64, -32, -10, 70, -67, -88, -4, -34, -4,
-            -3,
+            24, 72, -79, -38, 50, 17, -54, -24, 38, -9, -64, -32, -10, 70, -67,
+            -88, -4, -34, -4, -3,
         ],
         [
-            -24, -54, 11, 34, -14, -5, -132, 46, 51, 67, 24, -3, -10, -6, 22, 38, -15, -23, 29, -39,
+            -24, -54, 11, 34, -14, -5, -132, 46, 51, 67, 24, -3, -10, -6, 22,
+            38, -15, -23, 29, -39,
         ],
         [
-            72, 9, 49, -19, 66, -6, -53, -77, 40, -9, -52, -20, 90, -12, 58, -107, -47, -64, -66,
-            -10,
+            72, 9, 49, -19, 66, -6, -53, -77, 40, -9, -52, -20, 90, -12, 58,
+            -107, -47, -64, -66, -10,
         ],
         [
-            48, -28, 41, -76, 17, -13, -20, -16, -15, 75, -30, 51, -55, 31, -50, 3, -60, -34, 13,
-            31,
+            48, -28, 41, -76, 17, -13, -20, -16, -15, 75, -30, 51, -55, 31,
+            -50, 3, -60, -34, 13, 31,
         ],
         [
-            62, -9, 13, -10, 39, 50, 81, 94, -38, 7, -62, -49, 34, 61, 45, 30, -51, -78, -70, -4,
+            62, -9, 13, -10, 39, 50, 81, 94, -38, 7, -62, -49, 34, 61, 45, 30,
+            -51, -78, -70, -4,
         ],
         [
-            34, 92, -16, -3, 113, -24, 1, 40, -30, 91, -57, -6, -28, -7, 13, 64, 18, 24, -33, -10,
+            34, 92, -16, -3, 113, -24, 1, 40, -30, 91, -57, -6, -28, -7, 13,
+            64, 18, 24, -33, -10,
         ],
         [
-            -1, -20, -45, 44, -75, 31, -9, -47, 74, -7, 64, 77, -41, 9, 52, -33, -83, 118, 63, 1,
+            -1, -20, -45, 44, -75, 31, -9, -47, 74, -7, 64, 77, -41, 9, 52,
+            -33, -83, 118, 63, 1,
         ],
         [
-            -9, -37, 11, -106, -13, 1, 74, 11, 89, -10, 61, 43, -17, -45, -7, 5, -103, 43, -36, 46,
+            -9, -37, 11, -106, -13, 1, 74, 11, 89, -10, 61, 43, -17, -45, -7,
+            5, -103, 43, -36, 46,
         ],
         [
-            60, -101, -48, -23, 37, -45, 1, 23, 52, -18, -19, -36, -125, -23, 22, -32, -28, -41,
-            16, -34,
+            60, -101, -48, -23, 37, -45, 1, 23, 52, -18, -19, -36, -125, -23,
+            22, -32, -28, -41, 16, -34,
         ],
         [
-            19, -47, -85, 17, 2, 1, 12, 19, 27, -21, 43, 43, -9, 8, -60, 36, 83, 65, -50, 58,
+            19, -47, -85, 17, 2, 1, 12, 19, 27, -21, 43, 43, -9, 8, -60, 36,
+            83, 65, -50, 58,
         ],
         [
-            59, -4, 51, 36, -10, -12, -19, -54, 93, 12, 23, 31, 77, 18, 45, 57, 46, 52, -21, -51,
+            59, -4, 51, 36, -10, -12, -19, -54, 93, 12, 23, 31, 77, 18, 45, 57,
+            46, 52, -21, -51,
         ],
         [
-            -57, 49, 26, 10, -22, 32, -52, -71, -9, 31, 45, 28, -28, -30, 24, 44, 88, 2, -63, -105,
+            -57, 49, 26, 10, -22, 32, -52, -71, -9, 31, 45, 28, -28, -30, 24,
+            44, 88, 2, -63, -105,
         ],
     ]));
     let t = OwnedVector::<Z>::from_entries([
-        -48, 69, -76, 36, -72, 31, -53, -7, 54, 74, 6, -82, -13, -32, 7, 53, -60, -44, 38, -97,
+        -48, 69, -76, 36, -72, 31, -53, -7, 54, 74, 6, -82, -13, -32, 7, 53,
+        -60, -44, 38, -97,
     ]);
     assert_eq!(
         l.cvp_planes(t.view(), None, &F64, &Z).unwrap(),
         [
-            -30, 35, -98, 61, -27, 75, -32, -3, 70, 8, 3, -77, -29, -103, 61, 58, -71, 41, 37, -40
+            -30, 35, -98, 61, -27, 75, -32, -3, 70, 8, 3, -77, -29, -103, 61,
+            58, -71, 41, 37, -40
         ]
         .iter()
         .map(|i| BigInt::from(*i))
@@ -942,10 +984,12 @@ fn babai_rounding_example() {
 #[test]
 fn babai_rounding_identity_dim_2() {
     use rand::random;
-    let lattice = Lattice::from_basis(OwnedMatrix::<Z>::from_rows(&[[1, 0], [0, 1]]));
+    let lattice =
+        Lattice::from_basis(OwnedMatrix::<Z>::from_rows(&[[1, 0], [0, 1]]));
 
     for _ in 0..256 {
-        let v = OwnedVector::<Z>::from_array([random::<u64>(), random::<u64>()]);
+        let v =
+            OwnedVector::<Z>::from_array([random::<u64>(), random::<u64>()]);
         let r = lattice.cvp_rounding(v.view(), &Q, &Z);
         assert_eq!(r, v);
     }
@@ -954,10 +998,17 @@ fn babai_rounding_identity_dim_2() {
 #[test]
 fn babai_rounding_identity_dim_2_subspace() {
     use rand::random;
-    let lattice = Lattice::from_basis(OwnedMatrix::<Z>::from_rows(&[[1, 0, 0], [0, 1, 0]]));
+    let lattice = Lattice::from_basis(OwnedMatrix::<Z>::from_rows(&[
+        [1, 0, 0],
+        [0, 1, 0],
+    ]));
 
     for _ in 0..256 {
-        let v = OwnedVector::<Z>::from_array([random::<u32>(), random::<u32>(), random::<u32>()]);
+        let v = OwnedVector::<Z>::from_array([
+            random::<u32>(),
+            random::<u32>(),
+            random::<u32>(),
+        ]);
         let r = lattice.cvp_rounding(v.view(), &F64, &Z);
         assert_eq!(r.as_slice()[..2], v.as_slice()[..2]);
     }
@@ -965,14 +1016,23 @@ fn babai_rounding_identity_dim_2_subspace() {
 
 #[test]
 fn babai_rounding_linear_dim_3() {
-    let lattice = Lattice::from_basis(OwnedMatrix::<Z>::from_rows(&[[3, 3, 3]]));
+    let lattice =
+        Lattice::from_basis(OwnedMatrix::<Z>::from_rows(&[[3, 3, 3]]));
 
     assert_eq!(
-        lattice.cvp_rounding_coeff(Vector::from_entries([2, 2, 2]).view(), &F64, &Z),
+        lattice.cvp_rounding_coeff(
+            Vector::from_entries([2, 2, 2]).view(),
+            &F64,
+            &Z
+        ),
         [BigInt::from(1)]
     );
     assert_eq!(
-        lattice.cvp_rounding_coeff(Vector::from_entries([2, -2, 0]).view(), &F64, &Z),
+        lattice.cvp_rounding_coeff(
+            Vector::from_entries([2, -2, 0]).view(),
+            &F64,
+            &Z
+        ),
         [BigInt::from(0)]
     );
 }

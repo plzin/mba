@@ -1,10 +1,12 @@
-use mba::choose_binary_ring;
-use mba::lattice::AffineLattice;
-use mba::matrix::Matrix;
-use mba::rings::{BinaryRing, RingElement as _};
-use mba::solver::{modular_diagonalize, solve_scalar_congruence};
-use mba::tex;
-use mba::vector::Vector;
+use mba::{
+    choose_binary_ring,
+    lattice::AffineLattice,
+    matrix::Matrix,
+    rings::{BinaryRing, RingElement as _},
+    solver::{modular_diagonalize, solve_scalar_congruence},
+    tex,
+    vector::Vector,
+};
 use wasm_bindgen::prelude::*;
 
 /// Stores the intermediate results during the computation.
@@ -66,8 +68,8 @@ pub fn solve_linear_system(
             let row_entries = a.len() - rows * cols;
             if row_entries != cols {
                 return Err(format!(
-                    "Row {} has a different number of entries \
-                    ({row_entries}) than the first row ({cols})",
+                    "Row {} has a different number of entries ({row_entries}) \
+                     than the first row ({cols})",
                     rows + 1
                 ));
             }
@@ -79,7 +81,10 @@ pub fn solve_linear_system(
     assert_eq!(rows * cols, a.len());
     assert_eq!(rows, b.len());
 
-    choose_binary_ring!(solve_linear_system_impl(a, b, rows, cols, &r), r = bits)
+    choose_binary_ring!(
+        solve_linear_system_impl(a, b, rows, cols, &r),
+        r = bits
+    )
 }
 
 fn solve_linear_system_impl<R: BinaryRing>(
@@ -97,7 +102,11 @@ fn solve_linear_system_impl<R: BinaryRing>(
         for j in 0..cols {
             a[(i, j)] = match r.element_from_string(m[i * cols + j]) {
                 Some(e) => e,
-                None => return Err(format!("Failed to parse element at ({i}, {j})")),
+                None => {
+                    return Err(format!(
+                        "Failed to parse element at ({i}, {j})"
+                    ));
+                },
             };
         }
     }
@@ -105,7 +114,9 @@ fn solve_linear_system_impl<R: BinaryRing>(
     for i in 0..rows {
         b[i] = match r.element_from_string(n[i]) {
             Some(e) => e,
-            None => return Err(format!("Failed to parse element at ({i}, {cols})")),
+            None => {
+                return Err(format!("Failed to parse element at ({i}, {cols})"));
+            },
         };
     }
 
@@ -169,7 +180,8 @@ fn solve_linear_system_impl<R: BinaryRing>(
         let a = &d[(i, i)];
         let b = &b[i];
 
-        linear_solutions += &format!("{}x'_{{{}}}&={} &\\implies ", a, i + 1, b);
+        linear_solutions +=
+            &format!("{}x'_{{{}}}&={} &\\implies ", a, i + 1, b);
 
         let Some((x, kern)) = solve_scalar_congruence(a, b, r) else {
             linear_solutions += "\\text{No solution!}&\\end{align}";
@@ -185,7 +197,8 @@ fn solve_linear_system_impl<R: BinaryRing>(
         if kern.is_zero() {
             linear_solutions += &format!("x'_{{{}}}&={}\\\\", i + 1, x);
         } else {
-            linear_solutions += &format!("x'_{{{}}}&={}+{}a_{{{}}}\\\\", i + 1, x, kern, j);
+            linear_solutions +=
+                &format!("x'_{{{}}}&={}+{}a_{{{}}}\\\\", i + 1, x, kern, j);
             j += 1;
         }
 

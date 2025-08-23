@@ -1,17 +1,15 @@
 //! Solves systems of linear equations modulo some number, usually a power of
 //! two.
 
-use num_bigint::BigInt;
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use num_traits::Euclid;
 
-use crate::lattice::{AffineLattice, Lattice};
-use crate::matrix::*;
-use crate::rings::IntDivRing;
-use crate::rings::Ring as _;
-use crate::rings::RingElement;
-use crate::rings::Z;
-use crate::vector::*;
+use crate::{
+    lattice::{AffineLattice, Lattice},
+    matrix::*,
+    rings::{IntDivRing, Ring as _, RingElement, Z},
+    vector::*,
+};
 
 /// Computes the (row-style) Hermite normal form of a matrix in place and
 /// returns the transformation matrix.
@@ -22,7 +20,10 @@ use crate::vector::*;
 /// i.e. there could be multiple matrices that fulfill the conditions of a HNF
 /// for a given matrix. (The conditions include the sign of elements which is
 /// not really well defined for the other rings.)
-pub fn hermite_normal_form<R: IntDivRing>(a: &mut OwnedMatrix<R>, ring: &R) -> OwnedMatrix<R> {
+pub fn hermite_normal_form<R: IntDivRing>(
+    a: &mut OwnedMatrix<R>,
+    ring: &R,
+) -> OwnedMatrix<R> {
     // The transformation matrix.
     let mut u = Matrix::identity(a.num_rows());
 
@@ -66,7 +67,8 @@ pub fn hermite_normal_form<R: IntDivRing>(a: &mut OwnedMatrix<R>, ring: &R) -> O
             u.row_multiply_add(k, r, &m, ring);
         }
 
-        // If there is any non-zero element then we need to continue in the same column.
+        // If there is any non-zero element then we need to continue in the same
+        // column.
         if a.col(c).iter().skip(r + 1).any(|e| !e.is_zero()) {
             continue;
         }
@@ -105,7 +107,10 @@ pub fn hermite_normal_form<R: IntDivRing>(a: &mut OwnedMatrix<R>, ring: &R) -> O
 /// not a normal form. This hermite form is basically an upper triangular matrix
 /// such that the elements above the diagonal are smaller in absolute value than
 /// the diagonal element.
-pub fn modular_hermite_form<R: IntDivRing>(a: &mut OwnedMatrix<R>, ring: &R) -> OwnedMatrix<R> {
+pub fn modular_hermite_form<R: IntDivRing>(
+    a: &mut OwnedMatrix<R>,
+    ring: &R,
+) -> OwnedMatrix<R> {
     // The transformation matrix.
     let mut u = Matrix::identity(a.num_rows());
 
@@ -159,12 +164,8 @@ pub fn modular_hermite_form<R: IntDivRing>(a: &mut OwnedMatrix<R>, ring: &R) -> 
 
         let (pivot, is_one) = 'b: {
             // Do we have an element that is 1?
-            if let Some((pivot, _)) = a
-                .col(c)
-                .iter()
-                .enumerate()
-                .skip(r)
-                .find(|(_, e)| e.is_one())
+            if let Some((pivot, _)) =
+                a.col(c).iter().enumerate().skip(r).find(|(_, e)| e.is_one())
             {
                 break 'b (pivot, true);
             }
@@ -262,7 +263,10 @@ pub fn modular_hermite_form<R: IntDivRing>(a: &mut OwnedMatrix<R>, ring: &R) -> 
 
 /// Constructs the matrix whose HNF we can compute to solve the system of
 /// linear equations Ax=b.
-fn construct_hnf_matrix<R: IntDivRing>(a: &MatrixView<R>, b: &VectorView<R>) -> OwnedMatrix<R> {
+fn construct_hnf_matrix<R: IntDivRing>(
+    a: &MatrixView<R>,
+    b: &VectorView<R>,
+) -> OwnedMatrix<R> {
     assert_eq!(
         a.num_rows(),
         b.dim(),
@@ -308,23 +312,22 @@ fn solve_via_integer_hnf<R: IntDivRing>(
 
     // Compute the rank of the matrix.
     // It has a special form that we can take advantage of.
-    let rank = m
-        .rows()
-        .take_while(|r| r.iter().any(|e| !e.is_zero()))
-        .count();
+    let rank = m.rows().take_while(|r| r.iter().any(|e| !e.is_zero())).count();
 
     // Make sure the Hermite normal form has the correct form,
     // because only then does it have a solution.
     let r = rank - 1;
 
-    let has_solution = m.row(r).iter().take(m.num_cols() - 1).all(|e| e.is_zero())
-        && m[(r, m.num_cols() - 1)].is_one();
+    let has_solution =
+        m.row(r).iter().take(m.num_cols() - 1).all(|e| e.is_zero())
+            && m[(r, m.num_cols() - 1)].is_one();
 
     if !has_solution {
         return AffineLattice::empty(a.num_cols());
     }
 
-    let offset = OwnedVector::from_entries(&u.row(r)[0..u.num_rows() - 1]).neg(ring);
+    let offset =
+        OwnedVector::from_entries(&u.row(r)[0..u.num_rows() - 1]).neg(ring);
 
     let basis = Matrix::from_iter(
         u.num_rows() - rank,
@@ -390,9 +393,16 @@ pub fn solve_modular_via_integer_hnf(
         .rows()
         .flat_map(|e| e.iter().take(a.num_cols()).map(|i| i.rem_euclid(n)))
         .chain((0..a.num_cols()).flat_map(|i| {
-            (0..a.num_cols()).map(move |j| if j == i { n.clone() } else { Z::zero() })
+            (0..a.num_cols()).map(move |j| {
+                if j == i {
+                    n.clone()
+                } else {
+                    Z::zero()
+                }
+            })
         }));
-    let bm = Matrix::from_iter(l.lattice.rank() + a.num_cols(), a.num_cols(), iter);
+    let bm =
+        Matrix::from_iter(l.lattice.rank() + a.num_cols(), a.num_cols(), iter);
 
     let lattice = Lattice::from_generating_set(bm, &Z);
 
@@ -546,12 +556,10 @@ pub fn modular_diagonalize<R: IntDivRing>(
                     }
 
                     // Do we have an element that is a unit?
-                    if let Some((pivot, inv)) = a
-                        .col(i)
-                        .iter()
-                        .enumerate()
-                        .skip(i)
-                        .find_map(|(i, e)| ring.inverse(e).map(|inv| (i, inv)))
+                    if let Some((pivot, inv)) =
+                        a.col(i).iter().enumerate().skip(i).find_map(
+                            |(i, e)| ring.inverse(e).map(|inv| (i, inv)),
+                        )
                     {
                         // Multiply the row by the inverse.
                         a.row_multiply(pivot, &inv, ring);
@@ -613,44 +621,43 @@ pub fn modular_diagonalize<R: IntDivRing>(
             //
 
             // Find a pivot in the row.
-            let (pivot, is_one) = 'b: {
-                // Do we have an element that is 1?
-                if let Some((pivot, _)) = a
-                    .row(i)
-                    .iter()
-                    .enumerate()
-                    .skip(i)
-                    .find(|(_, e)| e.is_one())
-                {
-                    break 'b (pivot, true);
-                }
+            let (pivot, is_one) =
+                'b: {
+                    // Do we have an element that is 1?
+                    if let Some((pivot, _)) = a
+                        .row(i)
+                        .iter()
+                        .enumerate()
+                        .skip(i)
+                        .find(|(_, e)| e.is_one())
+                    {
+                        break 'b (pivot, true);
+                    }
 
-                // Do we have an element that is a unit?
-                if let Some((pivot, inv)) = a
-                    .row(i)
-                    .iter()
-                    .enumerate()
-                    .skip(i)
-                    .find_map(|(i, e)| ring.inverse(e).map(|inv| (i, inv)))
-                {
-                    a.col_multiply(pivot, &inv, ring);
-                    t.col_multiply(pivot, &inv, ring);
-                    break 'b (pivot, true);
-                }
+                    // Do we have an element that is a unit?
+                    if let Some((pivot, inv)) =
+                        a.row(i).iter().enumerate().skip(i).find_map(
+                            |(i, e)| ring.inverse(e).map(|inv| (i, inv)),
+                        )
+                    {
+                        a.col_multiply(pivot, &inv, ring);
+                        t.col_multiply(pivot, &inv, ring);
+                        break 'b (pivot, true);
+                    }
 
-                // Find the smallest non-zero element by absolute value.
-                let pivot = a
-                    .row(i)
-                    .iter()
-                    .enumerate()
-                    .skip(i)
-                    .filter(|e| !e.1.is_zero())
-                    .min_by(|l, r| ring.cmp_abs(l.1, r.1))
-                    .expect("Failed to find pivot in non-zero row")
-                    .0;
+                    // Find the smallest non-zero element by absolute value.
+                    let pivot = a
+                        .row(i)
+                        .iter()
+                        .enumerate()
+                        .skip(i)
+                        .filter(|e| !e.1.is_zero())
+                        .min_by(|l, r| ring.cmp_abs(l.1, r.1))
+                        .expect("Failed to find pivot in non-zero row")
+                        .0;
 
-                (pivot, false)
-            };
+                    (pivot, false)
+                };
 
             // Move the pivot to the beginning.
             a.swap_columns(i, pivot);
@@ -834,13 +841,16 @@ mod test {
         rngs::StdRng,
     };
 
-    use crate::rings::{BinaryRing, U8, U16, U32, U64, U128, VarU8};
-
     use super::*;
+    use crate::rings::{BinaryRing, U8, U16, U32, U64, U128, VarU8};
 
     /// Tests that all methods of solving a system of linear equations give the
     /// same result.
-    fn same_result<R: BinaryRing>(a: &MatrixView<R>, b: &VectorView<R>, ring: &R) {
+    fn same_result<R: BinaryRing>(
+        a: &MatrixView<R>,
+        b: &VectorView<R>,
+        ring: &R,
+    ) {
         let a_int = a.transform(|e| R::to_representative(e).into());
         let b_int = b.transform(|e| R::to_representative(e).into());
         let l1 = solve_modular_via_integer_hnf(
@@ -853,9 +863,11 @@ mod test {
             l.offset.reduce(&l1.lattice.basis, &Z);
             l
         };
-        let l2 = solve_via_integer_diagonalize(a.to_owned(), b.to_owned(), ring);
+        let l2 =
+            solve_via_integer_diagonalize(a.to_owned(), b.to_owned(), ring);
         let l2_c = l2.canonicalize(ring);
-        let l3 = solve_via_modular_diagonalize(a.to_owned(), b.to_owned(), ring);
+        let l3 =
+            solve_via_modular_diagonalize(a.to_owned(), b.to_owned(), ring);
         let l3_c = l3.canonicalize(ring);
 
         assert_eq!(l1_c, l2_c, "a: {a:?}, b: {b:?}, l1: {l1:?}, l2: {l2:?}");
@@ -932,20 +944,28 @@ mod test {
 
     #[test]
     fn small_test() {
-        let a =
-            OwnedMatrix::<Z>::from_rows(&[[0, 0, -1, 1], [0, 1, 0, 0], [0, 1, 0, 0], [1, 0, 0, 0]]);
+        let a = OwnedMatrix::<Z>::from_rows(&[
+            [0, 0, -1, 1],
+            [0, 1, 0, 0],
+            [0, 1, 0, 0],
+            [1, 0, 0, 0],
+        ]);
 
         let b = OwnedVector::<Z>::from_entries([0, 1, 1, 2]);
 
         let l = solve_via_integer_hnf(a.view(), b.view(), &Z);
-        assert_eq!(
-            l.offset.as_slice(),
-            [2.into(), 1.into(), 0.into(), 0.into()]
-        );
+        assert_eq!(l.offset.as_slice(), [
+            2.into(),
+            1.into(),
+            0.into(),
+            0.into()
+        ]);
         assert_eq!(l.lattice.rank(), 1);
-        assert_eq!(
-            l.lattice.basis.row(0).as_slice(),
-            [0.into(), 0.into(), 1.into(), 1.into()]
-        );
+        assert_eq!(l.lattice.basis.row(0).as_slice(), [
+            0.into(),
+            0.into(),
+            1.into(),
+            1.into()
+        ]);
     }
 }

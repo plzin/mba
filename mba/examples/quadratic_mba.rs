@@ -1,10 +1,13 @@
 use itertools::Itertools;
-use mba::bitwise_expr::{BExpr, LBExpr};
-use mba::expr::{Expr, ExprOp};
-use mba::formatter::Formatter;
-use mba::linear_mba::rewrite;
-use mba::rings::{
-    BinaryBigInt, BinaryRing, IntDivRing, OrderedRing, RingElement as _, U8, U16, U32, U64, U128,
+use mba::{
+    bitwise_expr::{BExpr, LBExpr},
+    expr::{Expr, ExprOp},
+    formatter::Formatter,
+    linear_mba::rewrite,
+    rings::{
+        BinaryBigInt, BinaryRing, IntDivRing, OrderedRing, RingElement as _,
+        U8, U16, U32, U64, U128,
+    },
 };
 
 // Rewrite a linear MBA expression using quadratic MBA.
@@ -29,13 +32,16 @@ fn main() {
     }
 }
 
-fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(expr: String, r: &R) {
+fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(
+    expr: String,
+    r: &R,
+) {
     let expr = match LBExpr::from_string(expr, r) {
         Ok(expr) => expr,
         Err(e) => {
             println!("Invalid expression: {e}");
             return;
-        }
+        },
     };
 
     let make_op = |s: &str| LBExpr::from_string(s.to_owned(), r).unwrap();
@@ -76,10 +82,14 @@ fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(expr: String, r: &R) 
         // to the linear combination.
         for (d, f) in coeff.0 {
             let e = e.clone();
-            let (fst, snd) = if e <= f { (e, f) } else { (f, e) };
+            let (fst, snd) = if e <= f {
+                (e, f)
+            } else {
+                (f, e)
+            };
 
             match v.iter_mut().find(|(_, a, b)| &fst == a && &snd == b) {
-                Some((c, _, _)) => r.add_assign(c, &d),
+                Some((c, ..)) => r.add_assign(c, &d),
                 None => v.push((d, fst, snd)),
             }
         }
@@ -97,7 +107,7 @@ fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(expr: String, r: &R) 
     };
 
     // Convert the linear combination to an `Expr`.
-    let mut iter = v.iter().filter(|(c, _, _)| !c.is_zero());
+    let mut iter = v.iter().filter(|(c, ..)| !c.is_zero());
     let mut expr = match iter.next() {
         Some((c, e, f)) => term_to_expr(c, e, f),
         None => Expr::new(ExprOp::Const(R::zero())),

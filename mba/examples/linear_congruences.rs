@@ -1,6 +1,4 @@
-use mba::matrix::Matrix;
-use mba::solver;
-use mba::vector::Vector;
+use mba::{matrix::Matrix, solver, vector::Vector};
 
 // Solve a system of linear congruences.
 fn main() {

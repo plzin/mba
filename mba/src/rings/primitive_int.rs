@@ -1,5 +1,4 @@
-use super::mod_inv_pow_two::ModInv as _;
-use super::*;
+use super::{mod_inv_pow_two::ModInv as _, *};
 use crate::formatter::Formatter;
 
 macro_rules! int_ring {
@@ -83,10 +82,15 @@ macro_rules! int_ring {
                 e
             }
 
-            fn data_type_name(&self, formatter: Formatter) -> impl std::fmt::Display {
+            fn data_type_name(
+                &self,
+                formatter: Formatter,
+            ) -> impl std::fmt::Display {
                 match formatter {
                     Formatter::C => $c_type,
-                    Formatter::Rust => concat!("Wrapping<", stringify!($int), ">"),
+                    Formatter::Rust => {
+                        concat!("Wrapping<", stringify!($int), ">")
+                    },
                     Formatter::Tex => $c_type,
                     // LLVM integer type name matches bit-width of the Rust int
                     // e.g., i8, i16, i32, i64, i128
@@ -142,7 +146,11 @@ macro_rules! int_ring {
         }
 
         impl OrderedRing for $ring {
-            fn cmp(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+            fn cmp(
+                &self,
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> std::cmp::Ordering {
                 l.cmp(r)
             }
 
@@ -178,7 +186,11 @@ macro_rules! int_ring {
                 e.abs()
             }
 
-            fn cmp_abs(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+            fn cmp_abs(
+                &self,
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> std::cmp::Ordering {
                 l.abs().cmp(&r.abs())
             }
 
@@ -208,7 +220,10 @@ macro_rules! int_ring {
         }
 
         impl IntDivRing for $ring {
-            fn rounded_div(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
+            fn rounded_div(
+                &l: &Self::Element,
+                &r: &Self::Element,
+            ) -> Self::Element {
                 // See `primitive_uint.rs` for why this seems more complicated
                 // than it should be. Note also that in this case `i32::MIN`
                 // divided by `-1` is `i32::MIN` instead of panicking.
@@ -228,11 +243,17 @@ macro_rules! int_ring {
                 }
             }
 
-            fn euclidean_div(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
+            fn euclidean_div(
+                &l: &Self::Element,
+                &r: &Self::Element,
+            ) -> Self::Element {
                 l.overflowing_div_euclid(r).0
             }
 
-            fn euclidean_rem(&l: &Self::Element, &r: &Self::Element) -> Self::Element {
+            fn euclidean_rem(
+                &l: &Self::Element,
+                &r: &Self::Element,
+            ) -> Self::Element {
                 l.overflowing_rem_euclid(r).0
             }
         }
@@ -247,8 +268,7 @@ int_ring!(I128, i128, U128, "int128_t");
 
 #[cfg(test)]
 mod test_primitive_int {
-    use super::test::*;
-    use super::*;
+    use super::{test::*, *};
 
     #[test]
     fn test_inverse_i8() {
@@ -325,8 +345,11 @@ mod test_primitive_int {
         test_rounded_div(&I128);
     }
 
-    fn test_rounded_div_special_cases<R>(r: &R, min: R::Element, max: R::Element)
-    where
+    fn test_rounded_div_special_cases<R>(
+        r: &R,
+        min: R::Element,
+        max: R::Element,
+    ) where
         R: BinaryRing,
         R::Element: Copy + std::ops::Div<Output = R::Element>,
         BigInt: From<R::Element>,
@@ -349,8 +372,16 @@ mod test_primitive_int {
         for (a, b) in pairs {
             for i in 0..4 {
                 // Check all combinations of positive and negative `a` and `b`.
-                let a = if i & 1 == 0 { a } else { r.neg(a) };
-                let b = if i & 2 == 0 { b } else { r.neg(b) };
+                let a = if i & 1 == 0 {
+                    a
+                } else {
+                    r.neg(a)
+                };
+                let b = if i & 2 == 0 {
+                    b
+                } else {
+                    r.neg(b)
+                };
 
                 let q = R::rounded_div(&a, &b);
                 let check = r.element_from_bigint(
@@ -358,7 +389,10 @@ mod test_primitive_int {
                         .round()
                         .numer(),
                 );
-                assert_eq!(q, check, "rounded_div({a}, {b}) = {check} but got {q}");
+                assert_eq!(
+                    q, check,
+                    "rounded_div({a}, {b}) = {check} but got {q}"
+                );
             }
         }
     }

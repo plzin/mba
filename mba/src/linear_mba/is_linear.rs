@@ -2,10 +2,7 @@
 
 use rand::Rng;
 
-use crate::Symbol;
-use crate::expr::Expr;
-use crate::rings::BinaryRing;
-use crate::valuation::Valuation;
+use crate::{Symbol, expr::Expr, rings::BinaryRing, valuation::Valuation};
 
 /// Checks if an [`Expr`] implements a linear MBA function by checking if the
 /// fundamental theorem of linear MBA holds for all inputs.
@@ -108,7 +105,12 @@ fn compute_expected_result<R: BinaryRing>(
 /// but `j` is set or not in each input variable. [`build_table`] evaluates the
 /// expression at all such inputs and stores the results in a table. This
 /// function computes the index into that table in this scenario.
-fn compute_index<R: BinaryRing>(vars: &[Symbol], val: &mut Valuation<R>, j: u32, r: &R) -> usize {
+fn compute_index<R: BinaryRing>(
+    vars: &[Symbol],
+    val: &mut Valuation<R>,
+    j: u32,
+    r: &R,
+) -> usize {
     vars.iter().enumerate().fold(0, |acc, (i, &v)| {
         acc | (R::bit(val.value(v, r), j) as usize) << i
     })

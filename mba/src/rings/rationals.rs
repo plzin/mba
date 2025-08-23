@@ -109,7 +109,11 @@ impl OrderedRing for Q {
         }
     }
 
-    fn cmp_abs(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
+    fn cmp_abs(
+        &self,
+        l: &Self::Element,
+        r: &Self::Element,
+    ) -> std::cmp::Ordering {
         // Both the `Ratio::cmp` method as well as the code below seem
         // unnecessarily inefficient. We should also do the checks the
         // `Ratio::cmp` does and additionaly compute the number of bits of the

@@ -2,8 +2,10 @@
 
 use rand::Rng;
 
-use crate::expr::{Expr, ExprOp};
-use crate::rings::{BinaryRing, Ring, RingElement};
+use crate::{
+    expr::{Expr, ExprOp},
+    rings::{BinaryRing, Ring, RingElement},
+};
 
 /// Represents a polynomial with integer coefficients.
 ///
@@ -305,7 +307,10 @@ impl<R: Ring> Poly<R> {
             let mut last_i = usize::MAX;
             while i < str.len() {
                 if i == last_i {
-                    return Err(format!("Unexpected input at {i}: {}.", str[i] as char));
+                    return Err(format!(
+                        "Unexpected input at {i}: {}.",
+                        str[i] as char
+                    ));
                 }
                 last_i = i;
 
@@ -314,11 +319,11 @@ impl<R: Ring> Poly<R> {
                     b'+' => {
                         i += 1;
                         false
-                    }
+                    },
                     b'-' => {
                         i += 1;
                         true
-                    }
+                    },
                     _ => false,
                 };
 
@@ -335,7 +340,10 @@ impl<R: Ring> Poly<R> {
                     // Parse the number.
                     while str.get(i).is_some_and(u8::is_ascii_digit) {
                         r.mul_assign(&mut c, &ten);
-                        r.add_assign(&mut c, &r.element_from_usize((str[i] - b'0') as usize));
+                        r.add_assign(
+                            &mut c,
+                            &r.element_from_usize((str[i] - b'0') as usize),
+                        );
                         i += 1;
                     }
 

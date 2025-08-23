@@ -1,6 +1,7 @@
-use crate::Formatter;
 use mba::{bitwise_expr::LBExpr, linear_mba, rings::BinaryRing};
 use wasm_bindgen::prelude::*;
+
+use crate::Formatter;
 
 /// Obfuscates a linear MBA expression `expr` using the given rewrite operations
 /// `rewrite_ops` for the given integer width `bits`.
@@ -38,8 +39,8 @@ fn obfuscate_linear_impl<R: BinaryRing>(
     r: &R,
 ) -> Result<String, String> {
     // Parse the expression.
-    let expr =
-        LBExpr::from_string(expr, r).map_err(|e| format!("Failed to parse expression: {e}"))?;
+    let expr = LBExpr::from_string(expr, r)
+        .map_err(|e| format!("Failed to parse expression: {e}"))?;
 
     // Parse the rewrite operations.
     let rewrite_ops: Vec<_> = rewrite_ops
@@ -47,14 +48,20 @@ fn obfuscate_linear_impl<R: BinaryRing>(
         .map(|op| {
             // A bit wasteful to clone the `op` here,
             // but we potentially need it on the error message.
-            LBExpr::from_string(op.clone(), r)
-                .map_err(|e| format!("Failed to parse rewrite operation {op}: {e}"))
+            LBExpr::from_string(op.clone(), r).map_err(|e| {
+                format!("Failed to parse rewrite operation {op}: {e}")
+            })
         })
         .try_collect()?;
 
     // Try to rewrite the expression.
-    let e = linear_mba::rewrite(&expr, &rewrite_ops, randomize.then(rand::rng).as_mut(), r)
-        .ok_or("There is no solution")?;
+    let e = linear_mba::rewrite(
+        &expr,
+        &rewrite_ops,
+        randomize.then(rand::rng).as_mut(),
+        r,
+    )
+    .ok_or("There is no solution")?;
 
     // Format the result.
     Ok(e.display_function(formatter.to_rust(), "f", r).to_string())
