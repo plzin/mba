@@ -115,7 +115,9 @@ fn solve_linear_system_impl<R: BinaryRing>(
         b[i] = match r.element_from_string(n[i]) {
             Some(e) => e,
             None => {
-                return Err(format!("Failed to parse element at ({i}, {cols})"));
+                return Err(format!(
+                    "Failed to parse element at ({i}, {cols})"
+                ));
             },
         };
     }
