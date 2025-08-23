@@ -1,7 +1,9 @@
-use mba::formatter::Formatter;
-use mba::linear_mba::{obfuscate, ObfuscationConfig};
-use mba::expr::Expr;
-use mba::rings::U8;
+use mba::{
+    expr::Expr,
+    formatter::Formatter,
+    linear_mba::{ObfuscationConfig, obfuscate},
+    rings::U8,
+};
 use rand::{SeedableRng as _, rngs::StdRng};
 
 fn main() {

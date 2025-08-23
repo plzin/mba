@@ -4,7 +4,9 @@ use num_bigint::{BigInt, BigUint, Sign};
 /// This exists mostly for convenience, so we can call `e.is_zero` on ring
 /// elements, but this should really all be implemented on the `Ring` itself,
 /// so we'd have to call `r.is_zero(e)`.
-pub trait RingElement: 'static + Clone + PartialEq + std::fmt::Debug + std::fmt::Display {
+pub trait RingElement:
+    'static + Clone + PartialEq + std::fmt::Debug + std::fmt::Display
+{
     /// Returns the "zero" element of the ring.
     fn zero() -> Self;
 
@@ -124,7 +126,9 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
     /// Subtract an element given by value from an element given by reference.
     /// See [`Ring::sub_assign_rhs`].
     fn sub_rhs(
-        &self, l: &Self::Element, mut r: Self::Element
+        &self,
+        l: &Self::Element,
+        mut r: Self::Element,
     ) -> Self::Element {
         self.sub_assign_rhs(l, &mut r);
         r
@@ -264,7 +268,7 @@ pub trait Ring: 'static + Clone + PartialEq + Eq + std::fmt::Debug {
     /// Parse an element from the given iterator over characters.
     fn parse_element(
         &self,
-        it: &mut std::iter::Peekable<impl Iterator<Item = char>>
+        it: &mut std::iter::Peekable<impl Iterator<Item = char>>,
     ) -> Option<Self::Element> {
         // TODO: allow hexadecimal literals.
 
@@ -468,10 +472,10 @@ use crate::formatter::Formatter;
 ///   and some need [`OrderedRing::is_negative`].
 ///
 /// - In many lattice algorithms we need to compare two elements of a
-///   [`crate::lattice::WorkingType`], e.g. in [`crate::lattice::lll`].
-///   And we also need [`OrderedRing::cmp_abs`] for solving systems of linear
-///   equations over a field there. For this reason this is also implemented
-///   for [`super::F32`] and [`super::F64`] which rust doesn't consider to be
+///   [`crate::lattice::WorkingType`], e.g. in [`crate::lattice::lll`]. And we
+///   also need [`OrderedRing::cmp_abs`] for solving systems of linear equations
+///   over a field there. For this reason this is also implemented for
+///   [`super::F32`] and [`super::F64`] which rust doesn't consider to be
 ///   ordered ([`Ord`]) because of NaNs. The implementation for them just
 ///   `unwrap`s the [`PartialOrd::partial_cmp`].
 pub trait OrderedRing: Ring {

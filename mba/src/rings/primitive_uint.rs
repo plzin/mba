@@ -1,5 +1,4 @@
-use super::*;
-use super::mod_inv_pow_two::ModInv as _;
+use super::{mod_inv_pow_two::ModInv as _, *};
 use crate::formatter::Formatter;
 
 // Implements an order on a ring whose elements are represented using
@@ -80,7 +79,7 @@ macro_rules! impl_ordered_ring_uint {
                 l > r
             }
         }
-    }
+    };
 }
 
 pub(crate) use impl_ordered_ring_uint;
@@ -142,7 +141,8 @@ macro_rules! uint_ring {
             #[cfg(target_pointer_width = "32")]
             fn element_from_biguint(&self, n: &BigUint) -> Self::Element {
                 let mut e = 0;
-                for (i, digit) in n.iter_u32_digits()
+                for (i, digit) in n
+                    .iter_u32_digits()
                     .take(($uint::BITS.div_ceil(32)) as usize)
                     .enumerate()
                 {
@@ -154,7 +154,8 @@ macro_rules! uint_ring {
             #[cfg(target_pointer_width = "64")]
             fn element_from_biguint(&self, n: &BigUint) -> Self::Element {
                 let mut e = 0;
-                for (i, digit) in n.iter_u64_digits()
+                for (i, digit) in n
+                    .iter_u64_digits()
                     .take(($uint::BITS.div_ceil(64)) as usize)
                     .enumerate()
                 {
@@ -163,10 +164,15 @@ macro_rules! uint_ring {
                 e
             }
 
-            fn data_type_name(&self, formatter: Formatter) -> impl std::fmt::Display {
+            fn data_type_name(
+                &self,
+                formatter: Formatter,
+            ) -> impl std::fmt::Display {
                 match formatter {
                     Formatter::C => $c_type,
-                    Formatter::Rust => concat!("Wrapping<", stringify!($uint), ">"),
+                    Formatter::Rust => {
+                        concat!("Wrapping<", stringify!($uint), ">")
+                    },
                     Formatter::Tex => $c_type,
                 }
             }
@@ -266,11 +272,9 @@ uint_ring!(U32, u32, "uint32_t");
 uint_ring!(U64, u64, "uint64_t");
 uint_ring!(U128, u128, "uint128_t");
 
-
 #[cfg(test)]
 mod test_primitive_uint {
-    use super::*;
-    use super::test::*;
+    use super::{test::*, *};
 
     #[test]
     fn test_inverse_u8() {
@@ -384,9 +388,9 @@ mod test_primitive_uint {
                 R::to_representative(&a).into(),
                 R::to_representative(&b).into(),
             );
-            let check = r.element_from_biguint(rational.round().numer().magnitude());
-            assert_eq!(q, check,
-                "rounded_div({a}, {b}) = {check} but got {q}");
+            let check =
+                r.element_from_biguint(rational.round().numer().magnitude());
+            assert_eq!(q, check, "rounded_div({a}, {b}) = {check} but got {q}");
         }
     }
 

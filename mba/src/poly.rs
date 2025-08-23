@@ -2,8 +2,10 @@
 
 use rand::Rng;
 
-use crate::expr::{Expr, ExprOp};
-use crate::rings::{BinaryRing, Ring, RingElement};
+use crate::{
+    expr::{Expr, ExprOp},
+    rings::{BinaryRing, Ring, RingElement},
+};
 
 /// Represents a polynomial with integer coefficients.
 ///
@@ -18,9 +20,7 @@ pub struct Poly<R: Ring> {
 impl<R: Ring> Poly<R> {
     /// Returns the constant zero polynomial.
     pub const fn zero() -> Self {
-        Self {
-            coeffs: Vec::new()
-        }
+        Self { coeffs: Vec::new() }
     }
 
     /// Returns the constant one polynomial.
@@ -30,9 +30,7 @@ impl<R: Ring> Poly<R> {
 
     /// Returns the constant polynomial.
     pub fn constant(c: R::Element) -> Self {
-        Self {
-            coeffs: vec![c]
-        }
+        Self { coeffs: vec![c] }
     }
 
     /// Returns a polynomial from a list of coefficients.
@@ -41,19 +39,11 @@ impl<R: Ring> Poly<R> {
     /// you are used to.
     /// Another reason to change the representation sometime.
     pub fn from_vec(v: Vec<R::Element>) -> Self {
-        Self {
-            coeffs: v
-        }
+        Self { coeffs: v }
     }
 
-    pub fn random<Rand: Rng>(
-        rng: &mut Rand,
-        degree: usize,
-        r: &R,
-    ) -> Self {
-        let p: Vec<_> =  (0..=degree)
-            .map(|_| r.random(rng))
-            .collect();
+    pub fn random<Rand: Rng>(rng: &mut Rand, degree: usize, r: &R) -> Self {
+        let p: Vec<_> = (0..=degree).map(|_| r.random(rng)).collect();
         Self { coeffs: p }.truncated()
     }
 
@@ -79,8 +69,10 @@ impl<R: Ring> Poly<R> {
 
     /// Checks whether a truncated polynomial is the identity polynomial.
     pub fn is_id(&self) -> bool {
-        debug_assert!(self.coeffs.last().is_none_or(|i| !i.is_zero()),
-            "Truncate the polynomial before checking if it is the identity");
+        debug_assert!(
+            self.coeffs.last().is_none_or(|i| !i.is_zero()),
+            "Truncate the polynomial before checking if it is the identity"
+        );
         matches!(&self.coeffs[..], [z, o] if z.is_zero() && o.is_one())
     }
 
@@ -118,16 +110,14 @@ impl<R: Ring> Poly<R> {
 
     /// Returns a struct that can be used to display the polynomial.
     pub fn display<'a>(&'a self, var: &'a str) -> DisplayPoly<'a, R> {
-        DisplayPoly {
-            poly: self,
-            var,
-        }
+        DisplayPoly { poly: self, var }
     }
 
     /// Add two polynomials.
     pub fn add_assign(&mut self, rhs: &Self, ring: &R) {
         // Add the coefficients that exist in both.
-        self.coeffs.iter_mut()
+        self.coeffs
+            .iter_mut()
             .zip(rhs.coeffs.iter())
             .for_each(|(l, r)| ring.add_assign(l, r));
 
@@ -157,7 +147,8 @@ impl<R: Ring> Poly<R> {
         let mut coeffs = Vec::with_capacity(max.len());
 
         // Add up all coefficients that exist in both.
-        self.coeffs.iter()
+        self.coeffs
+            .iter()
             .zip(rhs.coeffs.iter())
             .for_each(|(l, r)| coeffs.push(ring.add(l.clone(), r)));
 
@@ -172,7 +163,8 @@ impl<R: Ring> Poly<R> {
     /// Subtract one polynomial from another.
     pub fn sub_assign(&mut self, rhs: &Self, ring: &R) {
         // Subtract the rhs for the coefficients that exist in both.
-        self.coeffs.iter_mut()
+        self.coeffs
+            .iter_mut()
             .zip(rhs.coeffs.iter())
             .for_each(|(l, r)| ring.sub_assign(l, r));
 
@@ -195,7 +187,8 @@ impl<R: Ring> Poly<R> {
     pub fn sub(&self, rhs: &Self, ring: &R) -> Self {
         // Subtract the rhs for the coefficients that exist in both.
         let mut coeffs = Vec::with_capacity(self.len());
-        self.coeffs.iter()
+        self.coeffs
+            .iter()
             .zip(rhs.coeffs.iter())
             .for_each(|(l, r)| coeffs.push(ring.sub(l.clone(), r)));
 
@@ -218,7 +211,7 @@ impl<R: Ring> Poly<R> {
     pub fn mul(&self, rhs: &Self, ring: &R) -> Self {
         let mut coeffs = vec![R::zero(); self.len() + rhs.len() - 1];
         for (i, c) in rhs.coeffs.iter().enumerate() {
-            for (j, d)  in self.coeffs.iter().enumerate() {
+            for (j, d) in self.coeffs.iter().enumerate() {
                 ring.mul_add_assign(&mut coeffs[i + j], c, d);
             }
         }
@@ -247,7 +240,6 @@ impl<R: Ring> Poly<R> {
         self.mul_assign_const(rhs, ring);
         self
     }
-
 
     /// Multiplies the polynomial by a linear factor (x-a).
     pub fn mul_linfac(&mut self, a: &R::Element, r: &R) {
@@ -316,20 +308,28 @@ impl<R: Ring> Poly<R> {
             while i < str.len() {
                 if i == last_i {
                     return Err(format!(
-                        "Unexpected input at {i}: {}.", str[i] as char
+                        "Unexpected input at {i}: {}.",
+                        str[i] as char
                     ));
                 }
                 last_i = i;
 
                 // Parse the sign.
                 let sign = match str[i] {
-                    b'+' => { i += 1; false },
-                    b'-' => { i += 1; true },
+                    b'+' => {
+                        i += 1;
+                        false
+                    },
+                    b'-' => {
+                        i += 1;
+                        true
+                    },
                     _ => false,
                 };
 
                 // Is there a coefficient?
-                let is_digit = str.get(i)
+                let is_digit = str
+                    .get(i)
                     .ok_or("Unexpected end of input.")?
                     .is_ascii_digit();
 
@@ -340,9 +340,10 @@ impl<R: Ring> Poly<R> {
                     // Parse the number.
                     while str.get(i).is_some_and(u8::is_ascii_digit) {
                         r.mul_assign(&mut c, &ten);
-                        r.add_assign(&mut c, &r.element_from_usize(
-                            (str[i] - b'0') as usize
-                        ));
+                        r.add_assign(
+                            &mut c,
+                            &r.element_from_usize((str[i] - b'0') as usize),
+                        );
                         i += 1;
                     }
 
@@ -372,7 +373,8 @@ impl<R: Ring> Poly<R> {
                     if str.get(i).is_some_and(|c| *c == b'^') {
                         i += 1;
                         // Is there a number?
-                        let is_digit = str.get(i)
+                        let is_digit = str
+                            .get(i)
                             .ok_or("Unexpected end of input.")?
                             .is_ascii_digit();
                         if !is_digit {
@@ -400,9 +402,9 @@ impl<R: Ring> Poly<R> {
             }
         } else {
             for c in str.split(|c| *c == b' ') {
-                let c = r.parse_element(
-                    &mut c.iter().map(|&c| c as char).peekable()
-                ).ok_or("Failed to parse coefficient.")?;
+                let c = r
+                    .parse_element(&mut c.iter().map(|&c| c as char).peekable())
+                    .ok_or("Failed to parse coefficient.")?;
                 coeffs.push(c);
             }
             coeffs.reverse();
@@ -455,7 +457,9 @@ impl<'a, R: Ring> DisplayPoly<'a, R> {
 
 impl<'a, R: Ring> std::fmt::Display for DisplayPoly<'a, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.poly.coeffs
+        let mut iter = self
+            .poly
+            .coeffs
             .iter()
             .enumerate()
             .rev()
@@ -465,7 +469,7 @@ impl<'a, R: Ring> std::fmt::Display for DisplayPoly<'a, R> {
             f: &mut std::fmt::Formatter<'_>,
             e: usize,
             c: &E,
-            var: &str
+            var: &str,
         ) -> std::fmt::Result {
             if e == 0 {
                 return write!(f, "{c}");

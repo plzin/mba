@@ -1,9 +1,11 @@
 use itertools::Itertools;
-use mba::rings::BinaryRing;
-use mba::poly::Poly;
-use mba::perm_poly::{
-    ZeroIdeal, compute_inverse, compute_inverse_generator,
-    compute_inverse_interpolation,
+use mba::{
+    perm_poly::{
+        ZeroIdeal, compute_inverse, compute_inverse_generator,
+        compute_inverse_interpolation,
+    },
+    poly::Poly,
+    rings::BinaryRing,
 };
 
 enum InverseAlgorithm {

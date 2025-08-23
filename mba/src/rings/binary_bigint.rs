@@ -1,6 +1,5 @@
-use crate::formatter::Formatter;
-
 use super::*;
+use crate::formatter::Formatter;
 
 /// The integers mod 2^n. So esentially `n` bit integers with wrapping
 /// semantics. The elements are stored as [`BigUint`]s. The arithmetic could
@@ -23,10 +22,7 @@ pub struct BinaryBigInt {
 impl BinaryBigInt {
     pub fn new(bits: u32) -> Self {
         assert!(bits > 0, "bits must be greater than 0");
-        Self {
-            bits,
-            modulus: biguint_pow2(bits),
-        }
+        Self { bits, modulus: biguint_pow2(bits) }
     }
 
     /// Returns the number of bits of a ring element.
@@ -121,10 +117,7 @@ impl Ring for BinaryBigInt {
     }
 
     fn data_type_name(&self, formatter: Formatter) -> impl std::fmt::Display {
-        BinaryBigIntDataType {
-            bits: self.bits,
-            formatter,
-        }
+        BinaryBigIntDataType { bits: self.bits, formatter }
     }
 }
 
@@ -224,10 +217,9 @@ impl std::fmt::Display for BinaryBigIntDataType {
 
 #[cfg(test)]
 mod test_bitwise_bigint {
-    use super::*;
-    use super::test::*;
-    use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    use super::{test::*, *};
     #[test]
     fn test_inverse_bitwise_bigint() {
         let rng = &mut StdRng::seed_from_u64(0);

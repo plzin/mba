@@ -1,6 +1,5 @@
-use crate::formatter::Formatter;
-
 use super::*;
+use crate::formatter::Formatter;
 
 macro_rules! var_primitive_int {
     ($ring:ident, $uint:ident, $uint_ring:ident) => {
@@ -13,7 +12,10 @@ macro_rules! var_primitive_int {
         impl $ring {
             pub fn new(bits: u32) -> Self {
                 assert!((1..=$uint::BITS).contains(&bits));
-                Self { bits: bits as $uint, mask: ((1 as $uint) << bits).wrapping_sub(1) }
+                Self {
+                    bits: bits as $uint,
+                    mask: ((1 as $uint) << bits).wrapping_sub(1),
+                }
             }
         }
 
@@ -64,7 +66,10 @@ macro_rules! var_primitive_int {
                 $uint_ring.element_from_biguint(n) & self.mask
             }
 
-            fn data_type_name(&self, formatter: Formatter) -> impl std::fmt::Display {
+            fn data_type_name(
+                &self,
+                formatter: Formatter,
+            ) -> impl std::fmt::Display {
                 VarBitsPrimitiveIntDataType {
                     bits: self.bits as u32,
                     formatter,
@@ -120,21 +125,30 @@ macro_rules! var_primitive_int {
         }
 
         impl IntDivRing for $ring {
-            fn rounded_div(l: &Self::Element, r: &Self::Element) -> Self::Element {
+            fn rounded_div(
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> Self::Element {
                 $uint_ring::rounded_div(l, r)
             }
 
-            fn euclidean_div(l: &Self::Element, r: &Self::Element) -> Self::Element {
+            fn euclidean_div(
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> Self::Element {
                 $uint_ring::euclidean_div(l, r)
             }
 
-            fn euclidean_rem(l: &Self::Element, r: &Self::Element) -> Self::Element {
+            fn euclidean_rem(
+                l: &Self::Element,
+                r: &Self::Element,
+            ) -> Self::Element {
                 $uint_ring::euclidean_rem(l, r)
             }
         }
 
         impl_ordered_ring_uint!($ring);
-    }
+    };
 }
 
 pub struct VarBitsPrimitiveIntDataType {

@@ -1,10 +1,14 @@
-//! This module contains bitwise expressions ([`BExpr`]), which are just bitwise expressions
-//! on n bits, and linear combinations of bitwise expressions ([`LBExpr`]).
+//! This module contains bitwise expressions ([`BExpr`]), which are just bitwise
+//! expressions on n bits, and linear combinations of bitwise expressions
+//! ([`LBExpr`]).
 
-use std::{collections::BTreeSet};
-use crate::rings::{Ring, RingElement as _, BinaryRing};
-use crate::valuation::Valuation;
-use crate::{Symbol, ExprOp};
+use std::collections::BTreeSet;
+
+use crate::{
+    ExprOp, Symbol,
+    rings::{BinaryRing, Ring, RingElement as _},
+    valuation::Valuation,
+};
 
 /// LBExpr is short for "Linear combination of Bitwise Expressions"
 /// These are the expressions for which rewrite rules can be efficiently
@@ -51,9 +55,10 @@ impl<R: Ring> LBExpr<R> {
     /// Evaluate an expression with a valuation for the occurring variables.
     pub fn eval(&self, v: &mut Valuation<R>, r: &R) -> R::Element
     where
-        R: BinaryRing
+        R: BinaryRing,
     {
-        self.0.iter()
+        self.0
+            .iter()
             .map(|(i, e)| r.mul(e.eval(v, r), i))
             .fold(R::zero(), |acc, x| r.add(acc, &x))
     }
@@ -61,14 +66,14 @@ impl<R: Ring> LBExpr<R> {
     /// Returns a measure of the complexity of the expression.
     pub fn complexity(&self) -> u32
     where
-        R: BinaryRing
+        R: BinaryRing,
     {
         // Complexity of a coefficient.
-        let coeff_complexity = |i: &R::Element| {
-            R::count_ones(i) / 2 + R::min_bits(i)
-        };
+        let coeff_complexity =
+            |i: &R::Element| R::count_ones(i) / 2 + R::min_bits(i);
 
-        self.0.iter()
+        self.0
+            .iter()
             .filter(|(c, _)| !c.is_zero())
             .map(|(c, e)| coeff_complexity(c) + e.complexity())
             .sum()
@@ -106,8 +111,8 @@ impl<R: Ring> LBExpr<R> {
             // If this is a digit then we expect num*BExpr.
             if c.is_ascii_digit() {
                 // Parse the number.
-                let mut num = r.parse_element(&mut it)
-                    .ok_or("Expected number")?;
+                let mut num =
+                    r.parse_element(&mut it).ok_or("Expected number")?;
 
                 // If the number is negative then negate it.
                 if neg {
@@ -145,8 +150,14 @@ impl<R: Ring> LBExpr<R> {
 
             // If the next character is not a plus or - then we are done.
             match it.peek() {
-                Some('+') => { neg = false; it.next() },
-                Some('-') => { neg = true; it.next() },
+                Some('+') => {
+                    neg = false;
+                    it.next()
+                },
+                Some('-') => {
+                    neg = true;
+                    it.next()
+                },
                 _ => return Ok(Self(v)),
             };
         }
@@ -164,7 +175,10 @@ impl<R: Ring> LBExpr<R> {
             if let BExpr::Ones = e {
                 ExprOp::Const(r.neg(i.clone()))
             } else {
-                ExprOp::Mul(ExprOp::Const(i.clone()).into(), e.to_expr(r).into())
+                ExprOp::Mul(
+                    ExprOp::Const(i.clone()).into(),
+                    e.to_expr(r).into(),
+                )
             }
         };
 
@@ -246,15 +260,28 @@ impl BExpr {
         match self {
             Ones => {},
             Var(c) => drop(v.insert(*c)),
-            And(e1, e2) => { e1.vars_impl(v); e2.vars_impl(v) },
-            Or(e1, e2) => { e1.vars_impl(v); e2.vars_impl(v) },
-            Xor(e1, e2) => { e1.vars_impl(v); e2.vars_impl(v) },
+            And(e1, e2) => {
+                e1.vars_impl(v);
+                e2.vars_impl(v)
+            },
+            Or(e1, e2) => {
+                e1.vars_impl(v);
+                e2.vars_impl(v)
+            },
+            Xor(e1, e2) => {
+                e1.vars_impl(v);
+                e2.vars_impl(v)
+            },
             Not(e) => e.vars_impl(v),
         }
     }
 
     /// Evaluate an expression with a valuation for the occurring variables.
-    pub fn eval<R: BinaryRing>(&self, v: &mut Valuation<R>, r: &R) -> R::Element {
+    pub fn eval<R: BinaryRing>(
+        &self,
+        v: &mut Valuation<R>,
+        r: &R,
+    ) -> R::Element {
         use BExpr::*;
         match self {
             Ones => r.negative_one(),
@@ -271,10 +298,23 @@ impl BExpr {
         use BExpr::*;
         match self {
             Ones => (),
-            Var(v) => if *v == old { *v = new },
-            And(l, r) => { l.rename_var(old, new); r.rename_var(old, new) },
-            Or(l, r) => { l.rename_var(old, new); r.rename_var(old, new) },
-            Xor(l, r) => { l.rename_var(old, new); r.rename_var(old, new) },
+            Var(v) => {
+                if *v == old {
+                    *v = new
+                }
+            },
+            And(l, r) => {
+                l.rename_var(old, new);
+                r.rename_var(old, new)
+            },
+            Or(l, r) => {
+                l.rename_var(old, new);
+                r.rename_var(old, new)
+            },
+            Xor(l, r) => {
+                l.rename_var(old, new);
+                r.rename_var(old, new)
+            },
             Not(e) => e.rename_var(old, new),
         }
     }
@@ -302,7 +342,7 @@ impl BExpr {
 
     pub(self) fn parse(
         it: &mut std::iter::Peekable<std::str::Chars>,
-        pre: usize
+        pre: usize,
     ) -> Result<Self, String> {
         use BExpr::*;
 
@@ -324,11 +364,11 @@ impl BExpr {
             let mut var = String::from(c);
             loop {
                 let Some(c) = it.peek() else {
-                    break
+                    break;
                 };
 
                 if !c.is_alphanumeric() {
-                    break
+                    break;
                 }
 
                 var.push(*c);
@@ -381,18 +421,15 @@ impl BExpr {
         match self {
             Ones => ExprOp::Const(ring.negative_one()),
             Var(c) => ExprOp::Var(*c),
-            And(l, r) => ExprOp::And(
-                l.to_expr(ring).into(),
-                r.to_expr(ring).into()
-            ),
-            Or(l, r) => ExprOp::Or(
-                l.to_expr(ring).into(),
-                r.to_expr(ring).into()
-            ),
-            Xor(l, r) => ExprOp::Xor(
-                l.to_expr(ring).into(),
-                r.to_expr(ring).into()
-            ),
+            And(l, r) => {
+                ExprOp::And(l.to_expr(ring).into(), r.to_expr(ring).into())
+            },
+            Or(l, r) => {
+                ExprOp::Or(l.to_expr(ring).into(), r.to_expr(ring).into())
+            },
+            Xor(l, r) => {
+                ExprOp::Xor(l.to_expr(ring).into(), r.to_expr(ring).into())
+            },
             Not(e) => ExprOp::Not(e.to_expr(ring).into()),
         }
     }

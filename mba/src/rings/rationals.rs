@@ -75,11 +75,7 @@ impl Field for Q {
 impl_int_div_for_field!(Q);
 
 impl OrderedRing for Q {
-    fn cmp(
-        &self,
-        l: &Self::Element,
-        r: &Self::Element,
-    ) -> std::cmp::Ordering {
+    fn cmp(&self, l: &Self::Element, r: &Self::Element) -> std::cmp::Ordering {
         l.cmp(r)
     }
 

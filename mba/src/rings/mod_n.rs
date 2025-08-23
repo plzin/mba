@@ -94,9 +94,7 @@ impl Ring for BigIntModN {
     }
 
     fn data_type_name(&self, _formatter: Formatter) -> impl std::fmt::Display {
-        BigIntModNDataType {
-            modulus: self.n.clone(),
-        }
+        BigIntModNDataType { modulus: self.n.clone() }
     }
 }
 
@@ -134,10 +132,9 @@ impl std::fmt::Display for BigIntModNDataType {
 
 #[cfg(test)]
 mod test_mod_n {
-    use super::*;
-    use super::test::*;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
+    use rand::{SeedableRng, rngs::StdRng};
+
+    use super::{test::*, *};
 
     #[test]
     fn test_inverse_mod_n() {

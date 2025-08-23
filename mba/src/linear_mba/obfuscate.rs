@@ -6,11 +6,13 @@
 
 use rand::Rng;
 
-use crate::Symbol;
-use crate::rings::BinaryRing;
-use crate::expr::{Expr, ExprOp};
-use crate::bitwise_expr::{BExpr, LBExpr};
 use super::{rewrite::rewrite, subexpression::expr_to_lbexpr};
+use crate::{
+    Symbol,
+    bitwise_expr::{BExpr, LBExpr},
+    expr::{Expr, ExprOp},
+    rings::BinaryRing,
+};
 
 /// More obscure settings for internals of the obfuscation.
 /// Use `ObfuscationConfig::default()` to get a reasonable default.
@@ -68,7 +70,6 @@ pub enum RewriteTries {
     FiniteOriginal(usize),
 }
 
-
 /// Obfuscate any expression using linear MBA.
 pub fn obfuscate<R: BinaryRing, Rand: Rng>(
     e: &mut Expr<R>,
@@ -109,9 +110,11 @@ pub fn obfuscate<R: BinaryRing, Rand: Rng>(
             let mut ops = Vec::new();
             ops.push(LBExpr::from(BExpr::Ones));
             for _ in 0..cfg.rewrite_expr_count {
-                ops.push(LBExpr::from(
-                    random_bool_expr(vars, cfg.rewrite_expr_depth, rng)
-                ));
+                ops.push(LBExpr::from(random_bool_expr(
+                    vars,
+                    cfg.rewrite_expr_depth,
+                    rng,
+                )));
             }
 
             rewrite(e, &ops, Some(rng), ring)
@@ -177,9 +180,11 @@ pub fn obfuscate<R: BinaryRing, Rand: Rng>(
             ExprOp::Mul(l, r) => {
                 obfuscate_impl(l, visited, vars, cfg, rng, ring);
                 obfuscate_impl(r, visited, vars, cfg, rng, ring);
-            }
-            _ => panic!("Expression should be linear MBA, \
-                but expr_to_lbexpr failed ({e:?})."),
+            },
+            _ => panic!(
+                "Expression should be linear MBA, but expr_to_lbexpr failed \
+                 ({e:?})."
+            ),
         }
     }
 }
@@ -193,24 +198,25 @@ fn random_bool_expr<Rand: Rng>(
     max_depth: usize,
     rng: &mut Rand,
 ) -> BExpr {
-    assert!(!vars.is_empty(), "There needs to be \
-        at least one variable for the random expression.");
+    assert!(
+        !vars.is_empty(),
+        "There needs to be at least one variable for the random expression."
+    );
     let num_vars = vars.len() as u32;
-    assert_eq!(num_vars as usize, vars.len(),
-        "Not more than `u32::MAX` variables allowed.");
+    assert_eq!(
+        num_vars as usize,
+        vars.len(),
+        "Not more than `u32::MAX` variables allowed."
+    );
 
     if max_depth == 0 {
-        return BExpr::Var(
-            vars[(rng.random::<u32>() % num_vars) as usize]
-        );
+        return BExpr::Var(vars[(rng.random::<u32>() % num_vars) as usize]);
     }
 
     // Generate one of the four variants uniformly at random.
     let d = max_depth - 1;
     match rng.random::<u8>() % 5 {
-        0 => BExpr::Var(
-            vars[(rng.random::<u32>() % num_vars) as usize]
-        ),
+        0 => BExpr::Var(vars[(rng.random::<u32>() % num_vars) as usize]),
         1 => BExpr::not(random_bool_expr(vars, d, rng)),
         2 => BExpr::and(
             random_bool_expr(vars, d, rng),
@@ -231,8 +237,8 @@ fn random_bool_expr<Rand: Rng>(
 #[test]
 fn linear_obfuscate_test() {
     use rand::{SeedableRng as _, rngs::StdRng};
-    use crate::rings::U8;
-    use crate::valuation::Valuation;
+
+    use crate::{rings::U8, valuation::Valuation};
 
     let mut rng = StdRng::seed_from_u64(0);
     let cfg = ObfuscationConfig::default();

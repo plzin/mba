@@ -1,10 +1,11 @@
 //! Finds linear MBA subexpressions in an [`Expr`].
 
-use crate::Symbol;
-use crate::rings::BinaryRing;
-use crate::expr::{Expr, ExprOp};
-use crate::bitwise_expr::{BExpr, LBExpr};
-
+use crate::{
+    Symbol,
+    bitwise_expr::{BExpr, LBExpr},
+    expr::{Expr, ExprOp},
+    rings::BinaryRing,
+};
 
 /// A list of substitutions.
 /// See e.g. [`expr_to_bexpr`] on what this is used for.
@@ -61,19 +62,19 @@ pub fn expr_to_bexpr<R: BinaryRing>(
     match e.as_ref() {
         ExprOp::And(l, r) => Some(BExpr::and(
             expr_to_bexpr(l, subs, true).unwrap(),
-            expr_to_bexpr(r, subs, true).unwrap()
+            expr_to_bexpr(r, subs, true).unwrap(),
         )),
         ExprOp::Or(l, r) => Some(BExpr::or(
             expr_to_bexpr(l, subs, true).unwrap(),
-            expr_to_bexpr(r, subs, true).unwrap()
+            expr_to_bexpr(r, subs, true).unwrap(),
         )),
         ExprOp::Xor(l, r) => Some(BExpr::xor(
             expr_to_bexpr(l, subs, true).unwrap(),
-            expr_to_bexpr(r, subs, true).unwrap()
+            expr_to_bexpr(r, subs, true).unwrap(),
         )),
-        ExprOp::Not(i) => Some(BExpr::not(
-            expr_to_bexpr(i, subs, true).unwrap()
-        )),
+        ExprOp::Not(i) => {
+            Some(BExpr::not(expr_to_bexpr(i, subs, true).unwrap()))
+        },
         // Otherwise generate a new variable and add the substitution.
         _ => new_sub(),
     }
@@ -151,7 +152,11 @@ fn expr_to_lbexpr_impl<R: BinaryRing>(
         ExprOp::Neg(i) => {
             // Theoretically we could allow another whole
             // LBExpr in here but hopefully not too important.
-            let c = if negate { R::one() } else { ring.negative_one() };
+            let c = if negate {
+                R::one()
+            } else {
+                ring.negative_one()
+            };
             lu.0.push((c, expr_to_bexpr(i, subs, true).unwrap()));
             true
         },
@@ -159,7 +164,7 @@ fn expr_to_lbexpr_impl<R: BinaryRing>(
         // Otherwise parse the term from this expression.
         _ => {
             let Some((mut f, u)) = parse_term(e, subs, force, ring) else {
-                return false
+                return false;
             };
 
             if negate {
@@ -167,6 +172,6 @@ fn expr_to_lbexpr_impl<R: BinaryRing>(
             }
             lu.0.push((f, u));
             true
-        }
+        },
     }
 }

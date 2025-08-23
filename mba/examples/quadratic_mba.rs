@@ -1,13 +1,14 @@
 use itertools::Itertools;
-use mba::formatter::Formatter;
-use mba::rings::{
-    IntDivRing, OrderedRing, RingElement as _, BinaryBigInt, BinaryRing,
-    U128, U16, U32, U64, U8
+use mba::{
+    bitwise_expr::{BExpr, LBExpr},
+    expr::{Expr, ExprOp},
+    formatter::Formatter,
+    linear_mba::rewrite,
+    rings::{
+        BinaryBigInt, BinaryRing, IntDivRing, OrderedRing, RingElement as _,
+        U8, U16, U32, U64, U128,
+    },
 };
-use mba::bitwise_expr::{BExpr, LBExpr};
-use mba::linear_mba::rewrite;
-use mba::expr::{Expr, ExprOp};
-
 
 // Rewrite a linear MBA expression using quadratic MBA.
 fn main() {
@@ -81,7 +82,11 @@ fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(
         // to the linear combination.
         for (d, f) in coeff.0 {
             let e = e.clone();
-            let (fst, snd) = if e <= f { (e, f) } else { (f, e) };
+            let (fst, snd) = if e <= f {
+                (e, f)
+            } else {
+                (f, e)
+            };
 
             match v.iter_mut().find(|(_, a, b)| &fst == a && &snd == b) {
                 Some((c, _, _)) => r.add_assign(c, &d),
@@ -95,7 +100,9 @@ fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(
         Expr::new(ExprOp::Mul(
             Expr::new(ExprOp::Const(c.clone())),
             Expr::new(ExprOp::Mul(
-                Expr::new(e.to_expr(r)), Expr::new(f.to_expr(r))))
+                Expr::new(e.to_expr(r)),
+                Expr::new(f.to_expr(r)),
+            )),
         ))
     };
 

@@ -76,7 +76,10 @@ macro_rules! float_field {
                 n.$from_big().unwrap()
             }
 
-            fn data_type_name(&self, formatter: Formatter) -> impl std::fmt::Display {
+            fn data_type_name(
+                &self,
+                formatter: Formatter,
+            ) -> impl std::fmt::Display {
                 match formatter {
                     Formatter::C => $c_type,
                     Formatter::Rust => $rust_type,

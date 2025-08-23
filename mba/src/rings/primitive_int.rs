@@ -1,5 +1,4 @@
-use super::*;
-use super::mod_inv_pow_two::ModInv as _;
+use super::{mod_inv_pow_two::ModInv as _, *};
 use crate::formatter::Formatter;
 
 macro_rules! int_ring {
@@ -41,7 +40,8 @@ macro_rules! int_ring {
             }
 
             fn inverse(&self, e: &Self::Element) -> Option<Self::Element> {
-                self.is_unit(e).then(|| $uring.mod_inv(&e.cast_unsigned()).cast_signed())
+                self.is_unit(e)
+                    .then(|| $uring.mod_inv(&e.cast_unsigned()).cast_signed())
             }
 
             fn is_zero_divisor(&self, e: &Self::Element) -> bool {
@@ -59,7 +59,8 @@ macro_rules! int_ring {
             #[cfg(target_pointer_width = "32")]
             fn element_from_biguint(&self, n: &BigUint) -> Self::Element {
                 let mut e = 0;
-                for (i, digit) in n.iter_u32_digits()
+                for (i, digit) in n
+                    .iter_u32_digits()
                     .take(($int::BITS.div_ceil(32)) as usize)
                     .enumerate()
                 {
@@ -71,7 +72,8 @@ macro_rules! int_ring {
             #[cfg(target_pointer_width = "64")]
             fn element_from_biguint(&self, n: &BigUint) -> Self::Element {
                 let mut e = 0;
-                for (i, digit) in n.iter_u64_digits()
+                for (i, digit) in n
+                    .iter_u64_digits()
                     .take(($int::BITS.div_ceil(64)) as usize)
                     .enumerate()
                 {
@@ -80,10 +82,15 @@ macro_rules! int_ring {
                 e
             }
 
-            fn data_type_name(&self, formatter: Formatter) -> impl std::fmt::Display {
+            fn data_type_name(
+                &self,
+                formatter: Formatter,
+            ) -> impl std::fmt::Display {
                 match formatter {
                     Formatter::C => $c_type,
-                    Formatter::Rust => concat!("Wrapping<", stringify!($int), ">"),
+                    Formatter::Rust => {
+                        concat!("Wrapping<", stringify!($int), ">")
+                    },
                     Formatter::Tex => $c_type,
                 }
             }
@@ -258,8 +265,7 @@ int_ring!(I128, i128, U128, "int128_t");
 
 #[cfg(test)]
 mod test_primitive_int {
-    use super::*;
-    use super::test::*;
+    use super::{test::*, *};
 
     #[test]
     fn test_inverse_i8() {
@@ -340,8 +346,7 @@ mod test_primitive_int {
         r: &R,
         min: R::Element,
         max: R::Element,
-    )
-    where
+    ) where
         R: BinaryRing,
         R::Element: Copy + std::ops::Div<Output = R::Element>,
         BigInt: From<R::Element>,
@@ -364,16 +369,27 @@ mod test_primitive_int {
         for (a, b) in pairs {
             for i in 0..4 {
                 // Check all combinations of positive and negative `a` and `b`.
-                let a = if i & 1 == 0 { a } else { r.neg(a) };
-                let b = if i & 2 == 0 { b } else { r.neg(b) };
+                let a = if i & 1 == 0 {
+                    a
+                } else {
+                    r.neg(a)
+                };
+                let b = if i & 2 == 0 {
+                    b
+                } else {
+                    r.neg(b)
+                };
 
                 let q = R::rounded_div(&a, &b);
-                let check = r.element_from_bigint(BigRational::new(
-                    BigInt::from(a),
-                    BigInt::from(b),
-                ).round().numer());
-                assert_eq!(q, check,
-                    "rounded_div({a}, {b}) = {check} but got {q}");
+                let check = r.element_from_bigint(
+                    BigRational::new(BigInt::from(a), BigInt::from(b))
+                        .round()
+                        .numer(),
+                );
+                assert_eq!(
+                    q, check,
+                    "rounded_div({a}, {b}) = {check} but got {q}"
+                );
             }
         }
     }

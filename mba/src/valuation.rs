@@ -1,8 +1,12 @@
 //! Basically a key-value store for variable names and their values,
 //! but you can specify what to do when a variable is not found.
 
-use rand::{rngs::StdRng, Rng, SeedableRng};
-use crate::{rings::{Ring, RingElement as _}, Symbol};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+
+use crate::{
+    Symbol,
+    rings::{Ring, RingElement as _},
+};
 
 /// Stores values that should be substituted into variables.
 #[derive(Debug)]
@@ -76,10 +80,8 @@ impl<R: Ring> Valuation<R> {
         let vals = unsafe {
             std::mem::transmute::<
                 &mut Vec<(Symbol, R::Element)>,
-                &'static mut Vec<(Symbol, R::Element)>
-            >(
-                &mut self.vals
-            )
+                &'static mut Vec<(Symbol, R::Element)>,
+            >(&mut self.vals)
         };
 
         for (n, v) in vals {
@@ -90,13 +92,11 @@ impl<R: Ring> Valuation<R> {
 
         // If not, use the missing valuation.
         let new_val = match &mut self.missing {
-            MissingValue::Panic => panic!("Variable {name} not found in valuation."),
-            MissingValue::Zero => {
-                R::zero()
+            MissingValue::Panic => {
+                panic!("Variable {name} not found in valuation.")
             },
-            MissingValue::Random(rng) => {
-                r.random(&mut *rng)
-            },
+            MissingValue::Zero => R::zero(),
+            MissingValue::Random(rng) => r.random(&mut *rng),
         };
 
         self.vals.push((name.to_owned(), new_val));

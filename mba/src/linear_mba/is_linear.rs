@@ -2,10 +2,7 @@
 
 use rand::Rng;
 
-use crate::Symbol;
-use crate::expr::Expr;
-use crate::rings::BinaryRing;
-use crate::valuation::Valuation;
+use crate::{Symbol, expr::Expr, rings::BinaryRing, valuation::Valuation};
 
 /// Checks if an [`Expr`] implements a linear MBA function by checking if the
 /// fundamental theorem of linear MBA holds for all inputs.
@@ -64,7 +61,8 @@ fn build_table<R: BinaryRing>(
     ring: &R,
 ) -> (Vec<Symbol>, Vec<R::Element>, Valuation<R>) {
     let vars = expr.vars();
-    assert!(vars.len() < usize::BITS as usize,
+    assert!(
+        vars.len() < usize::BITS as usize,
         "More than {} variables are currently not supported on your system.",
         usize::BITS - 1
     );
@@ -96,9 +94,9 @@ fn compute_expected_result<R: BinaryRing>(
     val: &mut Valuation<R>,
     r: &R,
 ) -> R::Element {
-    (0..r.bits()).fold(R::zero(), |acc, j|
+    (0..r.bits()).fold(R::zero(), |acc, j| {
         r.sub(acc, &r.shl(b[compute_index(vars, val, j, r)].clone(), j))
-    )
+    })
 }
 
 /// This function is only meaningful in the context of the fundamental theorem
@@ -113,7 +111,7 @@ fn compute_index<R: BinaryRing>(
     j: u32,
     r: &R,
 ) -> usize {
-    vars.iter()
-        .enumerate()
-        .fold(0, |acc, (i, &v)| acc | (R::bit(val.value(v, r), j) as usize) << i)
+    vars.iter().enumerate().fold(0, |acc, (i, &v)| {
+        acc | (R::bit(val.value(v, r), j) as usize) << i
+    })
 }

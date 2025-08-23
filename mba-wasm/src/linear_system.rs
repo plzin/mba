@@ -1,10 +1,12 @@
-use mba::choose_binary_ring;
-use mba::solver::{modular_diagonalize, solve_scalar_congruence};
-use mba::lattice::AffineLattice;
-use mba::matrix::Matrix;
-use mba::rings::{BinaryRing, RingElement as _};
-use mba::vector::Vector;
-use mba::tex;
+use mba::{
+    choose_binary_ring,
+    lattice::AffineLattice,
+    matrix::Matrix,
+    rings::{BinaryRing, RingElement as _},
+    solver::{modular_diagonalize, solve_scalar_congruence},
+    tex,
+    vector::Vector,
+};
 use wasm_bindgen::prelude::*;
 
 /// Stores the intermediate results during the computation.
@@ -32,11 +34,9 @@ pub struct SolveTrace {
 
 #[wasm_bindgen(js_name = "solveLinearSystem")]
 pub fn solve_linear_system(
-    #[wasm_bindgen(js_name = "matrixString")]
-    matrix_string: String,
+    #[wasm_bindgen(js_name = "matrixString")] matrix_string: String,
     bits: u32,
 ) -> Result<SolveTrace, String> {
-
     // Parse the matrix here so the code isn't duplicated for each ring.
     let mut a = Vec::new();
     let mut b = Vec::new();
@@ -67,8 +67,11 @@ pub fn solve_linear_system(
             // Check that each row has the same number of entries.
             let row_entries = a.len() - rows * cols;
             if row_entries != cols {
-                return Err(format!("Row {} has a different number of entries \
-                    ({row_entries}) than the first row ({cols})", rows + 1));
+                return Err(format!(
+                    "Row {} has a different number of entries ({row_entries}) \
+                     than the first row ({cols})",
+                    rows + 1
+                ));
             }
         }
 
@@ -78,11 +81,11 @@ pub fn solve_linear_system(
     assert_eq!(rows * cols, a.len());
     assert_eq!(rows, b.len());
 
-    choose_binary_ring!(solve_linear_system_impl(
-        a, b, rows, cols, &r
-    ), r = bits)
+    choose_binary_ring!(
+        solve_linear_system_impl(a, b, rows, cols, &r),
+        r = bits
+    )
 }
-
 
 fn solve_linear_system_impl<R: BinaryRing>(
     m: Vec<&str>,
@@ -99,8 +102,11 @@ fn solve_linear_system_impl<R: BinaryRing>(
         for j in 0..cols {
             a[(i, j)] = match r.element_from_string(m[i * cols + j]) {
                 Some(e) => e,
-                None => return Err(format!(
-                    "Failed to parse element at ({i}, {j})")),
+                None => {
+                    return Err(format!(
+                        "Failed to parse element at ({i}, {j})"
+                    ));
+                },
             };
         }
     }
@@ -108,14 +114,19 @@ fn solve_linear_system_impl<R: BinaryRing>(
     for i in 0..rows {
         b[i] = match r.element_from_string(n[i]) {
             Some(e) => e,
-            None => return Err(format!("Failed to parse element at ({i}, {cols})")),
+            None => {
+                return Err(format!(
+                    "Failed to parse element at ({i}, {cols})"
+                ));
+            },
         };
     }
 
     // Diagonalize the matrix.
     let mut d = a.clone();
     let (s, t) = modular_diagonalize(d.view_mut(), r);
-    let diag = format!("{}={}{}{}",
+    let diag = format!(
+        "{}={}{}{}",
         tex::underbrace(d.to_tex(), tex::bold("D")),
         tex::underbrace(s.to_tex(), tex::bold("S")),
         tex::underbrace(a.to_tex(), tex::bold("A")),
@@ -125,7 +136,8 @@ fn solve_linear_system_impl<R: BinaryRing>(
     // Transform the right-hand side.
     let b_new = s.mul_vec_post(&b, r);
 
-    let scalar_system = format!("{}\\mathbf{{x'}}={}{}={}",
+    let scalar_system = format!(
+        "{}\\mathbf{{x'}}={}{}={}",
         tex::underbrace(d.to_tex(), tex::bold("D")),
         tex::underbrace(s.to_tex(), tex::bold("S")),
         tex::underbrace(b.to_tex(), tex::bold("b")),
@@ -141,7 +153,8 @@ fn solve_linear_system_impl<R: BinaryRing>(
         let i = min_dim + i;
         let linear_solutions = format!(
             "\\text{{Row {}: }} 0={}\\implies \\text{{No solution}}",
-            i + 1, b[i]
+            i + 1,
+            b[i]
         );
 
         return Ok(SolveTrace {
@@ -169,8 +182,8 @@ fn solve_linear_system_impl<R: BinaryRing>(
         let a = &d[(i, i)];
         let b = &b[i];
 
-        linear_solutions += &format!(
-            "{}x'_{{{}}}&={} &\\implies ", a, i + 1, b);
+        linear_solutions +=
+            &format!("{}x'_{{{}}}&={} &\\implies ", a, i + 1, b);
 
         let Some((x, kern)) = solve_scalar_congruence(a, b, r) else {
             linear_solutions += "\\text{No solution!}&\\end{align}";
@@ -186,9 +199,8 @@ fn solve_linear_system_impl<R: BinaryRing>(
         if kern.is_zero() {
             linear_solutions += &format!("x'_{{{}}}&={}\\\\", i + 1, x);
         } else {
-            linear_solutions += &format!(
-                "x'_{{{}}}&={}+{}a_{{{}}}\\\\", i + 1, x, kern, j
-            );
+            linear_solutions +=
+                &format!("x'_{{{}}}&={}+{}a_{{{}}}\\\\", i + 1, x, kern, j);
             j += 1;
         }
 
@@ -212,9 +224,7 @@ fn solve_linear_system_impl<R: BinaryRing>(
         basis.append_zero_rows(1);
         basis[(row, i)] = R::one();
 
-        linear_solutions += &format!(
-            "&&x'_{{{}}}&=a_{{{}}}\\\\", i + 1, j
-        );
+        linear_solutions += &format!("&&x'_{{{}}}&=a_{{{}}}\\\\", i + 1, j);
         j += 1;
     }
 
@@ -228,7 +238,8 @@ fn solve_linear_system_impl<R: BinaryRing>(
     solution.offset = t.mul_vec_post(&solution.offset, r);
     solution.lattice.basis = solution.lattice.basis.mul(t.transpose(), r);
 
-    let final_solution = format!("\\mathbf{{x}}={}{}={}",
+    let final_solution = format!(
+        "\\mathbf{{x}}={}{}={}",
         tex::underbrace(t.to_tex(), tex::bold("T")),
         tex::underbrace(x_old, tex::bold("x'")),
         solution.to_tex()
