@@ -145,15 +145,15 @@ impl<R: Ring> Valuation<R> {
     /// let y = Symbol::new("y");
     ///
     /// let mut v = Valuation::vars_zero_or_panic(&[x, y]);
-    /// assert_eq!((*v.value(x), *v.value(y)), (0, 0));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (0, 0));
     /// assert_eq!(v.inc_bin(&U8), false);
-    /// assert_eq!((*v.value(x), *v.value(y)), (255, 0));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (255, 0));
     /// assert_eq!(v.inc_bin(&U8), false);
-    /// assert_eq!((*v.value(x), *v.value(y)), (0, 255));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (0, 255));
     /// assert_eq!(v.inc_bin(&U8), false);
-    /// assert_eq!((*v.value(x), *v.value(y)), (255, 255));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (255, 255));
     /// assert_eq!(v.inc_bin(&U8), true);
-    /// assert_eq!((*v.value(x), *v.value(y)), (0, 0));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (0, 0));
     /// ```
     pub fn inc_bin(&mut self, r: &R) -> bool {
         for (_, v) in &mut self.vals {
@@ -181,24 +181,24 @@ impl<R: Ring> Valuation<R> {
     /// let y = Symbol::new("y");
     ///
     /// let mut v = Valuation::vars_zero_or_panic(&[x, y]);
-    /// assert_eq!((*v.value(x), *v.value(y)), (0, 0));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (0, 0));
     /// assert_eq!(v.inc_full(&U8), false);
-    /// assert_eq!((*v.value(x), *v.value(y)), (1, 0));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (1, 0));
     /// assert_eq!(v.inc_full(&U8), false);
-    /// assert_eq!((*v.value(x), *v.value(y)), (2, 0));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (2, 0));
     /// for _ in 0..253 {
     ///     assert_eq!(v.inc_full(&U8), false);
     /// }
-    /// assert_eq!((*v.value(x), *v.value(y)), (255, 0));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (255, 0));
     /// assert_eq!(v.inc_full(&U8), false);
-    /// assert_eq!((*v.value(x), *v.value(y)), (0, 1));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (0, 1));
     /// // Simulating many more increments.
     /// v.set_value(x, 254);
     /// v.set_value(y, 255);
     /// assert_eq!(v.inc_full(&U8), false);
-    /// assert_eq!((*v.value(x), *v.value(y)), (255, 255));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (255, 255));
     /// assert_eq!(v.inc_full(&U8), true);
-    /// assert_eq!((*v.value(x), *v.value(y)), (0, 0));
+    /// assert_eq!((*v.value(x, &U8), *v.value(y, &U8)), (0, 0));
     /// ```
     pub fn inc_full(&mut self, r: &R) -> bool {
         for (_, v) in &mut self.vals {

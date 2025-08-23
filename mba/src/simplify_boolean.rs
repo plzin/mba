@@ -7,7 +7,7 @@
 //! - Maybe a more refined cost function.
 //! - More refined rewrite rules.
 
-use std::cell::RefCell;
+use std::{cell::RefCell, sync::OnceLock};
 
 use egg::*;
 
@@ -117,9 +117,12 @@ fn bexpr_eq(l: &EggExpr, r: &EggExpr) -> bool {
     )
 }
 
-lazy_static::lazy_static! {
-    /// The set of equivalences.
-    static ref RULES: Vec<Rewrite<BooleanLanguage, ()>> = make_rules();
+/// The set of equivalences.
+static RULES: OnceLock<Vec<Rewrite<BooleanLanguage, ()>>> = OnceLock::new();
+
+/// Get the rules, initializing them if needed.
+fn get_rules() -> &'static Vec<Rewrite<BooleanLanguage, ()>> {
+    RULES.get_or_init(make_rules)
 }
 
 /// Returns a simplified boolean expression for a given truth table.
@@ -282,7 +285,7 @@ fn simplify_bexpr(e: &EggExpr, cfg: &SimplificationConfig) -> EggExpr {
             .with_node_limit(cfg.node_limit)
             .with_time_limit(cfg.time_limit)
             .with_expr(&best)
-            .run(&*RULES);
+            .run(get_rules());
 
         let stop_reason = runner.stop_reason.unwrap();
 
@@ -398,44 +401,39 @@ fn make_rules() -> Vec<Rewrite<BooleanLanguage, ()>> {
         rewrite!("or-absorb"; "(or ?x (and ?x ?y))" => "?x"),
     ];
 
-    rules.extend(vec![
-        // Associativity
-        rewrite!("and-assoc"; "(and ?x (and ?y ?z))" <=> "(and (and ?x ?y) ?z)"),
-        rewrite!("or-assoc"; "(or ?x (or ?y ?z))" <=> "(or (or ?x ?y) ?z)"),
-        rewrite!("xor-assoc"; "(xor ?x (xor ?y ?z))" <=> "(xor (xor ?x ?y) ?z)"),
-
-        // Commutativity
-        rewrite!("and-comm"; "(and ?x ?y)" <=> "(and ?y ?x)"),
-        rewrite!("or-comm"; "(or ?x ?y)" <=> "(or ?y ?x)"),
-        rewrite!("xor-comm"; "(xor ?x ?y)" <=> "(xor ?y ?x)"),
-
-        rewrite!("and-1"; "(and ?x 1)" <=> "?x"),
-        rewrite!("and-idemp"; "(and ?x ?x)" <=> "?x"),
-
-        rewrite!("or-0"; "(or ?x 0)" <=> "?x"),
-        rewrite!("or-idemp"; "(or ?x ?x)" <=> "?x"),
-
-        rewrite!("xor-0"; "(xor ?x 0)" <=> "?x"),
-        rewrite!("xor-1"; "(xor ?x 1)" <=> "(not ?x)"),
-
-        // Distributivity
-        rewrite!("and-or"; "(and ?x (or ?y ?z))" <=> "(or (and ?x ?y) (and ?x ?z))"),
-        rewrite!("or-and"; "(or ?x (and ?y ?z))" <=> "(and (or ?x ?y) (or ?x ?z))"),
-        rewrite!("and-xor"; "(and ?x (xor ?y ?z))" <=> "(xor (and ?x ?y) (and ?x ?z))"),
-
-        // Double negation
-        rewrite!("not-not"; "(not (not ?x))" <=> "?x"),
-
-        // De Morgan's laws
-        rewrite!("not-and"; "(not (and ?x ?y))" <=> "(or (not ?x) (not ?y))"),
-        rewrite!("not-or"; "(not (or ?x ?y))" <=> "(and (not ?x) (not ?y))"),
-        rewrite!("not-xor"; "(not (xor ?x ?y))" <=> "(xor (not ?x) ?y)"),
-
-        rewrite!("and-xor-1"; "(and ?x (xor ?x ?y))" <=> "(and ?x (not ?y))"),
-        rewrite!("or-xor-1"; "(or ?x (xor ?x ?y))" <=> "(or ?x ?y)"),
-        rewrite!("xor-and-1"; "(xor ?x (and ?x ?y))" <=> "(and ?x (not ?y))"),
-        rewrite!("xor-or-1"; "(xor ?x (or ?x ?y))" <=> "(and (not ?x) ?y)"),
-    ].concat());
+    rules.extend(
+        vec![
+            // Associativity
+            rewrite!("and-assoc"; "(and ?x (and ?y ?z))" <=> "(and (and ?x ?y) ?z)"),
+            rewrite!("or-assoc"; "(or ?x (or ?y ?z))" <=> "(or (or ?x ?y) ?z)"),
+            rewrite!("xor-assoc"; "(xor ?x (xor ?y ?z))" <=> "(xor (xor ?x ?y) ?z)"),
+            // Commutativity
+            rewrite!("and-comm"; "(and ?x ?y)" <=> "(and ?y ?x)"),
+            rewrite!("or-comm"; "(or ?x ?y)" <=> "(or ?y ?x)"),
+            rewrite!("xor-comm"; "(xor ?x ?y)" <=> "(xor ?y ?x)"),
+            rewrite!("and-1"; "(and ?x 1)" <=> "?x"),
+            rewrite!("and-idemp"; "(and ?x ?x)" <=> "?x"),
+            rewrite!("or-0"; "(or ?x 0)" <=> "?x"),
+            rewrite!("or-idemp"; "(or ?x ?x)" <=> "?x"),
+            rewrite!("xor-0"; "(xor ?x 0)" <=> "?x"),
+            rewrite!("xor-1"; "(xor ?x 1)" <=> "(not ?x)"),
+            // Distributivity
+            rewrite!("and-or"; "(and ?x (or ?y ?z))" <=> "(or (and ?x ?y) (and ?x ?z))"),
+            rewrite!("or-and"; "(or ?x (and ?y ?z))" <=> "(and (or ?x ?y) (or ?x ?z))"),
+            rewrite!("and-xor"; "(and ?x (xor ?y ?z))" <=> "(xor (and ?x ?y) (and ?x ?z))"),
+            // Double negation
+            rewrite!("not-not"; "(not (not ?x))" <=> "?x"),
+            // De Morgan's laws
+            rewrite!("not-and"; "(not (and ?x ?y))" <=> "(or (not ?x) (not ?y))"),
+            rewrite!("not-or"; "(not (or ?x ?y))" <=> "(and (not ?x) (not ?y))"),
+            rewrite!("not-xor"; "(not (xor ?x ?y))" <=> "(xor (not ?x) ?y)"),
+            rewrite!("and-xor-1"; "(and ?x (xor ?x ?y))" <=> "(and ?x (not ?y))"),
+            rewrite!("or-xor-1"; "(or ?x (xor ?x ?y))" <=> "(or ?x ?y)"),
+            rewrite!("xor-and-1"; "(xor ?x (and ?x ?y))" <=> "(and ?x (not ?y))"),
+            rewrite!("xor-or-1"; "(xor ?x (or ?x ?y))" <=> "(and (not ?x) ?y)"),
+        ]
+        .concat(),
+    );
 
     rules
 }
@@ -507,7 +505,7 @@ fn verify_boolean_equivalences() {
         }
     }
 
-    for rule in &*RULES {
+    for rule in get_rules() {
         let Some(lhs) = rule.searcher.get_pattern_ast() else {
             continue;
         };

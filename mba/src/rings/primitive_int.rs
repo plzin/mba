@@ -92,6 +92,9 @@ macro_rules! int_ring {
                         concat!("Wrapping<", stringify!($int), ">")
                     },
                     Formatter::Tex => $c_type,
+                    // LLVM integer type name matches bit-width of the Rust int
+                    // e.g., i8, i16, i32, i64, i128
+                    Formatter::LLVM => stringify!($int),
                 }
             }
         }

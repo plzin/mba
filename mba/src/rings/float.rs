@@ -84,6 +84,7 @@ macro_rules! float_field {
                     Formatter::C => $c_type,
                     Formatter::Rust => $rust_type,
                     Formatter::Tex => $c_type,
+                    Formatter::LLVM => $c_type,
                 }
             }
         }

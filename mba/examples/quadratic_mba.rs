@@ -89,7 +89,7 @@ fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(
             };
 
             match v.iter_mut().find(|(_, a, b)| &fst == a && &snd == b) {
-                Some((c, _, _)) => r.add_assign(c, &d),
+                Some((c, ..)) => r.add_assign(c, &d),
                 None => v.push((d, fst, snd)),
             }
         }
@@ -107,7 +107,7 @@ fn quadratic_mba<R: BinaryRing + OrderedRing + IntDivRing>(
     };
 
     // Convert the linear combination to an `Expr`.
-    let mut iter = v.iter().filter(|(c, _, _)| !c.is_zero());
+    let mut iter = v.iter().filter(|(c, ..)| !c.is_zero());
     let mut expr = match iter.next() {
         Some((c, e, f)) => term_to_expr(c, e, f),
         None => Expr::new(ExprOp::Const(R::zero())),

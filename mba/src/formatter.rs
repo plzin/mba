@@ -14,6 +14,7 @@ pub enum Formatter {
     C,
     Rust,
     Tex,
+    LLVM,
 }
 
 impl Formatter {
@@ -29,6 +30,7 @@ impl Formatter {
         match self {
             Formatter::C | Formatter::Rust => "*",
             Formatter::Tex => "\\cdot",
+            Formatter::LLVM => panic!("LLVM does not support multiplication"),
         }
     }
 
@@ -40,6 +42,7 @@ impl Formatter {
         match self {
             Formatter::C | Formatter::Rust => "&",
             Formatter::Tex => "\\land",
+            Formatter::LLVM => panic!("LLVM does not support bitwise and"),
         }
     }
 
@@ -47,6 +50,7 @@ impl Formatter {
         match self {
             Formatter::C | Formatter::Rust => "|",
             Formatter::Tex => "\\lor",
+            Formatter::LLVM => panic!("LLVM does not support bitwise or"),
         }
     }
 
@@ -54,6 +58,7 @@ impl Formatter {
         match self {
             Formatter::C | Formatter::Rust => "^",
             Formatter::Tex => "\\oplus",
+            Formatter::LLVM => panic!("LLVM does not support bitwise xor"),
         }
     }
 
@@ -62,6 +67,7 @@ impl Formatter {
             Formatter::C => "~",
             Formatter::Rust => "!",
             Formatter::Tex => "\\neg",
+            Formatter::LLVM => panic!("LLVM does not support bitwise not"),
         }
     }
 }
@@ -121,6 +127,9 @@ impl<'a> Display for DisplayableBExpr<'a> {
                 },
                 Formatter::Tex => {
                     write!(f, "\\neg{{{}}}", e.display(self.formatter))
+                },
+                Formatter::LLVM => {
+                    write!(f, "~{}", e.display_wrapped(Formatter::C))
                 },
             },
             BExpr::And(l, r) => {
@@ -199,6 +208,7 @@ impl<'a, R: Ring> LBExprFormatter<'a, R> {
                 Formatter::Rust => write!(f, "Wrapping({c}) * ")?,
                 Formatter::C => write!(f, "{c} * ")?,
                 Formatter::Tex => write!(f, "{c}\\cdot")?,
+                Formatter::LLVM => write!(f, "{c} * ")?,
             }
         }
 
@@ -268,6 +278,12 @@ impl<R: Ring> Expr<R> {
             tabs,
             prefix,
             r,
+            llvm_add: 0,
+            llvm_sub: 0,
+            llvm_mul: 0,
+            llvm_and: 0,
+            llvm_or: 0,
+            llvm_xor: 0,
         };
 
         formatter.format();
@@ -319,10 +335,23 @@ pub struct ExprFormatter<'a, R: Ring> {
     tabs: usize,
     prefix: &'a str,
     r: &'a R,
+    // LLVM SSA naming counters by op mnemonic
+    llvm_add: usize,
+    llvm_sub: usize,
+    llvm_mul: usize,
+    llvm_and: usize,
+    llvm_or: usize,
+    llvm_xor: usize,
 }
 
 impl<'a, R: Ring> ExprFormatter<'a, R> {
     fn format(&mut self) {
+        if self.formatter == Formatter::LLVM {
+            let result = self.llvm_emit_value(self.expr);
+            self.buf.clear();
+            self.buf.push_str(&result);
+            return;
+        }
         // If there is only one reference then just print it.
         if self.expr.strong_count() == 1 {
             return self.format_op();
@@ -376,6 +405,9 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
     fn format_op(&mut self) {
         macro_rules! format_bin_op {
             ($op:ident, $l:ident, $r:ident) => {{
+                if self.formatter == Formatter::LLVM {
+                    unreachable!()
+                }
                 let pred = self.expr.precedence();
 
                 let old = std::mem::replace(&mut self.expr, $l);
@@ -442,6 +474,112 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
             ExprOp::Not(i) => format_un_op!(not_op, i),
         }
     }
+
+    fn llvm_type_name(&self) -> impl Display + use<'a, R> {
+        self.r.data_type_name(Formatter::LLVM)
+    }
+
+    fn llvm_fresh_var(&mut self, op: &str) -> Symbol {
+        let name = match op {
+            "or" => {
+                self.llvm_or += 1;
+                format!("or{}", self.llvm_or)
+            },
+            "and" => {
+                self.llvm_and += 1;
+                format!("and{}", self.llvm_and)
+            },
+            "xor" => {
+                self.llvm_xor += 1;
+                format!("xor{}", self.llvm_xor)
+            },
+            "add" => {
+                self.llvm_add += 1;
+                format!("add{}", self.llvm_add)
+            },
+            "sub" => {
+                self.llvm_sub += 1;
+                format!("sub{}", self.llvm_sub)
+            },
+            "mul" => {
+                self.llvm_mul += 1;
+                format!("mul{}", self.llvm_mul)
+            },
+            _ => format!("v{}", self.subs.len() + 1),
+        };
+        Symbol::new(&name)
+    }
+
+    fn find_existing_var(&self, ptr: *const ExprOp<R>) -> Option<Symbol> {
+        self.subs.iter().find(|s| s.ptr == ptr).map(|s| s.var)
+    }
+
+    fn llvm_emit_value(&mut self, e: &Expr<R>) -> String {
+        use crate::expr::ExprOp::*;
+
+        match e.as_ref() {
+            Const(i) => format!("{i}"),
+            Var(v) => format!("%{v}"),
+            Add(l, r) => self.llvm_emit_bin("add", l, r, e.as_ptr()),
+            Sub(l, r) => self.llvm_emit_bin("sub", l, r, e.as_ptr()),
+            Mul(l, r) => self.llvm_emit_bin("mul", l, r, e.as_ptr()),
+            And(l, r) => self.llvm_emit_bin("and", l, r, e.as_ptr()),
+            Or(l, r) => self.llvm_emit_bin("or", l, r, e.as_ptr()),
+            Xor(l, r) => self.llvm_emit_bin("xor", l, r, e.as_ptr()),
+            Neg(i) => {
+                let ty = self.llvm_type_name();
+                let rhs = self.llvm_emit_value(i);
+                let var =
+                    self.find_existing_var(e.as_ptr()).unwrap_or_else(|| {
+                        let v = self.llvm_fresh_var("sub");
+                        self.subs.push(CommonSubExpr {
+                            ptr: e.as_ptr(),
+                            var: v,
+                            init: format!("sub {ty} 0, {rhs}"),
+                        });
+                        v
+                    });
+                format!("%{}", var)
+            },
+            Not(i) => {
+                let ty = self.llvm_type_name();
+                let val = self.llvm_emit_value(i);
+                let var =
+                    self.find_existing_var(e.as_ptr()).unwrap_or_else(|| {
+                        let v = self.llvm_fresh_var("xor");
+                        self.subs.push(CommonSubExpr {
+                            ptr: e.as_ptr(),
+                            var: v,
+                            init: format!("xor {ty} {val}, -1"),
+                        });
+                        v
+                    });
+                format!("%{}", var)
+            },
+        }
+    }
+
+    fn llvm_emit_bin(
+        &mut self,
+        op: &str,
+        l: &Expr<R>,
+        r: &Expr<R>,
+        ptr: *const ExprOp<R>,
+    ) -> String {
+        if let Some(v) = self.find_existing_var(ptr) {
+            return format!("%{}", v);
+        }
+        let ty = self.llvm_type_name();
+        let lv = self.llvm_emit_value(l);
+        let rv = self.llvm_emit_value(r);
+        let v = self.llvm_fresh_var(op);
+        self.subs.push(CommonSubExpr {
+            ptr,
+            var: v,
+            init: format!("{op} {ty} {lv}, {rv}"),
+        });
+        format!("%{}", v)
+    }
 }
 
 impl<R: Ring> Display for ExprFormatter<'_, R> {
@@ -477,6 +615,20 @@ impl<R: Ring> Display for ExprFormatter<'_, R> {
                     writeln!(f, "{} = {}\\\\", sub.var, sub.init)?;
                 }
                 return write!(f, "{}{}", self.prefix, self.buf);
+            },
+            Formatter::LLVM => {
+                // Generate LLVM code with dependencies listed first
+                for sub in self.subs.iter() {
+                    writeln!(
+                        f,
+                        "{:\t>tabs$}%{} = {}",
+                        "",
+                        sub.var,
+                        sub.init,
+                        tabs = self.tabs
+                    )?;
+                }
+                return Ok(());
             },
         }
 
@@ -551,6 +703,49 @@ impl<'a, R: Ring, D: Display> Display for FunctionFormatter<'a, R, D> {
                 write!(f, ") -> {ty} {{\n{}\n}}", self.inner)
             },
             Formatter::Tex => self.inner.fmt(f),
+            Formatter::LLVM => {
+                let ty = self.r.data_type_name(self.formatter).to_string();
+                write!(f, "define {ty} @{}(", self.function_name)?;
+
+                let mut vars = self.vars.iter();
+                if let Some(v) = vars.next() {
+                    write!(f, "{ty} %{v}")?;
+                    for v in vars {
+                        write!(f, ", {ty} %{v}")?;
+                    }
+                }
+
+                writeln!(f, ") {{")?;
+                writeln!(f, "entry:")?;
+                let instructions = format!("{}", self.inner);
+                if !instructions.is_empty() {
+                    if instructions.ends_with('\n') {
+                        write!(f, "{}", instructions)?;
+                    } else {
+                        writeln!(f, "{}", instructions)?;
+                    }
+                }
+                // Compute final result value
+                let last_value = if let Some(sub) =
+                    instructions.lines().rev().find_map(|line| {
+                        let line = line.trim();
+                        if line.starts_with('%') {
+                            line.find('=')
+                                .map(|eq_pos| line[..eq_pos].trim().to_string())
+                        } else {
+                            None
+                        }
+                    }) {
+                    sub
+                } else {
+                    // No instructions; fallback to a constant zero of correct
+                    // type
+                    "0".to_string()
+                };
+
+                writeln!(f, "{:\t>tabs$}ret {ty} {last_value}", "", tabs = 1)?;
+                write!(f, "}}")
+            },
         }
     }
 }

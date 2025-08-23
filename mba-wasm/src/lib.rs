@@ -36,6 +36,7 @@ pub enum Formatter {
     C,
     Rust,
     Tex,
+    LLVM,
 }
 
 impl Formatter {
@@ -44,6 +45,7 @@ impl Formatter {
             Formatter::C => mba::formatter::Formatter::C,
             Formatter::Rust => mba::formatter::Formatter::Rust,
             Formatter::Tex => mba::formatter::Formatter::Tex,
+            Formatter::LLVM => mba::formatter::Formatter::LLVM,
         }
     }
 }

@@ -162,6 +162,7 @@ impl std::fmt::Display for VarBitsPrimitiveIntDataType {
             Formatter::C => write!(f, "uint{}_t", self.bits),
             Formatter::Rust => write!(f, "Wrapping<u{}>", self.bits),
             Formatter::Tex => write!(f, "uint{}", self.bits),
+            Formatter::LLVM => write!(f, "i{}", self.bits),
         }
     }
 }

@@ -85,7 +85,7 @@ macro_rules! impl_ordered_ring_uint {
 pub(crate) use impl_ordered_ring_uint;
 
 macro_rules! uint_ring {
-    ($ring:ident, $uint:ident, $c_type:literal) => {
+    ($ring:ident, $uint:ident, $c_type:literal, $llvm_type:literal) => {
         #[derive(Clone, PartialEq, Eq, Debug)]
         pub struct $ring;
 
@@ -174,6 +174,7 @@ macro_rules! uint_ring {
                         concat!("Wrapping<", stringify!($uint), ">")
                     },
                     Formatter::Tex => $c_type,
+                    Formatter::LLVM => $llvm_type,
                 }
             }
         }
@@ -266,11 +267,11 @@ macro_rules! uint_ring {
     };
 }
 
-uint_ring!(U8, u8, "uint8_t");
-uint_ring!(U16, u16, "uint16_t");
-uint_ring!(U32, u32, "uint32_t");
-uint_ring!(U64, u64, "uint64_t");
-uint_ring!(U128, u128, "uint128_t");
+uint_ring!(U8, u8, "uint8_t", "i8");
+uint_ring!(U16, u16, "uint16_t", "i16");
+uint_ring!(U32, u32, "uint32_t", "i32");
+uint_ring!(U64, u64, "uint64_t", "i64");
+uint_ring!(U128, u128, "uint128_t", "i128");
 
 #[cfg(test)]
 mod test_primitive_uint {

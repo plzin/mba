@@ -468,11 +468,11 @@ impl<R: Ring> ExprOp<R> {
     pub(crate) fn precedence(&self) -> usize {
         use ExprOp::*;
         match self {
-            Or(_, _) => 1,
-            Xor(_, _) => 2,
-            And(_, _) => 3,
-            Add(_, _) | Sub(_, _) => 5,
-            Mul(_, _) => 6,
+            Or(..) => 1,
+            Xor(..) => 2,
+            And(..) => 3,
+            Add(..) | Sub(..) => 5,
+            Mul(..) => 6,
             Neg(_) | Not(_) => 15,
             Const(_) | Var(_) => 16,
         }
