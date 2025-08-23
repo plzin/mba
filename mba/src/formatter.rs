@@ -28,7 +28,7 @@ impl Formatter {
         match self {
             Formatter::C | Formatter::Rust => "*",
             Formatter::Tex => "\\cdot",
-            Formatter::LLVM => unreachable!(),
+            Formatter::LLVM => panic!("LLVM does not support multiplication"),
         }
     }
 
@@ -40,7 +40,7 @@ impl Formatter {
         match self {
             Formatter::C | Formatter::Rust => "&",
             Formatter::Tex => "\\land",
-            Formatter::LLVM => unreachable!(),
+            Formatter::LLVM => panic!("LLVM does not support bitwise and"),
         }
     }
 
@@ -48,7 +48,7 @@ impl Formatter {
         match self {
             Formatter::C | Formatter::Rust => "|",
             Formatter::Tex => "\\lor",
-            Formatter::LLVM => unreachable!(),
+            Formatter::LLVM => panic!("LLVM does not support bitwise or"),
         }
     }
 
@@ -56,7 +56,7 @@ impl Formatter {
         match self {
             Formatter::C | Formatter::Rust => "^",
             Formatter::Tex => "\\oplus",
-            Formatter::LLVM => unreachable!(),
+            Formatter::LLVM => panic!("LLVM does not support bitwise xor"),
         }
     }
 
@@ -65,7 +65,7 @@ impl Formatter {
             Formatter::C => "~",
             Formatter::Rust => "!",
             Formatter::Tex => "\\neg",
-            Formatter::LLVM => unreachable!(),
+            Formatter::LLVM => panic!("LLVM does not support bitwise not"),
         }
     }
 }
@@ -465,8 +465,8 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
         }
     }
 
-    fn llvm_type_name(&self) -> String {
-        self.r.data_type_name(Formatter::LLVM).to_string()
+    fn llvm_type_name(&self) -> impl Display + use<'a, R> {
+        self.r.data_type_name(Formatter::LLVM)
     }
 
     fn llvm_fresh_var(&mut self, op: &str) -> Symbol {

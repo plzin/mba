@@ -5,7 +5,6 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-
 itertools.workspace = true
 rand.workspace = true
 num-traits.workspace = true

@@ -101,7 +101,7 @@ interface OutputTypeDropdownProps {
 }
 
 export function OutputTypeDropdown({ outputType, setOutputType }: OutputTypeDropdownProps) {
-  const outputTypes = [Formatter.C, Formatter.Rust, Formatter.Tex, Formatter.LLVM];
+  const outputTypes = [Formatter.C, Formatter.Rust, Formatter.LLVM];
   return (
     <fieldset className="fieldset">
       <legend className="field-label">
