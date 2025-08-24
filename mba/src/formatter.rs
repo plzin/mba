@@ -539,7 +539,7 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
                         });
                         v
                     });
-                format!("%{}", var)
+                format!("%{var}")
             },
             Not(i) => {
                 let ty = self.llvm_type_name();
@@ -554,7 +554,7 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
                         });
                         v
                     });
-                format!("%{}", var)
+                format!("%{var}")
             },
         }
     }
@@ -567,7 +567,7 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
         ptr: *const ExprOp<R>,
     ) -> String {
         if let Some(v) = self.find_existing_var(ptr) {
-            return format!("%{}", v);
+            return format!("%{v}");
         }
         let ty = self.llvm_type_name();
         let lv = self.llvm_emit_value(l);
@@ -578,7 +578,7 @@ impl<'a, R: Ring> ExprFormatter<'a, R> {
             var: v,
             init: format!("{op} {ty} {lv}, {rv}"),
         });
-        format!("%{}", v)
+        format!("%{v}")
     }
 }
 
@@ -720,9 +720,9 @@ impl<'a, R: Ring, D: Display> Display for FunctionFormatter<'a, R, D> {
                 let instructions = format!("{}", self.inner);
                 if !instructions.is_empty() {
                     if instructions.ends_with('\n') {
-                        write!(f, "{}", instructions)?;
+                        write!(f, "{instructions}")?;
                     } else {
-                        writeln!(f, "{}", instructions)?;
+                        writeln!(f, "{instructions}")?;
                     }
                 }
                 // Compute final result value

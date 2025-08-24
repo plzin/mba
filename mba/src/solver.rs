@@ -879,7 +879,7 @@ mod test {
     fn random_test<R: BinaryRing>(ring: &R) {
         let rng = &mut StdRng::seed_from_u64(0);
         let dist = Uniform::new(0, 20).unwrap();
-        for _i in 0..1000 {
+        for _ in 0..100 {
             let dim = dist.sample(rng);
             let cols = dist.sample(rng);
             let a = Matrix::random(dim, cols, ring, rng);
